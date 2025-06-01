@@ -1,5 +1,7 @@
 # n4-hvac-optimization-blocks
 
+![Leave Temp Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/ahuLeaveTempBlockSnip.png)
+
 This repo provides **Java-based optimization logic** for Niagara 4 (N4) control systems. All vibe coded designed and tested by Ben, the logic is modeled after **ASHRAE Guideline 36** strategies with enhancements for practical deployments.
 
 ---
@@ -380,9 +382,146 @@ double round1(double val) {
 
 ---
 
+<details>
+<summary>🧊 Full Java Code for Chiller Rotator</summary>
 
+![Linkedin Article](https://www.linkedin.com/posts/activity-7334973935777652736-mrRk?utm_source=share&utm_medium=member_desktop&rcm=ACoAAA0kR5wBTiy3drJcr-0Nl_8MNQFMlHxnETU)
 
----
+```java
+// Full Java code starts here
+
+Clock.Ticket ticket;
+long lastMainLogicRun = 0;
+
+// Temperature staging variables
+int chillersStagedByTemp = 0;
+long tempHighStartTime = 0;
+boolean tempHighActive = false;
+
+// Load staging variables
+int chillersStagedByLoad = 0;
+long loadChangeStartTime = 0;
+boolean loadIncreasePending = false;
+boolean loadDecreasePending = false;
+
+// Blade Room Demand
+static final double[] loadUpThresholds = { 1.3, 2.6, 3.9, 5.2, 6.5, 7.8, 9.1, 10.4 };
+static final double[] loadDownThresholds = { 1.2, 2.5, 3.8, 5.1, 6.4, 7.7, 9.0 };
+
+// Chiller weekly rotation schedule
+static final int[][] DUTY_ROTATIONS = {
+    { 0, 1, 2, 3, 4, 5, 6, 7 }, 
+    { 1, 2, 3, 4, 5, 6, 7, 0 },
+    { 2, 3, 4, 5, 6, 7, 0, 1 },
+    { 3, 4, 5, 6, 7, 0, 1, 2 },
+    { 4, 5, 6, 7, 0, 1, 2, 3 },
+    { 5, 6, 7, 0, 1, 2, 3, 4 },
+    { 6, 7, 0, 1, 2, 3, 4, 5 },
+    { 7, 0, 1, 2, 3, 4, 5, 6 },
+    { 0, 1, 2, 3, 4, 5, 6, 7 }
+};
+
+public void onStart() throws Exception {
+    // Initialization code
+    safeSetNumeric("waterTemp", 18.0);
+    safeSetNumeric("tempSetpoint", 18.0);
+    safeSetNumeric("loadMW", 0.0);
+    safeSetNumeric("updateIntervalSeconds", 15);
+    safeSetNumeric("currentDutyCycle", 1);
+
+    safeSetBoolean("systemEnable", true);
+    safeSetBoolean("bladeRoom1Demand", false);
+    safeSetBoolean("bladeRoom2Demand", false);
+    safeSetBoolean("bladeRoom3Demand", false);
+
+    for (int i = 1; i <= 8; i++) {
+        safeSetBoolean("chiller" + i + "Available", true);
+    }
+
+    getStatusTraceSummary().setValue("Program started.");
+    lastMainLogicRun = System.currentTimeMillis();
+    updateTimer();
+}
+
+// Safe setters
+void safeSetNumeric(String slotName, double value) { /*...*/ }
+void safeSetBoolean(String slotName, boolean value) { /*...*/ }
+
+public void onExecute() throws Exception {
+    updateTimer();
+
+    long now = System.currentTimeMillis();
+    if (getComponent() == null) return;
+
+    double intervalSec = ((BStatusNumeric) getComponent().get("updateIntervalSeconds")).getValue();
+    if ((now - lastMainLogicRun) / 1000 < intervalSec) return;
+    lastMainLogicRun = now;
+
+    boolean systemEnable = ((BStatusBoolean) getComponent().get("systemEnable")).getValue();
+    if (!systemEnable) {
+        disableAllChillers();
+        getStatusTraceSummary().setValue("System disabled. All chillers OFF.");
+        return;
+    }
+
+    double waterTemp = ((BStatusNumeric) getComponent().get("waterTemp")).getValue();
+    double tempSet = ((BStatusNumeric) getComponent().get("tempSetpoint")).getValue();
+    double load = ((BStatusNumeric) getComponent().get("loadMW")).getValue();
+
+    int chillersByTemp = handleTemperatureStaging(waterTemp, tempSet);
+    int chillersByLoad = handleLoadStaging(load);
+    int chillersByBladeRooms = handleBladeRoomDemand();
+
+    int minRequiredChillers = chillersByBladeRooms;
+    int calculatedChillers = Math.max(chillersByTemp, chillersByLoad);
+    int requiredChillers = Math.max(minRequiredChillers, calculatedChillers);
+
+    int dutyScheduleIndex = (int) (((BStatusNumeric) getComponent().get("currentDutyCycle")).getValue()) - 1;
+    if (dutyScheduleIndex < 0 || dutyScheduleIndex >= DUTY_ROTATIONS.length) dutyScheduleIndex = 0;
+
+    boolean[] chillerAvailable = new boolean[8];
+    for (int i = 0; i < 8; i++) {
+        chillerAvailable[i] = ((BStatusBoolean) getComponent().get("chiller" + (i + 1) + "Available")).getValue();
+    }
+
+    boolean[] chillerEnable = new boolean[8];
+    int enabledCount = 0;
+    int[] rotationOrder = DUTY_ROTATIONS[dutyScheduleIndex];
+
+    for (int i = 0; i < 8 && enabledCount < requiredChillers; i++) {
+        int chillerIdx = rotationOrder[i];
+        if (chillerAvailable[chillerIdx]) {
+            chillerEnable[chillerIdx] = true;
+            enabledCount++;
+        }
+    }
+
+    for (int i = 0; i < 8; i++) {
+        ((BStatusBoolean) getComponent().get("chiller" + (i + 1) + "Enable")).setValue(chillerEnable[i]);
+    }
+
+    ((BStatusNumeric) getComponent().get("currentSequence")).setValue(dutyScheduleIndex + 1);
+    getStatusTraceSummary().setValue("Running. Enabled: " + enabledCount + " chillers.");
+}
+
+// Temperature staging logic
+int handleTemperatureStaging(double waterTemp, double tempSet) { /*...*/ }
+
+// Load staging logic
+int handleLoadStaging(double load) { /*...*/ }
+
+// Blade Room Demand logic
+int handleBladeRoomDemand() { /*...*/ }
+
+// Timer and helper methods
+void updateTimer() { /*...*/ }
+void disableAllChillers() { /*...*/ }
+
+// Rounding helper
+double round1(double val) {
+    return Math.round(val * 10.0) / 10.0;
+}
+```
 
 </details>
 
