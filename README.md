@@ -381,6 +381,382 @@ double round1(double val) {
 ---
 
 <details>
+<summary> Chiller Rotator</summary>
+
+#### ✅ Logic Summary:
+
+* Every update interval, reads demand values from up to 30 zones.
+* **Trim colder** if max VAV demand ≥ 30%, **trim warmer** if ≤ 10%.
+* If outside air temp is very high (OAT > threshold), **lock to minSAT** to prevent humidity issues.
+* Handles **Startup Lag** and **Fan OFF** by forcing SAT to `startupAhuSATSetpoint`.
+* Ignores highest `N` values defined by **Ignore Count** to avoid rogue zones.
+
+#### 🧠 Developer Notes:
+
+* Works with demand signals from zone controllers.
+* Uses internal 10s clock timer for status refresh.
+* Debug strings written to `statusTrace` (e.g., "Startup lag", "Lock to minSAT").
+
+#### 📄 Example Code:
+
+Oh yes — **absolutely possible and highly recommended**! ✅
+
+---
+
+### 🔥 **Why Break Up into Separate Functions?**
+
+* Makes the code **modular** and **readable**.
+* Each function only handles **one scenario**.
+* Easier to **test**, **debug**, and **maintain**.
+* Easier for another engineer (or future-you) to understand which logic is which.
+
+---
+
+### ✅ **Plan — Breakup**
+
+| Scenario | New Function Name            | Description                                        |
+| -------- | ---------------------------- | -------------------------------------------------- |
+| 1        | `handleTemperatureStaging()` | Temperature control based on flow temp vs setpoint |
+| 2        | `handleLoadStaging()`        | Load staging based on load MW                      |
+| 3        | `handleBladeRoomDemand()`    | Add chillers based on BladeRoom demand inputs      |
+
+---
+
+### 🧩 **Sketch of New Function Structure**
+
+```java
+int handleTemperatureStaging(double waterTemp, double tempSet)
+{
+    // Logic for temperature-based chiller staging (Scenario 1)
+}
+
+int handleLoadStaging(double load)
+{
+    // Logic for load-based chiller staging (Scenario 2)
+}
+
+int handleBladeRoomDemand()
+{
+    // Logic for BladeRoom additional chiller requirement (Scenario 3)
+}
+```
+
+And then in `onExecute()` or `determineChillersToRun()`:
+
+```java
+int chillersByTemp = handleTemperatureStaging(waterTemp, tempSet);
+int chillersByLoad = handleLoadStaging(load);
+int chillersByBladeRooms = handleBladeRoomDemand();
+
+int requiredChillers = Math.max(chillersByTemp, chillersByLoad) + chillersByBladeRooms;
+```
+
+💡 **Why `Math.max`?**
+
+* If temperature says "5 chillers" and load says "3 chillers," we obey the **highest** demand.
+* Plus any **extra chillers** for the BladeRoom demand.
+
+---
+
+### 📝 **Example of Full Function Breakup**
+
+#### 🔹 **Scenario 1 — Temperature Staging**
+
+```java
+long tempHighStartTime = 0;
+boolean tempHighActive = false;
+
+int handleTemperatureStaging(double waterTemp, double tempSet)
+{
+    if (waterTemp >= tempSet + 2.0) {
+        return 8; // Immediate max chillers
+    } else if (waterTemp >= tempSet + 1.0) {
+        if (!tempHighActive) {
+            tempHighActive = true;
+            tempHighStartTime = System.currentTimeMillis();
+        } else {
+            long elapsed = (System.currentTimeMillis() - tempHighStartTime) / 1000;
+            if (elapsed >= 600) {
+                return 1; // After 10 min, stage one more chiller
+            }
+        }
+    } else {
+        // Reset timer if temperature falls
+        tempHighActive = false;
+        tempHighStartTime = 0;
+    }
+    return 0;
+}
+```
+
+---
+
+#### 🔹 **Scenario 2 — Load Staging**
+
+```java
+int handleLoadStaging(double load)
+{
+    double[] thresholds = {1.3, 2.6, 3.9, 5.2, 6.5, 7.8, 9.1, 10.4};
+    int chillersRequired = 1;
+    for (int i = thresholds.length - 1; i >= 0; i--) {
+        if (load > thresholds[i]) {
+            chillersRequired = i + 2;
+            break;
+        }
+    }
+    return chillersRequired;
+}
+```
+
+---
+
+#### 🔹 **Scenario 3 — BladeRoom Demand**
+
+```java
+int handleBladeRoomDemand()
+{
+    int bladeRoomsDemanding = 0;
+    if (((BStatusBoolean) getComponent().get("bladeRoom1Demand")).getValue()) bladeRoomsDemanding++;
+    if (((BStatusBoolean) getComponent().get("bladeRoom2Demand")).getValue()) bladeRoomsDemanding++;
+    if (((BStatusBoolean) getComponent().get("bladeRoom3Demand")).getValue()) bladeRoomsDemanding++;
+
+    return bladeRoomsDemanding;
+}
+```
+
+---
+
+### 🏗️ **Putting It Together in `onExecute()`**
+
+---
+
+### 🚀 **Full Updated Java Code**
+
+```java
+Clock.Ticket ticket;
+long lastMainLogicRun = 0;
+int dutyScheduleIndex = 0;
+
+// Temperature staging timer variables
+long tempHighStartTime = 0;
+boolean tempHighActive = false;
+
+static final int[][] DUTY_ROTATIONS = {
+  {0, 1, 2, 3, 4, 5, 6, 7},  // Rotation 1
+  {1, 2, 3, 4, 5, 6, 7, 0},  // Rotation 2
+  {2, 3, 4, 5, 6, 7, 0, 1},  // Rotation 3
+  {3, 4, 5, 6, 7, 0, 1, 2},  // Rotation 4
+  {4, 5, 6, 7, 0, 1, 2, 3},  // Rotation 5
+  {5, 6, 7, 0, 1, 2, 3, 4},  // Rotation 6
+  {6, 7, 0, 1, 2, 3, 4, 5},  // Rotation 7
+  {7, 0, 1, 2, 3, 4, 5, 6},  // Rotation 8
+  {0, 1, 2, 3, 4, 5, 6, 7}   // Rotation 9 (reset to 1)
+};
+
+public void onStart() throws Exception
+{
+  // Set safe and reasonable defaults for Metric units (°C and MW)
+  ((BStatusNumeric) getComponent().get("waterTemp")).setValue(12.0); // °C
+  ((BStatusNumeric) getComponent().get("tempSetpoint")).setValue(18.0); // °C
+  ((BStatusNumeric) getComponent().get("loadMW")).setValue(0.0); // MW
+  ((BStatusNumeric) getComponent().get("updateIntervalSeconds")).setValue(300.0); // seconds (5 minutes)
+
+  ((BStatusBoolean) getComponent().get("systemEnable")).setValue(false); // Default off
+  ((BStatusBoolean) getComponent().get("rotateNow")).setValue(false); // Default no rotation
+
+  ((BStatusBoolean) getComponent().get("bladeRoom1Demand")).setValue(false);
+  ((BStatusBoolean) getComponent().get("bladeRoom2Demand")).setValue(false);
+  ((BStatusBoolean) getComponent().get("bladeRoom3Demand")).setValue(false);
+
+  // Default all chillers available
+  ((BStatusBoolean) getComponent().get("chiller1Available")).setValue(true);
+  ((BStatusBoolean) getComponent().get("chiller2Available")).setValue(true);
+  ((BStatusBoolean) getComponent().get("chiller3Available")).setValue(true);
+  ((BStatusBoolean) getComponent().get("chiller4Available")).setValue(true);
+  ((BStatusBoolean) getComponent().get("chiller5Available")).setValue(true);
+  ((BStatusBoolean) getComponent().get("chiller6Available")).setValue(true);
+  ((BStatusBoolean) getComponent().get("chiller7Available")).setValue(true);
+  ((BStatusBoolean) getComponent().get("chiller8Available")).setValue(true);
+
+  lastMainLogicRun = System.currentTimeMillis();
+  updateTimer();
+}
+
+public void onExecute() throws Exception
+{
+  updateTimer();
+
+  long now = System.currentTimeMillis();
+  if (getComponent() == null) return;
+
+  // Always check rotateNow first (every 10s)
+  boolean rotateRequest = ((BStatusBoolean) getComponent().get("rotateNow")).getValue();
+  if (rotateRequest) {
+    rotateDuty();
+    ((BStatusBoolean) getComponent().get("rotateNow")).setValue(false);  // Auto-reset after rotation
+  }
+
+  // NULL check for all inputs (every 10s)
+  String[] inputs = {
+    "waterTemp", "tempSetpoint", "loadMW", 
+    "systemEnable", "rotateNow",
+    "bladeRoom1Demand", "bladeRoom2Demand", "bladeRoom3Demand",
+    "chiller1Available", "chiller2Available", "chiller3Available", "chiller4Available",
+    "chiller5Available", "chiller6Available", "chiller7Available", "chiller8Available"
+  };
+
+  for (String inputName : inputs) {
+    if (getComponent().getLinks(getComponent().getSlot(inputName)).length == 0) {
+      if (getComponent().get(inputName) instanceof BStatusNumeric) {
+        ((BStatusNumeric) getComponent().get(inputName)).setValue(0);
+        ((BStatusNumeric) getComponent().get(inputName)).setStatus(BStatus.NULL);
+      } else if (getComponent().get(inputName) instanceof BStatusBoolean) {
+        ((BStatusBoolean) getComponent().get(inputName)).setValue(false);
+        ((BStatusBoolean) getComponent().get(inputName)).setStatus(BStatus.NULL);
+      }
+    }
+  }
+
+  // Main logic: only every updateIntervalSeconds (default 300s)
+  double intervalSec = ((BStatusNumeric) getComponent().get("updateIntervalSeconds")).getValue();
+  if ((now - lastMainLogicRun) / 1000 < intervalSec) return;
+  lastMainLogicRun = now;
+
+  // Proceed with logic only if system is enabled
+  boolean systemEnable = ((BStatusBoolean) getComponent().get("systemEnable")).getValue();
+  if (!systemEnable) {
+    disableAllChillers();
+    return;
+  }
+
+  double waterTemp = ((BStatusNumeric) getComponent().get("waterTemp")).getValue();
+  double tempSet = ((BStatusNumeric) getComponent().get("tempSetpoint")).getValue();
+  double load = ((BStatusNumeric) getComponent().get("loadMW")).getValue();
+
+  int chillersByTemp = handleTemperatureStaging(waterTemp, tempSet);
+  int chillersByLoad = handleLoadStaging(load);
+  int chillersByBladeRooms = handleBladeRoomDemand();
+
+  int requiredChillers = Math.max(chillersByTemp, chillersByLoad) + chillersByBladeRooms;
+
+  boolean[] chillerAvailable = {
+    ((BStatusBoolean) getComponent().get("chiller1Available")).getValue(),
+    ((BStatusBoolean) getComponent().get("chiller2Available")).getValue(),
+    ((BStatusBoolean) getComponent().get("chiller3Available")).getValue(),
+    ((BStatusBoolean) getComponent().get("chiller4Available")).getValue(),
+    ((BStatusBoolean) getComponent().get("chiller5Available")).getValue(),
+    ((BStatusBoolean) getComponent().get("chiller6Available")).getValue(),
+    ((BStatusBoolean) getComponent().get("chiller7Available")).getValue(),
+    ((BStatusBoolean) getComponent().get("chiller8Available")).getValue()
+  };
+
+  // Enable chillers based on availability and duty rotation
+  boolean[] chillerEnable = new boolean[8];
+  int enabledCount = 0;
+  int[] rotationOrder = DUTY_ROTATIONS[dutyScheduleIndex];
+
+  for (int i = 0; i < 8 && enabledCount < requiredChillers; i++) {
+    int chillerIdx = rotationOrder[i];
+    if (chillerAvailable[chillerIdx]) {
+      chillerEnable[chillerIdx] = true;
+      enabledCount++;
+    }
+  }
+
+  ((BStatusBoolean) getComponent().get("chiller1Enable")).setValue(chillerEnable[0]);
+  ((BStatusBoolean) getComponent().get("chiller2Enable")).setValue(chillerEnable[1]);
+  ((BStatusBoolean) getComponent().get("chiller3Enable")).setValue(chillerEnable[2]);
+  ((BStatusBoolean) getComponent().get("chiller4Enable")).setValue(chillerEnable[3]);
+  ((BStatusBoolean) getComponent().get("chiller5Enable")).setValue(chillerEnable[4]);
+  ((BStatusBoolean) getComponent().get("chiller6Enable")).setValue(chillerEnable[5]);
+  ((BStatusBoolean) getComponent().get("chiller7Enable")).setValue(chillerEnable[6]);
+  ((BStatusBoolean) getComponent().get("chiller8Enable")).setValue(chillerEnable[7]);
+
+  ((BStatusNumeric) getComponent().get("currentSequence")).setValue(dutyScheduleIndex + 1);  // Show 1 to 9
+}
+
+public void onStop() throws Exception
+{
+  if (ticket != null) ticket.cancel();
+}
+
+void updateTimer()
+{
+  if (ticket != null) ticket.cancel();
+  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
+}
+
+void disableAllChillers()
+{
+  for (int i = 1; i <= 8; i++) {
+    ((BStatusBoolean) getComponent().get("chiller" + i + "Enable")).setValue(false);
+  }
+}
+
+void rotateDuty()
+{
+  dutyScheduleIndex++;
+  if (dutyScheduleIndex >= DUTY_ROTATIONS.length) {
+    dutyScheduleIndex = 0;
+  }
+}
+
+// ------------------- SCENARIO 1 — Temperature Staging -------------------
+int handleTemperatureStaging(double waterTemp, double tempSet)
+{
+  if (waterTemp >= tempSet + 2.0) {
+    return 8; // Immediate max chillers
+  } else if (waterTemp >= tempSet + 1.0) {
+    if (!tempHighActive) {
+      tempHighActive = true;
+      tempHighStartTime = System.currentTimeMillis();
+    } else {
+      long elapsed = (System.currentTimeMillis() - tempHighStartTime) / 1000;
+      if (elapsed >= 600) {
+        return 1; // After 10 min, stage one more chiller
+      }
+    }
+  } else {
+    tempHighActive = false;
+    tempHighStartTime = 0;
+  }
+  return 0;
+}
+
+// ------------------- SCENARIO 2 — Load Staging -------------------
+int handleLoadStaging(double load)
+{
+  double[] thresholds = {1.3, 2.6, 3.9, 5.2, 6.5, 7.8, 9.1, 10.4};
+  int chillersRequired = 1;
+  for (int i = thresholds.length - 1; i >= 0; i--) {
+    if (load > thresholds[i]) {
+      chillersRequired = i + 2;
+      break;
+    }
+  }
+  return chillersRequired;
+}
+
+// ------------------- SCENARIO 3 — BladeRoom Demand -------------------
+int handleBladeRoomDemand()
+{
+  int bladeRoomsDemanding = 0;
+  if (((BStatusBoolean) getComponent().get("bladeRoom1Demand")).getValue()) bladeRoomsDemanding++;
+  if (((BStatusBoolean) getComponent().get("bladeRoom2Demand")).getValue()) bladeRoomsDemanding++;
+  if (((BStatusBoolean) getComponent().get("bladeRoom3Demand")).getValue()) bladeRoomsDemanding++;
+  return bladeRoomsDemanding;
+}
+```
+
+
+
+---
+
+</details>
+
+---
+
+<details>
 <summary>📊 JACE Resource Management – Best Practices</summary>
 
 To avoid Niagara runtime issues, monitor JACE system health:
