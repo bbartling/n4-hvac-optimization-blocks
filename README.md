@@ -376,6 +376,7 @@ double round1(double val) {
     return Math.round(val * 10.0) / 10.0;
 }
 
+
 ```
 
 </details>
@@ -388,41 +389,40 @@ double round1(double val) {
 [Linkedin Article](https://www.linkedin.com/posts/activity-7334973935777652736-mrRk?utm_source=share&utm_medium=member_desktop&rcm=ACoAAA0kR5wBTiy3drJcr-0Nl_8MNQFMlHxnETU)
 
 ```java
-// Full Java code starts here
-
 Clock.Ticket ticket;
 long lastMainLogicRun = 0;
 
-// Temperature staging variables
+// Temperature staging timer variables
 int chillersStagedByTemp = 0;
 long tempHighStartTime = 0;
 boolean tempHighActive = false;
 
-// Load staging variables
 int chillersStagedByLoad = 0;
+long loadHighStartTime = 0;
+boolean loadHighActive = false;
+long loadLowStartTime = 0;
+boolean loadLowActive = false;
+
 long loadChangeStartTime = 0;
 boolean loadIncreasePending = false;
 boolean loadDecreasePending = false;
 
-// Blade Room Demand
-static final double[] loadUpThresholds = { 1.3, 2.6, 3.9, 5.2, 6.5, 7.8, 9.1, 10.4 };
-static final double[] loadDownThresholds = { 1.2, 2.5, 3.8, 5.1, 6.4, 7.7, 9.0 };
+static final double[] loadUpThresholds = { 1.3, 2.6, 3.9, 5.2, 6.5, 7.8, 9.1, 10.4 }; // For staging up
+static final double[] loadDownThresholds = { 1.2, 2.5, 3.8, 5.1, 6.4, 7.7, 9.0 };     // For staging down
 
-// Chiller weekly rotation schedule
 static final int[][] DUTY_ROTATIONS = {
-    { 0, 1, 2, 3, 4, 5, 6, 7 }, 
-    { 1, 2, 3, 4, 5, 6, 7, 0 },
-    { 2, 3, 4, 5, 6, 7, 0, 1 },
-    { 3, 4, 5, 6, 7, 0, 1, 2 },
-    { 4, 5, 6, 7, 0, 1, 2, 3 },
-    { 5, 6, 7, 0, 1, 2, 3, 4 },
-    { 6, 7, 0, 1, 2, 3, 4, 5 },
-    { 7, 0, 1, 2, 3, 4, 5, 6 },
-    { 0, 1, 2, 3, 4, 5, 6, 7 }
+    { 0, 1, 2, 3, 4, 5, 6, 7 }, // duty1
+    { 1, 2, 3, 4, 5, 6, 7, 0 }, // duty2
+    { 2, 3, 4, 5, 6, 7, 0, 1 }, // duty3
+    { 3, 4, 5, 6, 7, 0, 1, 2 }, // duty4
+    { 4, 5, 6, 7, 0, 1, 2, 3 }, // duty5
+    { 5, 6, 7, 0, 1, 2, 3, 4 }, // duty6
+    { 6, 7, 0, 1, 2, 3, 4, 5 }, // duty7
+    { 7, 0, 1, 2, 3, 4, 5, 6 }, // duty8
+    { 0, 1, 2, 3, 4, 5, 6, 7 }  // duty9 (reset to 1)
 };
 
 public void onStart() throws Exception {
-    // Initialization code
     safeSetNumeric("waterTemp", 18.0);
     safeSetNumeric("tempSetpoint", 18.0);
     safeSetNumeric("loadMW", 0.0);
@@ -439,22 +439,52 @@ public void onStart() throws Exception {
     }
 
     getStatusTraceSummary().setValue("Program started.");
+
     lastMainLogicRun = System.currentTimeMillis();
     updateTimer();
 }
 
-// Safe setters
-void safeSetNumeric(String slotName, double value) { /*...*/ }
-void safeSetBoolean(String slotName, boolean value) { /*...*/ }
+// ----------------- Safe Setters ------------------
+
+void safeSetNumeric(String slotName, double value) {
+    try {
+        BStatusNumeric point = (BStatusNumeric) getComponent().get(slotName);
+        if (point != null) {
+            point.setValue(value);
+        } else {
+            System.out.println("[Startup] Missing slot: " + slotName);
+        }
+    } catch (Exception e) {
+        System.out.println("[Startup] Error setting numeric slot: " + slotName + " -> " + e.getMessage());
+    }
+}
+
+void safeSetBoolean(String slotName, boolean value) {
+    try {
+        BStatusBoolean point = (BStatusBoolean) getComponent().get(slotName);
+        if (point != null) {
+            point.setValue(value);
+        } else {
+            System.out.println("[Startup] Missing slot: " + slotName);
+        }
+    } catch (Exception e) {
+        System.out.println("[Startup] Error setting boolean slot: " + slotName + " -> " + e.getMessage());
+    }
+}
+
 
 public void onExecute() throws Exception {
     updateTimer();
 
     long now = System.currentTimeMillis();
-    if (getComponent() == null) return;
+    if (getComponent() == null)
+        return;
+
+    // NULL checks...
 
     double intervalSec = ((BStatusNumeric) getComponent().get("updateIntervalSeconds")).getValue();
-    if ((now - lastMainLogicRun) / 1000 < intervalSec) return;
+    if ((now - lastMainLogicRun) / 1000 < intervalSec)
+        return;
     lastMainLogicRun = now;
 
     boolean systemEnable = ((BStatusBoolean) getComponent().get("systemEnable")).getValue();
@@ -476,8 +506,11 @@ public void onExecute() throws Exception {
     int calculatedChillers = Math.max(chillersByTemp, chillersByLoad);
     int requiredChillers = Math.max(minRequiredChillers, calculatedChillers);
 
+
     int dutyScheduleIndex = (int) (((BStatusNumeric) getComponent().get("currentDutyCycle")).getValue()) - 1;
-    if (dutyScheduleIndex < 0 || dutyScheduleIndex >= DUTY_ROTATIONS.length) dutyScheduleIndex = 0;
+    if (dutyScheduleIndex < 0 || dutyScheduleIndex >= DUTY_ROTATIONS.length) {
+        dutyScheduleIndex = 0; // Fallback to Rotation 1
+    }
 
     boolean[] chillerAvailable = new boolean[8];
     for (int i = 0; i < 8; i++) {
@@ -488,7 +521,14 @@ public void onExecute() throws Exception {
     int enabledCount = 0;
     int[] rotationOrder = DUTY_ROTATIONS[dutyScheduleIndex];
 
-    for (int i = 0; i < 8 && enabledCount < requiredChillers; i++) {
+    // Always enable the lead chiller
+    int leadChillerIdx = rotationOrder[0];
+    if (chillerAvailable[leadChillerIdx]) {
+        chillerEnable[leadChillerIdx] = true;
+        enabledCount = 1;
+    }
+
+    for (int i = 1; i < 8 && enabledCount < requiredChillers; i++) {
         int chillerIdx = rotationOrder[i];
         if (chillerAvailable[chillerIdx]) {
             chillerEnable[chillerIdx] = true;
@@ -496,31 +536,165 @@ public void onExecute() throws Exception {
         }
     }
 
+    StringBuilder enabledChillers = new StringBuilder();
     for (int i = 0; i < 8; i++) {
         ((BStatusBoolean) getComponent().get("chiller" + (i + 1) + "Enable")).setValue(chillerEnable[i]);
+        if (chillerEnable[i]) {
+            enabledChillers.append("Chiller").append(i + 1).append(" ");
+        }
     }
 
     ((BStatusNumeric) getComponent().get("currentSequence")).setValue(dutyScheduleIndex + 1);
-    getStatusTraceSummary().setValue("Running. Enabled: " + enabledCount + " chillers.");
+
+    getStatusTraceSummary().setValue("Running. Enabled: " + enabledChillers.toString().trim());
 }
 
-// Temperature staging logic
-int handleTemperatureStaging(double waterTemp, double tempSet) { /*...*/ }
+// --------------- Temp Staging -----------------
+int handleTemperatureStaging(double waterTemp, double tempSet) {
+    long now = System.currentTimeMillis();
 
-// Load staging logic
-int handleLoadStaging(double load) { /*...*/ }
+    if (waterTemp >= tempSet + 1.0) {
+        if (!tempHighActive) {
+            tempHighActive = true;
+            tempHighStartTime = now;
+            chillersStagedByTemp = 1;
+            getStatusTraceTemp().setValue("WaterTemp high (" + round1(waterTemp) + "°C). Start 10min timer.");
+        } else {
+            long elapsed = (now - tempHighStartTime) / 1000;
+            int stageCount = (int)(elapsed / 600);
+            chillersStagedByTemp = Math.min(1 + stageCount, 8);
+            getStatusTraceTemp().setValue("Stage up: " + elapsed + "s elapsed. " + chillersStagedByTemp + " chillers staged.");
+        }
+    } 
+    else if (waterTemp <= tempSet) {
+        if (tempHighActive) {
+            long elapsed = (now - tempHighStartTime) / 1000;
+            int stageCount = (int)(elapsed / 600);
+            chillersStagedByTemp = Math.max(8 - stageCount, 0);
+            if (chillersStagedByTemp == 0) {
+                tempHighActive = false;
+                tempHighStartTime = 0;
+                getStatusTraceTemp().setValue("WaterTemp normal (" + round1(waterTemp) + "°C). All chillers de-staged.");
+            } else {
+                getStatusTraceTemp().setValue("Stage down: " + elapsed + "s elapsed. " + chillersStagedByTemp + " chillers staged.");
+            }
+        } else {
+            chillersStagedByTemp = 0;
+            getStatusTraceTemp().setValue("WaterTemp stable (" + round1(waterTemp) + "°C). No staging needed.");
+        }
+    }
+    return chillersStagedByTemp;
+}
 
-// Blade Room Demand logic
-int handleBladeRoomDemand() { /*...*/ }
+// --------------- Load Staging -----------------
+int handleLoadStaging(double load) {
+    long now = System.currentTimeMillis();
+    int targetChillers = 1;
 
-// Timer and helper methods
-void updateTimer() { /*...*/ }
-void disableAllChillers() { /*...*/ }
+    // Determine how many chillers are required based on load
+    for (int i = loadUpThresholds.length - 1; i >= 0; i--) {
+        if (load > loadUpThresholds[i]) {
+            targetChillers = i + 2; // because index 0 = 1 chiller
+            break;
+        }
+    }
 
-// Rounding helper
+    // NEW LOGIC: If load is less than first threshold, no chillers required
+    if (load < loadUpThresholds[0]) {
+        // Load is too low — no staging up
+        chillersStagedByLoad = 0;
+        loadIncreasePending = false;
+        loadDecreasePending = false;
+        loadChangeStartTime = 0;
+        getStatusTraceLoad().setValue("Load too low (" + round1(load) + "MW). No chillers required.");
+        return 0;
+    }
+
+    if (targetChillers > chillersStagedByLoad) {
+        // Need to stage up
+        if (!loadIncreasePending) {
+            loadIncreasePending = true;
+            loadChangeStartTime = now;
+            getStatusTraceLoad().setValue("Load high (" + round1(load) + "MW). Start 20-min timer to add chiller.");
+        } else {
+            long elapsed = (now - loadChangeStartTime) / 1000;
+            if (elapsed >= 1200) {
+                chillersStagedByLoad++;
+                loadIncreasePending = false;
+                loadChangeStartTime = 0;
+                getStatusTraceLoad().setValue("Load high stable. Adding chiller. Now running: " + chillersStagedByLoad);
+            } else {
+                getStatusTraceLoad().setValue("Load high (" + round1(load) + "MW). Timer: " + elapsed + "s");
+            }
+        }
+        loadDecreasePending = false;
+    } else if (targetChillers < chillersStagedByLoad) {
+        // Need to stage down
+        double downThreshold = (chillersStagedByLoad <= 1) ? 0 : loadDownThresholds[chillersStagedByLoad - 2];
+        if (load < downThreshold) {
+            if (!loadDecreasePending) {
+                loadDecreasePending = true;
+                loadChangeStartTime = now;
+                getStatusTraceLoad().setValue("Load low (" + round1(load) + "MW). Start 20-min timer to drop chiller.");
+            } else {
+                long elapsed = (now - loadChangeStartTime) / 1000;
+                if (elapsed >= 1200) {
+                    chillersStagedByLoad--;
+                    loadDecreasePending = false;
+                    loadChangeStartTime = 0;
+                    getStatusTraceLoad().setValue("Load low stable. Dropping chiller. Now running: " + chillersStagedByLoad);
+                } else {
+                    getStatusTraceLoad().setValue("Load low (" + round1(load) + "MW). Timer: " + elapsed + "s");
+                }
+            }
+        } else {
+            loadDecreasePending = false;
+        }
+        loadIncreasePending = false;
+    } else {
+        // Load within band, no action needed
+        loadIncreasePending = false;
+        loadDecreasePending = false;
+        loadChangeStartTime = 0;
+        getStatusTraceLoad().setValue("Load stable (" + round1(load) + "MW). Running " + chillersStagedByLoad + " chillers.");
+    }
+
+    return chillersStagedByLoad;
+}
+
+
+// --------------- Blade Room Staging -----------------
+int handleBladeRoomDemand() {
+    int bladeRoomsDemanding = 0;
+    if (((BStatusBoolean) getComponent().get("bladeRoom1Demand")).getValue()) bladeRoomsDemanding++;
+    if (((BStatusBoolean) getComponent().get("bladeRoom2Demand")).getValue()) bladeRoomsDemanding++;
+    if (((BStatusBoolean) getComponent().get("bladeRoom3Demand")).getValue()) bladeRoomsDemanding++;
+
+    getStatusTraceBlade().setValue(bladeRoomsDemanding + " blade rooms requesting cooling.");
+    return bladeRoomsDemanding;
+}
+
+
+
+// Timer update method
+void updateTimer() {
+    if (ticket != null) ticket.cancel();
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
+}
+
+// Disable all chillers method
+void disableAllChillers() {
+    for (int i = 1; i <= 8; i++) {
+        ((BStatusBoolean) getComponent().get("chiller" + i + "Enable")).setValue(false);
+    }
+}
+
+
+// New rounding method
 double round1(double val) {
     return Math.round(val * 10.0) / 10.0;
 }
+
 ```
 
 </details>

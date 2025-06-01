@@ -16,8 +16,8 @@
   </p>
   <!-- /Optimization/Psychrometric -->
   <p n="Psychrometric" h="2aa" m="kitControl=kitControl" t="kitControl:Psychrometric">
-   <p n="inTemp" f="sL"/>
-   <p n="inHumidity" f="sL"/>
+   <p n="inTemp" f="sL" t="b:StatusNumeric"><p n="value" v="73.75184129868151"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+   <p n="inHumidity" f="sL" t="b:StatusNumeric"><p n="value" v="41.57509207725525"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
    <p n="wsAnnotation" t="b:WsAnnotation" v="54,19,18"/>
    <p n="Link" t="b:Link"><p n="sourceOrd" v="h:2a6"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inTemp"/></p>
    <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:2a8"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inHumidity"/></p>
@@ -61,8 +61,8 @@
   </p>
   <!-- /Optimization/Tstat$20$2d$20OA$2dDewPoint$20$3c$2055 -->
   <p n="Tstat$20$2d$20OA$2dDewPoint$20$3c$2055" h="2b5" t="kitControl:Tstat">
-   <p n="cv" f="L" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-   <p n="sp" f="L" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+   <p n="cv" f="L" t="b:StatusNumeric"><p n="value" v="48.96270751953125"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+   <p n="sp" f="L" t="b:StatusNumeric"><p n="value" v="55.0"/></p>
    <p n="diff" t="b:StatusNumeric"><p n="value" v="1.0"/></p>
    <p n="action" t="kitControl:LoopAction" v="reverse"/>
    <p n="wsAnnotation" t="b:WsAnnotation" v="81,45,17"/>
@@ -132,15 +132,15 @@
      <p n="vavDprPos28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="1.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuDuctPressStpOut" f="rs" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.1"/></p>
      <p n="ductPressMin" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="ductPressMax" f="s" t="b:StatusNumeric"><p n="value" v="1.2"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavDprFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="Link4" t="b:Link"><p n="sourceOrd" v="h:2c1"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
@@ -297,22 +297,22 @@
      <p n="vavZoneDemand28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuSATSetpointOut" f="rs" t="b:StatusNumeric"><p n="value" v="65.0"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
-     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="55.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemandFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="vavZoneDemandFilteredAvg" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="satOATDeadband" f="r" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="outTempConstSatMinStp" f="s" t="b:StatusNumeric"><p n="value" v="80.0"/></p>
-     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="73.75184129868151"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="Link2" t="b:Link"><p n="sourceOrd" v="h:2e5"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
      <p n="Link3" t="b:Link"><p n="sourceOrd" v="h:2e7"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="UpdateIntervalSeconds"/></p>
      <p n="statusTrace" f="rs" t="b:StatusString"><p n="value" v="Fan OFF &#x2192; waiting for building startup...  SP = 65.0"/></p>
@@ -478,15 +478,15 @@
      <p n="vavDprPos28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="1.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuDuctPressStpOut" f="rs" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.1"/></p>
      <p n="ductPressMin" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="ductPressMax" f="s" t="b:StatusNumeric"><p n="value" v="1.2"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavDprFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="Link4" t="b:Link"><p n="sourceOrd" v="h:2f8"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
@@ -643,22 +643,22 @@
      <p n="vavZoneDemand28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuSATSetpointOut" f="rs" t="b:StatusNumeric"><p n="value" v="65.0"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
-     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="55.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemandFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="vavZoneDemandFilteredAvg" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="satOATDeadband" f="r" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="outTempConstSatMinStp" f="s" t="b:StatusNumeric"><p n="value" v="80.0"/></p>
-     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="73.75184129868151"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="Link2" t="b:Link"><p n="sourceOrd" v="h:31c"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
      <p n="Link3" t="b:Link"><p n="sourceOrd" v="h:31e"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="UpdateIntervalSeconds"/></p>
      <p n="statusTrace" f="rs" t="b:StatusString"><p n="value" v="Fan OFF &#x2192; waiting for building startup...  SP = 65.0"/></p>
@@ -824,15 +824,15 @@
      <p n="vavDprPos28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="1.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuDuctPressStpOut" f="rs" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.1"/></p>
      <p n="ductPressMin" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="ductPressMax" f="s" t="b:StatusNumeric"><p n="value" v="1.2"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavDprFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="Link4" t="b:Link"><p n="sourceOrd" v="h:32f"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
@@ -989,22 +989,22 @@
      <p n="vavZoneDemand28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuSATSetpointOut" f="rs" t="b:StatusNumeric"><p n="value" v="65.0"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
-     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="55.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemandFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="vavZoneDemandFilteredAvg" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="satOATDeadband" f="r" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="outTempConstSatMinStp" f="s" t="b:StatusNumeric"><p n="value" v="80.0"/></p>
-     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="73.75184129868151"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="Link2" t="b:Link"><p n="sourceOrd" v="h:353"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
      <p n="Link3" t="b:Link"><p n="sourceOrd" v="h:355"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="UpdateIntervalSeconds"/></p>
      <p n="statusTrace" f="rs" t="b:StatusString"><p n="value" v="Fan OFF &#x2192; waiting for building startup...  SP = 65.0"/></p>
@@ -1170,15 +1170,15 @@
      <p n="vavDprPos28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuDuctPressStpOut" f="rs" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.1"/></p>
      <p n="ductPressMin" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="ductPressMax" f="s" t="b:StatusNumeric"><p n="value" v="1.2"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavDprFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="Link4" t="b:Link"><p n="sourceOrd" v="h:366"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
@@ -1335,22 +1335,22 @@
      <p n="vavZoneDemand28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="2.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuSATSetpointOut" f="rs" t="b:StatusNumeric"><p n="value" v="65.0"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
-     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="55.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemandFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="vavZoneDemandFilteredAvg" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="satOATDeadband" f="r" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="outTempConstSatMinStp" f="s" t="b:StatusNumeric"><p n="value" v="80.0"/></p>
-     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="73.75184129868151"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="Link2" t="b:Link"><p n="sourceOrd" v="h:38a"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
      <p n="Link3" t="b:Link"><p n="sourceOrd" v="h:38c"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="UpdateIntervalSeconds"/></p>
      <p n="statusTrace" f="rs" t="b:StatusString"><p n="value" v="Fan OFF &#x2192; waiting for building startup...  SP = 65.0"/></p>
@@ -1516,15 +1516,15 @@
      <p n="vavDprPos28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
      <p n="vavDprPos30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="1.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuDuctPressStpOut" f="rs" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.1"/></p>
      <p n="ductPressMin" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
      <p n="ductPressMax" f="s" t="b:StatusNumeric"><p n="value" v="1.2"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavDprFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="Link4" t="b:Link"><p n="sourceOrd" v="h:39d"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
@@ -1681,22 +1681,22 @@
      <p n="vavZoneDemand28" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand29" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemand30" f="s" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40;activeLevel=e:17@control:PriorityLevel"/></p>
-     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="IgnoreCount" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="WorkingUpdateInterval" f="r" t="b:StatusNumeric"><p n="value" v="33.0"/></p>
-     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/></p>
+     <p n="UpdateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="300.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+     <p n="ahuFanStatus" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="ahuSATSetpointOut" f="rs" t="b:StatusNumeric"><p n="value" v="65.0"/></p>
      <p n="trimRespVal" f="s" t="b:StatusNumeric"><p n="value" v="0.5"/></p>
-     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="satMin" f="sL" t="b:StatusNumeric"><p n="value" v="55.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="satMax" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupLagSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="120.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
      <p n="vavZoneDemandFilteredMax" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="activeUpdateInterval" f="rs" t="b:StatusNumeric"><p n="value" v="300.0"/></p>
      <p n="vavZoneDemandFilteredAvg" f="rs" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="satOATDeadband" f="r" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
      <p n="outTempConstSatMinStp" f="s" t="b:StatusNumeric"><p n="value" v="80.0"/></p>
-     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+     <p n="outsideAirTemp" f="sL" t="b:StatusNumeric"><p n="value" v="73.75184129868151"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
+     <p n="startupAhuSATSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
      <p n="Link2" t="b:Link"><p n="sourceOrd" v="h:3c1"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="IgnoreCount"/></p>
      <p n="Link3" t="b:Link"><p n="sourceOrd" v="h:3c3"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="UpdateIntervalSeconds"/></p>
      <p n="statusTrace" f="rs" t="b:StatusString"><p n="value" v="Fan OFF &#x2192; waiting for building startup...  SP = 65.0"/></p>
@@ -1825,7 +1825,7 @@
   <!-- /Optimization/Tstat -->
   <p n="Tstat" h="3d0" t="kitControl:Tstat">
    <p n="cv" f="L"/>
-   <p n="sp" f="L" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+   <p n="sp" f="L" t="b:StatusNumeric"><p n="value" v="50.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
    <p n="diff" t="b:StatusNumeric"><p n="value" v="2.0"/></p>
    <p n="nullOnInControl" v="false"/>
    <p n="wsAnnotation" t="b:WsAnnotation" v="30,121,14"/>
@@ -1848,17 +1848,17 @@
   </p>
   <!-- /Optimization/Add -->
   <p n="Add" h="3d6" t="kitControl:Add">
-   <p n="inA" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-   <p n="inB" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+   <p n="inA" f="sL" t="b:StatusNumeric"><p n="value" v="55.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+   <p n="inB" f="sL" t="b:StatusNumeric"><p n="value" v="5.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
    <p n="wsAnnotation" t="b:WsAnnotation" v="33,107,8"/>
    <p n="Link" t="b:Link"><p n="sourceOrd" v="h:3d3"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inA"/></p>
    <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:3de"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inB"/></p>
   </p>
   <!-- /Optimization/NumericSwitch1 -->
   <p n="NumericSwitch1" h="3d8" t="kitControl:NumericSwitch">
-   <p n="inSwitch" f="sL"/>
-   <p n="inTrue" f="sL"/>
-   <p n="inFalse" f="sL"/>
+   <p n="inSwitch" f="sL" t="b:StatusBoolean"><p n="value" v="true"/></p>
+   <p n="inTrue" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+   <p n="inFalse" f="sL" t="b:StatusNumeric"><p n="value" v="70.0"/></p>
    <p n="wsAnnotation" t="b:WsAnnotation" v="51,92,8"/>
    <p n="Link" t="b:Link"><p n="sourceOrd" v="h:3d0"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inSwitch"/></p>
    <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:3ce"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inTrue"/></p>
@@ -1866,9 +1866,9 @@
   </p>
   <!-- /Optimization/NumericSwitch2 -->
   <p n="NumericSwitch2" h="3da" t="kitControl:NumericSwitch">
-   <p n="inSwitch" f="sL"/>
-   <p n="inTrue" f="sL"/>
-   <p n="inFalse" f="sL"/>
+   <p n="inSwitch" f="sL" t="b:StatusBoolean"><p n="value" v="true"/></p>
+   <p n="inTrue" f="sL" t="b:StatusNumeric"><p n="value" v="55.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+   <p n="inFalse" f="sL" t="b:StatusNumeric"><p n="value" v="60.0"/></p>
    <p n="wsAnnotation" t="b:WsAnnotation" v="51,104,8"/>
    <p n="Link" t="b:Link"><p n="sourceOrd" v="h:3d0"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inSwitch"/></p>
    <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:3d3"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inTrue"/></p>
@@ -1876,8 +1876,8 @@
   </p>
   <!-- /Optimization/Add1 -->
   <p n="Add1" h="3dc" t="kitControl:Add">
-   <p n="inA" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-   <p n="inB" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+   <p n="inA" f="sL" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+   <p n="inB" f="sL" t="b:StatusNumeric"><p n="value" v="5.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
    <p n="wsAnnotation" t="b:WsAnnotation" v="33,96,8"/>
    <p n="Link" t="b:Link"><p n="sourceOrd" v="h:3ce"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inA"/></p>
    <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:3de"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inB"/></p>
@@ -1913,7 +1913,7 @@
     <p n="updateValuesInterval" t="b:RelTime" v="300000"/>
     <p n="refreshQueryInterval" t="b:RelTime" v="300000"/>
     <p n="startDelay" t="b:RelTime" v="5000"/>
-    <p n="nextRefreshTime" t="b:AbsTime" v="2025-05-31T14:10:54.888-05:00"/>
+    <p n="nextRefreshTime" t="b:AbsTime" v="2025-05-31T15:10:54.888-04:00"/>
     <p n="upperLimit" t="b:StatusNumeric"><p n="value" v="200.0"/></p>
     <p n="lowerLimit" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
     <p n="outOfRangeZones" h="3e8" t="vypr:ZoneListExt">
@@ -1926,7 +1926,7 @@
     <p n="updateValuesInterval" t="b:RelTime" v="300000"/>
     <p n="refreshQueryInterval" t="b:RelTime" v="300000"/>
     <p n="startDelay" t="b:RelTime" v="5000"/>
-    <p n="nextRefreshTime" t="b:AbsTime" v="2025-05-31T14:06:07.963-05:00"/>
+    <p n="nextRefreshTime" t="b:AbsTime" v="2025-05-31T15:06:07.963-04:00"/>
     <p n="upperLimit" t="b:StatusNumeric"><p n="value" v="200.0"/></p>
     <p n="lowerLimit" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
     <p n="outOfRangeZones" h="3ea" t="vypr:ZoneListExt">
@@ -1938,8 +1938,8 @@
     <p n="inA" f="L" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
     <p n="inputLowLimit" t="b:StatusNumeric"><p n="value" v="1.0"/></p>
     <p n="inputHighLimit" t="b:StatusNumeric"><p n="value" v="5.0"/></p>
-    <p n="outputLowLimit" f="L"/>
-    <p n="outputHighLimit" f="L"/>
+    <p n="outputLowLimit" f="L" t="b:StatusNumeric"><p n="value" v="9.0"/></p>
+    <p n="outputHighLimit" f="L" t="b:StatusNumeric"><p n="value" v="18.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
     <p n="wsAnnotation" t="b:WsAnnotation" v="54,63,8"/>
     <p n="Link" t="b:Link"><p n="sourceOrd" v="h:3f2"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="outputHighLimit"/></p>
     <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:3f0"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inA"/></p>
@@ -1972,7 +1972,7 @@
    </p>
    <!-- /Optimization/HotWaterSys/Divide -->
    <p n="Divide" h="3f4" t="kitControl:Divide">
-    <p n="inA" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+    <p n="inA" f="sL" t="b:StatusNumeric"><p n="value" v="18.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
     <p n="inB" t="b:StatusNumeric"><p n="value" v="2.0"/></p>
     <p n="wsAnnotation" t="b:WsAnnotation" v="35,84,8"/>
     <p n="Link" t="b:Link"><p n="sourceOrd" v="h:3f2"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inA"/></p>
@@ -1999,7 +1999,7 @@
    <p n="NumericSwitch" h="3fc" t="kitControl:NumericSwitch">
     <p n="inSwitch" f="sL"/>
     <p n="inTrue" t="b:StatusNumeric"><p n="value" v="0.0"/><p n="status" v="40"/></p>
-    <p n="inFalse" f="sL"/>
+    <p n="inFalse" f="sL" t="b:StatusNumeric"><p n="value" v="110.0"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
     <p n="wsAnnotation" t="b:WsAnnotation" v="56,106,8"/>
     <p n="Link" t="b:Link"><p n="sourceOrd" v="h:3f8"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inSwitch"/></p>
     <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:3fa"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inFalse"/></p>
@@ -2104,8 +2104,8 @@
    </p>
    <!-- /Optimization/Chiller/Add -->
    <p n="Add" h="410" t="kitControl:Add">
-    <p n="inA" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-    <p n="inB" f="sL" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
+    <p n="inA" f="sL" t="b:StatusNumeric"><p n="value" v="8.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+    <p n="inB" f="sL" t="b:StatusNumeric"><p n="value" v="59.12818145751953"/><p n="status" v="0;activeLevel=e:10@control:PriorityLevel"/></p>
     <p n="wsAnnotation" t="b:WsAnnotation" v="39,63,8"/>
     <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:40e"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inB"/></p>
     <p n="Link" t="b:Link"><p n="sourceOrd" v="h:418"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inA"/></p>
@@ -2119,11 +2119,11 @@
    </p>
    <!-- /Optimization/Chiller/Reset -->
    <p n="Reset" h="414" t="kitControl:Reset">
-    <p n="inA" f="L" t="b:StatusNumeric"><p n="value" v="0.0"/></p>
-    <p n="inputLowLimit" f="L"/>
-    <p n="inputHighLimit" f="L"/>
-    <p n="outputLowLimit" f="L"/>
-    <p n="outputHighLimit" f="L"/>
+    <p n="inA" f="L" t="b:StatusNumeric"><p n="value" v="67.12818145751953"/></p>
+    <p n="inputLowLimit" f="L" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+    <p n="inputHighLimit" f="L" t="b:StatusNumeric"><p n="value" v="100.0"/><p n="status" v="0;activeLevel=e:9@control:PriorityLevel"/></p>
+    <p n="outputLowLimit" f="L" t="b:StatusNumeric"><p n="value" v="65.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
+    <p n="outputHighLimit" f="L" t="b:StatusNumeric"><p n="value" v="100.0"/><p n="status" v="0;activeLevel=e:9@control:PriorityLevel"/></p>
     <p n="wsAnnotation" t="b:WsAnnotation" v="63,70,8"/>
     <p n="Link" t="b:Link"><p n="sourceOrd" v="h:410"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inA"/></p>
     <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:40c"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="inputLowLimit"/></p>
@@ -2149,337 +2149,6 @@
    </p>
   </p>
   <p n="wsAnnotation" t="b:WsAnnotation" v="16,15,8"/>
- </p>
- <!-- /chillerRotater -->
- <p n="chillerRotater" h="556" t="b:Folder">
-  <!-- /chillerRotater/chillerRotater -->
-  <p n="chillerRotater" h="557" t="p:Program">
-   <p n="code" h="558" t="p:ProgramCode">
-    <p n="className" v="Prog_c15edb59ff564c9fb9a9435b21ae18fe"/>
-    <p n="classFile" t="b:Blob" v="yv66vgAAADQB+woAswE6CQCyATsJALIBPAkAsgE9CQCyAT4JALIBPwkAsgFACQCyAUEJALIBQgkAsgFDCQCyAUQJALIBRQkAsgFGCAFHCgCyAUgHAUkIAUoKALIBSwgBTAcBTQgBTggBTwgBUAcBUQgBUggBUwgBVAgBVQgBVggBVwgBWAgBWQgBWggBWwgBXAgBXQcBXggBXwgBYAgBYQgBYggBYwgBZAgBZQgBZggBZwgBaAgBaQgBagcBawgBbAgBbQgBbgoAsgFvCgCyAXAGQDIAAAAAAAAKALIBcQZALgAAAAAAAAoAsgFyBwFzCgA+AToIAXQKAD4BdQoAPgF2CAF3CgA+AXgKALIBeQgBegoAMgF7CgF8AX0KALIBfgoAsgF/CgGAAYEKABQBggkBfAGDCAGECgGFAYYHAYcIAYgIAYkKAFABigoAGAGLCAGMCgAUAY0FAAAAAAAAA+gKABgBjgoAsgGPCAGQCgCyAZEKALIBkgoAsgGTCgGUAZUJALIBlggBlwgBmAgBmQgBmgoBmwGcCgCyAZ0IAZ4KALIBnwoAPgGgCAGhBQAAAAAAAAJYCgGUAaIIAaMKAD4BpAgBpQgBpggBpwgBqAgBqQgBqggBqwkAsgGsCgCyAa0IAa4IAa8IAbAIAbEFAAAAAAAABLAIAbIIAbMIAbQJALIBtQgBtggBtwgBuAgBuQgBuggBuwoAsgG8CAG9CQCyAb4LALUBvwoAEAHACQHBAcIKAcMBxAZAJAAAAAAAAAoBlAHFBj/0zMzMzMzNBkAEzMzMzMzNBkAPMzMzMzMzBkAUzMzMzMzNBkAaAAAAAAAABkAfMzMzMzMzBkAiMzMzMzMzBkAkzMzMzMzNBj/zMzMzMzMzBkAEAAAAAAAABkAOZmZmZmZmBkAUZmZmZmZmBkAZmZmZmZmaBkAezMzMzMzNBkAiAAAAAAAABwHGBwHHBwHIAQAGdGlja2V0BwHJAQAGVGlja2V0AQAMSW5uZXJDbGFzc2VzAQAdTGphdmF4L2JhamEvc3lzL0Nsb2NrJFRpY2tldDsBABBsYXN0TWFpbkxvZ2ljUnVuAQABSgEAFGNoaWxsZXJzU3RhZ2VkQnlUZW1wAQABSQEAEXRlbXBIaWdoU3RhcnRUaW1lAQAOdGVtcEhpZ2hBY3RpdmUBAAFaAQAUY2hpbGxlcnNTdGFnZWRCeUxvYWQBABFsb2FkSGlnaFN0YXJ0VGltZQEADmxvYWRIaWdoQWN0aXZlAQAQbG9hZExvd1N0YXJ0VGltZQEADWxvYWRMb3dBY3RpdmUBABNsb2FkQ2hhbmdlU3RhcnRUaW1lAQATbG9hZEluY3JlYXNlUGVuZGluZwEAE2xvYWREZWNyZWFzZVBlbmRpbmcBABBsb2FkVXBUaHJlc2hvbGRzAQACW0QBABJsb2FkRG93blRocmVzaG9sZHMBAA5EVVRZX1JPVEFUSU9OUwEAA1tbSQEABjxpbml0PgEAAygpVgEABENvZGUBAA9MaW5lTnVtYmVyVGFibGUBABBnZXRFeGVjdXRlUGVyaW9kAQAbKClMamF2YXgvYmFqYS9zeXMvQlJlbFRpbWU7AQAPZ2V0SW5pdE9uRGVsaW5rAQADKClaAQAMZ2V0V2F0ZXJUZW1wAQAkKClMamF2YXgvYmFqYS9zdGF0dXMvQlN0YXR1c051bWVyaWM7AQAPZ2V0VGVtcFNldHBvaW50AQAJZ2V0TG9hZE1XAQAPZ2V0U3lzdGVtRW5hYmxlAQAkKClMamF2YXgvYmFqYS9zdGF0dXMvQlN0YXR1c0Jvb2xlYW47AQATZ2V0QmxhZGVSb29tMURlbWFuZAEAE2dldEJsYWRlUm9vbTJEZW1hbmQBABNnZXRCbGFkZVJvb20zRGVtYW5kAQARZ2V0Q2hpbGxlcjFFbmFibGUBABFnZXRDaGlsbGVyMkVuYWJsZQEAEWdldENoaWxsZXIzRW5hYmxlAQARZ2V0Q2hpbGxlcjRFbmFibGUBABFnZXRDaGlsbGVyNUVuYWJsZQEAEWdldENoaWxsZXI2RW5hYmxlAQARZ2V0Q2hpbGxlcjdFbmFibGUBABFnZXRDaGlsbGVyOEVuYWJsZQEAD2dldERpc3BsYXlOYW1lcwEAHCgpTGphdmF4L2JhamEvdXRpbC9CTmFtZU1hcDsBABJnZXRDdXJyZW50U2VxdWVuY2UBABhnZXRVcGRhdGVJbnRlcnZhbFNlY29uZHMBABRnZXRDaGlsbGVyMUF2YWlsYWJsZQEAFGdldENoaWxsZXIyQXZhaWxhYmxlAQAUZ2V0Q2hpbGxlcjNBdmFpbGFibGUBABRnZXRDaGlsbGVyNEF2YWlsYWJsZQEAFGdldENoaWxsZXI1QXZhaWxhYmxlAQAUZ2V0Q2hpbGxlcjZBdmFpbGFibGUBABRnZXRDaGlsbGVyN0F2YWlsYWJsZQEAFGdldENoaWxsZXI4QXZhaWxhYmxlAQATZ2V0Q3VycmVudER1dHlDeWNsZQEAEmdldFN0YXR1c1RyYWNlVGVtcAEAIygpTGphdmF4L2JhamEvc3RhdHVzL0JTdGF0dXNTdHJpbmc7AQASZ2V0U3RhdHVzVHJhY2VMb2FkAQATZ2V0U3RhdHVzVHJhY2VCbGFkZQEAFWdldFN0YXR1c1RyYWNlU3VtbWFyeQEAEHNldEV4ZWN1dGVQZXJpb2QBABwoTGphdmF4L2JhamEvc3lzL0JSZWxUaW1lOylWAQAPc2V0SW5pdE9uRGVsaW5rAQAEKFopVgEADHNldFdhdGVyVGVtcAEAJShMamF2YXgvYmFqYS9zdGF0dXMvQlN0YXR1c051bWVyaWM7KVYBAA9zZXRUZW1wU2V0cG9pbnQBAAlzZXRMb2FkTVcBAA9zZXRTeXN0ZW1FbmFibGUBACUoTGphdmF4L2JhamEvc3RhdHVzL0JTdGF0dXNCb29sZWFuOylWAQATc2V0QmxhZGVSb29tMURlbWFuZAEAE3NldEJsYWRlUm9vbTJEZW1hbmQBABNzZXRCbGFkZVJvb20zRGVtYW5kAQARc2V0Q2hpbGxlcjFFbmFibGUBABFzZXRDaGlsbGVyMkVuYWJsZQEAEXNldENoaWxsZXIzRW5hYmxlAQARc2V0Q2hpbGxlcjRFbmFibGUBABFzZXRDaGlsbGVyNUVuYWJsZQEAEXNldENoaWxsZXI2RW5hYmxlAQARc2V0Q2hpbGxlcjdFbmFibGUBABFzZXRDaGlsbGVyOEVuYWJsZQEAD3NldERpc3BsYXlOYW1lcwEAHShMamF2YXgvYmFqYS91dGlsL0JOYW1lTWFwOylWAQASc2V0Q3VycmVudFNlcXVlbmNlAQAYc2V0VXBkYXRlSW50ZXJ2YWxTZWNvbmRzAQAUc2V0Q2hpbGxlcjFBdmFpbGFibGUBABRzZXRDaGlsbGVyMkF2YWlsYWJsZQEAFHNldENoaWxsZXIzQXZhaWxhYmxlAQAUc2V0Q2hpbGxlcjRBdmFpbGFibGUBABRzZXRDaGlsbGVyNUF2YWlsYWJsZQEAFHNldENoaWxsZXI2QXZhaWxhYmxlAQAUc2V0Q2hpbGxlcjdBdmFpbGFibGUBABRzZXRDaGlsbGVyOEF2YWlsYWJsZQEAE3NldEN1cnJlbnREdXR5Q3ljbGUBABJzZXRTdGF0dXNUcmFjZVRlbXABACQoTGphdmF4L2JhamEvc3RhdHVzL0JTdGF0dXNTdHJpbmc7KVYBABJzZXRTdGF0dXNUcmFjZUxvYWQBABNzZXRTdGF0dXNUcmFjZUJsYWRlAQAVc2V0U3RhdHVzVHJhY2VTdW1tYXJ5AQAHb25TdGFydAEADVN0YWNrTWFwVGFibGUBAApFeGNlcHRpb25zAQAOc2FmZVNldE51bWVyaWMBABYoTGphdmEvbGFuZy9TdHJpbmc7RClWBwFNBwGHAQAOc2FmZVNldEJvb2xlYW4BABYoTGphdmEvbGFuZy9TdHJpbmc7WilWBwFRAQAJb25FeGVjdXRlBwHHBwHKBwFzAQAYaGFuZGxlVGVtcGVyYXR1cmVTdGFnaW5nAQAFKEREKUkBABFoYW5kbGVMb2FkU3RhZ2luZwEABChEKUkBABVoYW5kbGVCbGFkZVJvb21EZW1hbmQBAAMoKUkBAAt1cGRhdGVUaW1lcgEAEmRpc2FibGVBbGxDaGlsbGVycwEABnJvdW5kMQEABChEKUQBAAg8Y2xpbml0PgEAClNvdXJjZUZpbGUBACpQcm9nX2MxNWVkYjU5ZmY1NjRjOWZiOWE5NDM1YjIxYWUxOGZlLmphdmEMAM0AzgwAuQC6DAC7ALwMAL0AugwAvgC/DADAALwMAMEAugwAwgC/DADDALoMAMQAvwwAxQC6DADGAL8MAMcAvwEADWV4ZWN1dGVQZXJpb2QMAcsBzAEAF2phdmF4L2JhamEvc3lzL0JSZWxUaW1lAQAMaW5pdE9uRGVsaW5rDAHNAc4BAAl3YXRlclRlbXABACBqYXZheC9iYWphL3N0YXR1cy9CU3RhdHVzTnVtZXJpYwEADHRlbXBTZXRwb2ludAEABmxvYWRNVwEADHN5c3RlbUVuYWJsZQEAIGphdmF4L2JhamEvc3RhdHVzL0JTdGF0dXNCb29sZWFuAQAQYmxhZGVSb29tMURlbWFuZAEAEGJsYWRlUm9vbTJEZW1hbmQBABBibGFkZVJvb20zRGVtYW5kAQAOY2hpbGxlcjFFbmFibGUBAA5jaGlsbGVyMkVuYWJsZQEADmNoaWxsZXIzRW5hYmxlAQAOY2hpbGxlcjRFbmFibGUBAA5jaGlsbGVyNUVuYWJsZQEADmNoaWxsZXI2RW5hYmxlAQAOY2hpbGxlcjdFbmFibGUBAA5jaGlsbGVyOEVuYWJsZQEADGRpc3BsYXlOYW1lcwEAGGphdmF4L2JhamEvdXRpbC9CTmFtZU1hcAEAD2N1cnJlbnRTZXF1ZW5jZQEAFXVwZGF0ZUludGVydmFsU2Vjb25kcwEAEWNoaWxsZXIxQXZhaWxhYmxlAQARY2hpbGxlcjJBdmFpbGFibGUBABFjaGlsbGVyM0F2YWlsYWJsZQEAEWNoaWxsZXI0QXZhaWxhYmxlAQARY2hpbGxlcjVBdmFpbGFibGUBABFjaGlsbGVyNkF2YWlsYWJsZQEAEWNoaWxsZXI3QXZhaWxhYmxlAQARY2hpbGxlcjhBdmFpbGFibGUBABBjdXJyZW50RHV0eUN5Y2xlAQAPc3RhdHVzVHJhY2VUZW1wAQAfamF2YXgvYmFqYS9zdGF0dXMvQlN0YXR1c1N0cmluZwEAD3N0YXR1c1RyYWNlTG9hZAEAEHN0YXR1c1RyYWNlQmxhZGUBABJzdGF0dXNUcmFjZVN1bW1hcnkMAc8B0AwB0QEnDAEiASMMASYBJwEAF2phdmEvbGFuZy9TdHJpbmdCdWlsZGVyAQAHY2hpbGxlcgwB0gHTDAHSAdQBAAlBdmFpbGFibGUMAdUB1gwA9wD0AQAQUHJvZ3JhbSBzdGFydGVkLgwB1wHYBwHZDAHaAdsMATMAzgwB3AHdBwHeDAHLAd8MAdcB4AwB4QHiAQAYW1N0YXJ0dXBdIE1pc3Npbmcgc2xvdDogBwHjDAHkAdgBABNqYXZhL2xhbmcvRXhjZXB0aW9uAQAmW1N0YXJ0dXBdIEVycm9yIHNldHRpbmcgbnVtZXJpYyBzbG90OiABAAQgLT4gDAHlAdYMAdcA+wEAJltTdGFydHVwXSBFcnJvciBzZXR0aW5nIGJvb2xlYW4gc2xvdDogDAHmAecMAeYA1AwBNADOAQAiU3lzdGVtIGRpc2FibGVkLiBBbGwgY2hpbGxlcnMgT0ZGLgwBLQEuDAEvATAMATEBMgcB6AwB6QHqDADLAMwBAAZFbmFibGUBAAdDaGlsbGVyAQABIAEAElJ1bm5pbmcuIEVuYWJsZWQ6IAcB6wwB7AHWDADzAPQBABBXYXRlclRlbXAgaGlnaCAoDAE1ATYMAdIB7QEAGMKwQykuIFN0YXJ0IDEwbWluIHRpbWVyLgwB7gHqAQAKU3RhZ2UgdXA6IAwB0gHvAQALcyBlbGFwc2VkLiABABEgY2hpbGxlcnMgc3RhZ2VkLgEAEldhdGVyVGVtcCBub3JtYWwgKAEAHcKwQykuIEFsbCBjaGlsbGVycyBkZS1zdGFnZWQuAQAMU3RhZ2UgZG93bjogAQASV2F0ZXJUZW1wIHN0YWJsZSAoAQAYwrBDKS4gTm8gc3RhZ2luZyBuZWVkZWQuDADIAMkMAPUA9AEADkxvYWQgdG9vIGxvdyAoAQAaTVcpLiBObyBjaGlsbGVycyByZXF1aXJlZC4BAAtMb2FkIGhpZ2ggKAEAJ01XKS4gU3RhcnQgMjAtbWluIHRpbWVyIHRvIGFkZCBjaGlsbGVyLgEAL0xvYWQgaGlnaCBzdGFibGUuIEFkZGluZyBjaGlsbGVyLiBOb3cgcnVubmluZzogAQAMTVcpLiBUaW1lcjogAQABcwwAygDJAQAKTG9hZCBsb3cgKAEAKE1XKS4gU3RhcnQgMjAtbWluIHRpbWVyIHRvIGRyb3AgY2hpbGxlci4BADBMb2FkIGxvdyBzdGFibGUuIERyb3BwaW5nIGNoaWxsZXIuIE5vdyBydW5uaW5nOiABAA1Mb2FkIHN0YWJsZSAoAQANTVcpLiBSdW5uaW5nIAEACiBjaGlsbGVycy4MAPYA9AEAICBibGFkZSByb29tcyByZXF1ZXN0aW5nIGNvb2xpbmcuDAC0ALgMAfAAzgwB8QHyBwHzDAH0AfUHAfYMAfcB+AwB+QH6AQACW0kBACVQcm9nX2MxNWVkYjU5ZmY1NjRjOWZiOWE5NDM1YjIxYWUxOGZlAQAfY29tL3RyaWRpdW0vcHJvZ3JhbS9Qcm9ncmFtQmFzZQEAG2phdmF4L2JhamEvc3lzL0Nsb2NrJFRpY2tldAEAAltaAQADZ2V0AQAsKExqYXZhL2xhbmcvU3RyaW5nOylMamF2YXgvYmFqYS9zeXMvQk9iamVjdDsBAApnZXRCb29sZWFuAQAVKExqYXZhL2xhbmcvU3RyaW5nOylaAQADc2V0AQAsKExqYXZhL2xhbmcvU3RyaW5nO0xqYXZheC9iYWphL3N5cy9CVmFsdWU7KVYBAApzZXRCb29sZWFuAQAGYXBwZW5kAQAtKExqYXZhL2xhbmcvU3RyaW5nOylMamF2YS9sYW5nL1N0cmluZ0J1aWxkZXI7AQAcKEkpTGphdmEvbGFuZy9TdHJpbmdCdWlsZGVyOwEACHRvU3RyaW5nAQAUKClMamF2YS9sYW5nL1N0cmluZzsBAAhzZXRWYWx1ZQEAFShMamF2YS9sYW5nL1N0cmluZzspVgEAEGphdmEvbGFuZy9TeXN0ZW0BABFjdXJyZW50VGltZU1pbGxpcwEAAygpSgEADGdldENvbXBvbmVudAEAHSgpTGphdmF4L2JhamEvc3lzL0JDb21wb25lbnQ7AQAZamF2YXgvYmFqYS9zeXMvQkNvbXBvbmVudAEAKyhMamF2YS9sYW5nL1N0cmluZzspTGphdmF4L2JhamEvc3lzL0JWYWx1ZTsBAAQoRClWAQADb3V0AQAVTGphdmEvaW8vUHJpbnRTdHJlYW07AQATamF2YS9pby9QcmludFN0cmVhbQEAB3ByaW50bG4BAApnZXRNZXNzYWdlAQAIZ2V0VmFsdWUBAAMoKUQBAA5qYXZhL2xhbmcvTWF0aAEAA21heAEABShJSSlJAQAQamF2YS9sYW5nL1N0cmluZwEABHRyaW0BABwoRClMamF2YS9sYW5nL1N0cmluZ0J1aWxkZXI7AQADbWluAQAcKEopTGphdmEvbGFuZy9TdHJpbmdCdWlsZGVyOwEABmNhbmNlbAEAC21ha2VTZWNvbmRzAQAcKEkpTGphdmF4L2JhamEvc3lzL0JSZWxUaW1lOwEAHGNvbS90cmlkaXVtL3Byb2dyYW0vQlByb2dyYW0BAAdleGVjdXRlAQAXTGphdmF4L2JhamEvc3lzL0FjdGlvbjsBABRqYXZheC9iYWphL3N5cy9DbG9jawEACHNjaGVkdWxlAQCBKExqYXZheC9iYWphL3N5cy9CQ29tcG9uZW50O0xqYXZheC9iYWphL3N5cy9CUmVsVGltZTtMamF2YXgvYmFqYS9zeXMvQWN0aW9uO0xqYXZheC9iYWphL3N5cy9CVmFsdWU7KUxqYXZheC9iYWphL3N5cy9DbG9jayRUaWNrZXQ7AQAFcm91bmQBAAQoRClKACEAsgCzAAAAEAAAALQAuAAAAAAAuQC6AAAAAAC7ALwAAAAAAL0AugAAAAAAvgC/AAAAAADAALwAAAAAAMEAugAAAAAAwgC/AAAAAADDALoAAAAAAMQAvwAAAAAAxQC6AAAAAADGAL8AAAAAAMcAvwAAABgAyADJAAAAGADKAMkAAAAYAMsAzAAAAE4AAQDNAM4AAQDPAAAAiQADAAEAAABBKrcAASoJtQACKgO1AAMqCbUABCoDtQAFKgO1AAYqCbUAByoDtQAIKgm1AAkqA7UACioJtQALKgO1AAwqA7UADbEAAAABANAAAAA2AA0AAAAKAAQAXwAJAGIADgBjABMAZAAYAGYAHQBnACIAaAAnAGkALABqADEAbAA2AG0AOwBuAAEA0QDSAAEAzwAAACIAAgABAAAACioSDrYAD8AAELAAAAABANAAAAAGAAEAAAASAAEA0wDUAAEAzwAAAB8AAgABAAAAByoSEbYAEqwAAAABANAAAAAGAAEAAAATAAEA1QDWAAEAzwAAACIAAgABAAAACioSE7YAD8AAFLAAAAABANAAAAAGAAEAAAAUAAEA1wDWAAEAzwAAACIAAgABAAAACioSFbYAD8AAFLAAAAABANAAAAAGAAEAAAAVAAEA2ADWAAEAzwAAACIAAgABAAAACioSFrYAD8AAFLAAAAABANAAAAAGAAEAAAAWAAEA2QDaAAEAzwAAACIAAgABAAAACioSF7YAD8AAGLAAAAABANAAAAAGAAEAAAAXAAEA2wDaAAEAzwAAACIAAgABAAAACioSGbYAD8AAGLAAAAABANAAAAAGAAEAAAAYAAEA3ADaAAEAzwAAACIAAgABAAAACioSGrYAD8AAGLAAAAABANAAAAAGAAEAAAAZAAEA3QDaAAEAzwAAACIAAgABAAAACioSG7YAD8AAGLAAAAABANAAAAAGAAEAAAAaAAEA3gDaAAEAzwAAACIAAgABAAAACioSHLYAD8AAGLAAAAABANAAAAAGAAEAAAAbAAEA3wDaAAEAzwAAACIAAgABAAAACioSHbYAD8AAGLAAAAABANAAAAAGAAEAAAAcAAEA4ADaAAEAzwAAACIAAgABAAAACioSHrYAD8AAGLAAAAABANAAAAAGAAEAAAAdAAEA4QDaAAEAzwAAACIAAgABAAAACioSH7YAD8AAGLAAAAABANAAAAAGAAEAAAAeAAEA4gDaAAEAzwAAACIAAgABAAAACioSILYAD8AAGLAAAAABANAAAAAGAAEAAAAfAAEA4wDaAAEAzwAAACIAAgABAAAACioSIbYAD8AAGLAAAAABANAAAAAGAAEAAAAgAAEA5ADaAAEAzwAAACIAAgABAAAACioSIrYAD8AAGLAAAAABANAAAAAGAAEAAAAhAAEA5QDaAAEAzwAAACIAAgABAAAACioSI7YAD8AAGLAAAAABANAAAAAGAAEAAAAiAAEA5gDnAAEAzwAAACIAAgABAAAACioSJLYAD8AAJbAAAAABANAAAAAGAAEAAAAjAAEA6ADWAAEAzwAAACIAAgABAAAACioSJrYAD8AAFLAAAAABANAAAAAGAAEAAAAkAAEA6QDWAAEAzwAAACIAAgABAAAACioSJ7YAD8AAFLAAAAABANAAAAAGAAEAAAAlAAEA6gDaAAEAzwAAACIAAgABAAAACioSKLYAD8AAGLAAAAABANAAAAAGAAEAAAAmAAEA6wDaAAEAzwAAACIAAgABAAAACioSKbYAD8AAGLAAAAABANAAAAAGAAEAAAAnAAEA7ADaAAEAzwAAACIAAgABAAAACioSKrYAD8AAGLAAAAABANAAAAAGAAEAAAAoAAEA7QDaAAEAzwAAACIAAgABAAAACioSK7YAD8AAGLAAAAABANAAAAAGAAEAAAApAAEA7gDaAAEAzwAAACIAAgABAAAACioSLLYAD8AAGLAAAAABANAAAAAGAAEAAAAqAAEA7wDaAAEAzwAAACIAAgABAAAACioSLbYAD8AAGLAAAAABANAAAAAGAAEAAAArAAEA8ADaAAEAzwAAACIAAgABAAAACioSLrYAD8AAGLAAAAABANAAAAAGAAEAAAAsAAEA8QDaAAEAzwAAACIAAgABAAAACioSL7YAD8AAGLAAAAABANAAAAAGAAEAAAAtAAEA8gDWAAEAzwAAACIAAgABAAAACioSMLYAD8AAFLAAAAABANAAAAAGAAEAAAAuAAEA8wD0AAEAzwAAACIAAgABAAAACioSMbYAD8AAMrAAAAABANAAAAAGAAEAAAAvAAEA9QD0AAEAzwAAACIAAgABAAAACioSM7YAD8AAMrAAAAABANAAAAAGAAEAAAAwAAEA9gD0AAEAzwAAACIAAgABAAAACioSNLYAD8AAMrAAAAABANAAAAAGAAEAAAAxAAEA9wD0AAEAzwAAACIAAgABAAAACioSNbYAD8AAMrAAAAABANAAAAAGAAEAAAAyAAEA+AD5AAEAzwAAACAAAwACAAAACCoSDiu2ADaxAAAAAQDQAAAABgABAAAAOAABAPoA+wABAM8AAAAgAAMAAgAAAAgqEhEbtgA3sQAAAAEA0AAAAAYAAQAAADkAAQD8AP0AAQDPAAAAIAADAAIAAAAIKhITK7YANrEAAAABANAAAAAGAAEAAAA6AAEA/gD9AAEAzwAAACAAAwACAAAACCoSFSu2ADaxAAAAAQDQAAAABgABAAAAOwABAP8A/QABAM8AAAAgAAMAAgAAAAgqEhYrtgA2sQAAAAEA0AAAAAYAAQAAADwAAQEAAQEAAQDPAAAAIAADAAIAAAAIKhIXK7YANrEAAAABANAAAAAGAAEAAAA9AAEBAgEBAAEAzwAAACAAAwACAAAACCoSGSu2ADaxAAAAAQDQAAAABgABAAAAPgABAQMBAQABAM8AAAAgAAMAAgAAAAgqEhortgA2sQAAAAEA0AAAAAYAAQAAAD8AAQEEAQEAAQDPAAAAIAADAAIAAAAIKhIbK7YANrEAAAABANAAAAAGAAEAAABAAAEBBQEBAAEAzwAAACAAAwACAAAACCoSHCu2ADaxAAAAAQDQAAAABgABAAAAQQABAQYBAQABAM8AAAAgAAMAAgAAAAgqEh0rtgA2sQAAAAEA0AAAAAYAAQAAAEIAAQEHAQEAAQDPAAAAIAADAAIAAAAIKhIeK7YANrEAAAABANAAAAAGAAEAAABDAAEBCAEBAAEAzwAAACAAAwACAAAACCoSHyu2ADaxAAAAAQDQAAAABgABAAAARAABAQkBAQABAM8AAAAgAAMAAgAAAAgqEiArtgA2sQAAAAEA0AAAAAYAAQAAAEUAAQEKAQEAAQDPAAAAIAADAAIAAAAIKhIhK7YANrEAAAABANAAAAAGAAEAAABGAAEBCwEBAAEAzwAAACAAAwACAAAACCoSIiu2ADaxAAAAAQDQAAAABgABAAAARwABAQwBAQABAM8AAAAgAAMAAgAAAAgqEiMrtgA2sQAAAAEA0AAAAAYAAQAAAEgAAQENAQ4AAQDPAAAAIAADAAIAAAAIKhIkK7YANrEAAAABANAAAAAGAAEAAABJAAEBDwD9AAEAzwAAACAAAwACAAAACCoSJiu2ADaxAAAAAQDQAAAABgABAAAASgABARAA/QABAM8AAAAgAAMAAgAAAAgqEicrtgA2sQAAAAEA0AAAAAYAAQAAAEsAAQERAQEAAQDPAAAAIAADAAIAAAAIKhIoK7YANrEAAAABANAAAAAGAAEAAABMAAEBEgEBAAEAzwAAACAAAwACAAAACCoSKSu2ADaxAAAAAQDQAAAABgABAAAATQABARMBAQABAM8AAAAgAAMAAgAAAAgqEiortgA2sQAAAAEA0AAAAAYAAQAAAE4AAQEUAQEAAQDPAAAAIAADAAIAAAAIKhIrK7YANrEAAAABANAAAAAGAAEAAABPAAEBFQEBAAEAzwAAACAAAwACAAAACCoSLCu2ADaxAAAAAQDQAAAABgABAAAAUAABARYBAQABAM8AAAAgAAMAAgAAAAgqEi0rtgA2sQAAAAEA0AAAAAYAAQAAAFEAAQEXAQEAAQDPAAAAIAADAAIAAAAIKhIuK7YANrEAAAABANAAAAAGAAEAAABSAAEBGAEBAAEAzwAAACAAAwACAAAACCoSLyu2ADaxAAAAAQDQAAAABgABAAAAUwABARkA/QABAM8AAAAgAAMAAgAAAAgqEjArtgA2sQAAAAEA0AAAAAYAAQAAAFQAAQEaARsAAQDPAAAAIAADAAIAAAAIKhIxK7YANrEAAAABANAAAAAGAAEAAABVAAEBHAEbAAEAzwAAACAAAwACAAAACCoSMyu2ADaxAAAAAQDQAAAABgABAAAAVgABAR0BGwABAM8AAAAgAAMAAgAAAAgqEjQrtgA2sQAAAAEA0AAAAAYAAQAAAFcAAQEeARsAAQDPAAAAIAADAAIAAAAIKhI1K7YANrEAAAABANAAAAAGAAEAAABYAAEBHwDOAAIAzwAAAOgABAACAAAAhSoSExQAOLYAOioSFRQAOLYAOioSFg62ADoqEicUADu2ADoqEjAPtgA6KhIXBLYAPSoSGQO2AD0qEhoDtgA9KhIbA7YAPQQ8GxAIowAmKrsAPlm3AD8SQLYAQRu2AEISQ7YAQbYARAS2AD2EAQGn/9oqtgBFEka2AEcquABItQACKrYASbEAAAACANAAAABCABAAAACAAAkAgQASAIIAGQCDACIAhAApAIYAMACHADcAiAA+AIkARQCLAE0AjABqAIsAcACPAHkAkQCAAJIAhACTASAAAAAJAAL8AEcB+gAoASEAAAAEAAEAUAAAASIBIwABAM8AAACyAAMABQAAAGAqtgBKK7YAS8AAFDoEGQTGAAwZBCi2AEynAByyAE27AD5ZtwA/Ek62AEErtgBBtgBEtgBPpwArOgSyAE27AD5ZtwA/ElG2AEErtgBBElK2AEEZBLYAU7YAQbYARLYAT7EAAQAAADQANwBQAAIA0AAAACIACAAAAJkADQCaABIAmwAbAJ0ANAChADcAnwA5AKAAXwCiASAAAAAQAAT8ABsHAST6ABhCBwElJwAAASYBJwABAM8AAACtAAMABAAAAFsqtgBKK7YAS8AAGE4txgALLRy2AFSnAByyAE27AD5ZtwA/Ek62AEErtgBBtgBEtgBPpwApTrIATbsAPlm3AD8SVbYAQSu2AEESUrYAQS22AFO2AEG2AES2AE+xAAEAAAAxADQAUAACANAAAAAiAAgAAACmAAwApwAQAKgAGACqADEArgA0AKwANQCtAFoArwEgAAAAEAAE/AAYBwEo+gAYQgcBJSUAAQEpAM4AAgDPAAADXwAGABoAAAISKrYASbgASEAqtgBKxwAEsSq2AEoSJ7YAS8AAFLYAVkofKrQAAmUUAFdtiimYnAAEsSoftQACKrYAShIXtgBLwAAYtgBZNgUVBZoAESq2AFoqtgBFElu2AEexKrYAShITtgBLwAAUtgBWOQYqtgBKEhW2AEvAABS2AFY5CCq2AEoSFrYAS8AAFLYAVjkKKhgGGAi2AFw2DCoYCrYAXTYNKrYAXjYOFQ42DxUMFQ24AF82EBUPFRC4AF82ESq2AEoSMLYAS8AAFLYAVo4EZDYSFRKbAAwVErIAYL6hAAYDNhIQCLwEOhMDNhQVFBAIogA2GRMVFCq2AEq7AD5ZtwA/EkC2AEEVFARgtgBCEkO2AEG2AES2AEvAABi2AFlUhBQBp//JEAi8BDoUAzYVsgBgFRIyOhYZFgMuNhcZExUXM5kADBkUFRcEVAQ2FQQ2GBUYEAiiACgVFRURogAhGRYVGC42GRkTFRkzmQAMGRQVGQRUhBUBhBgBp//XuwA+WbcAPzoYAzYZFRkQCKIAUiq2AEq7AD5ZtwA/EkC2AEEVGQRgtgBCEmG2AEG2AES2AEvAABgZFBUZM7YAVBkUFRkzmQAXGRgSYrYAQRUZBGC2AEISY7YAQVeEGQGn/60qtgBKEia2AEvAABQVEgRgh7YATCq2AEW7AD5ZtwA/EmS2AEEZGLYARLYAZbYAQbYARLYAR7EAAAACANAAAADOADMAAACzAAQAtQAIALYADwC3ABAAuwAgALwAMAC9ADEAvgA2AMAARwDBAEwAwgBQAMMAWQDEAFoAxwBrAMgAfADJAI0AywCXAMwAnwDNAKUAzwCpANAAsgDRALsA1ADPANUA3QDWAOAA2QDmANoA8ADbAR0A2gEjAN4BKQDfASwA4AE0AOMBOgDkAUIA5QFIAOYBSwDpAVwA6gFjAOsBawDsAXEA7QF0AOkBegDxAYMA8gGNAPMBugD0AcIA9QHWAPIB3AD5AfAA+wIRAPwBIAAAAGcADvwAEAT8ACAD/AAoAf8AggAOBwEqBAMBAwMDAQEBAQEBAQAAAv0ACAcBKwH6ADn/ACcAEwcBKgQDAQMDAwEBAQEBAQEHASsHASsBBwCxAQAA/AACASX6AAX9AAsHASwB+wBP+gAFASEAAAAEAAEAUAAAAS0BLgABAM8AAAH0AAYACgAAAV+4AEg3BScpD2OXmwCSKrQABZoAOSoEtQAFKhYFtQAEKgS1AAMqtgBmuwA+WbcAPxJntgBBKie2AGi2AGkSarYAQbYARLYAR6cBExYFKrQABGUUAFdtNwcWBxQAa22INgkqBBUJYBAIuABttQADKrYAZrsAPlm3AD8SbrYAQRYHtgBvEnC2AEEqtAADtgBCEnG2AEG2AES2AEenAMEnKZidALsqtAAFmQCMFgUqtAAEZRQAV203BxYHFABrbYg2CSoQCBUJZAO4AF+1AAMqtAADmgAzKgO1AAUqCbUABCq2AGa7AD5ZtwA/EnK2AEEqJ7YAaLYAaRJztgBBtgBEtgBHpwAvKrYAZrsAPlm3AD8SdLYAQRYHtgBvEnC2AEEqtAADtgBCEnG2AEG2AES2AEenACsqA7UAAyq2AGa7AD5ZtwA/EnW2AEEqJ7YAaLYAaRJ2tgBBtgBEtgBHKrQAA6wAAAACANAAAABqABoAAAEAAAUBAgANAQMAFAEEABkBBQAfAQYAJAEHAEoBCQBXAQoAYAELAG0BDACZAQ0AnAEPAKIBEACpAREAtgESAL8BEwDMARQA0wEVANgBFgDdARcBAwEZAS8BGwEyARwBNwEdAVoBIAEgAAAAEwAG/ABKBPsAUf0AZgQB+QArAicAAAEvATAAAQDPAAADZQAFAAoAAAJXuABIQgQ2BbIAd74EZDYGFQabAB0nsgB3FQYxl54ADBUGBWA2BacACYQG/6f/5CeyAHcDMZicADwqA7UABioDtQAMKgO1AA0qCbUACyq2AHi7AD5ZtwA/Enm2AEEqJ7YAaLYAaRJ6tgBBtgBEtgBHA6wVBSq0AAakALgqtAAMmgAzKgS1AAwqIbUACyq2AHi7AD5ZtwA/Enu2AEEqJ7YAaLYAaRJ8tgBBtgBEtgBHpwB5ISq0AAtlFABXbTcGFgYUAH2UmwA3Klm0AAYEYLUABioDtQAMKgm1AAsqtgB4uwA+WbcAPxJ/tgBBKrQABrYAQrYARLYAR6cAMCq2AHi7AD5ZtwA/Enu2AEEqJ7YAaLYAaRKAtgBBFga2AG8SgbYAQbYARLYARyoDtQANpwEmFQUqtAAGogDfKrQABgSjAAcOpwANsgCCKrQABgVkMTkGJxgGmJwAsyq0AA2aADMqBLUADSohtQALKrYAeLsAPlm3AD8Sg7YAQSontgBotgBpEoS2AEG2AES2AEenAIEhKrQAC2UUAFdtNwgWCBQAfZSbADcqWbQABgRktQAGKgO1AA0qCbUACyq2AHi7AD5ZtwA/EoW2AEEqtAAGtgBCtgBEtgBHpwAwKrYAeLsAPlm3AD8Sg7YAQSontgBotgBpEoC2AEEWCLYAbxKBtgBBtgBEtgBHpwAIKgO1AA0qA7UADKcAQSoDtQAMKgO1AA0qCbUACyq2AHi7AD5ZtwA/Eoa2AEEqJ7YAaLYAaRKHtgBBKrQABrYAQhKItgBBtgBEtgBHKrQABqwAAAACANAAAADKADIAAAElAAQBJgAHASkAFAEqAB8BKwAlASwAKAEpAC4BMQA4ATMAPQE0AEIBNQBHATYATAE3AG8BOABxATsAegE9AIEBPgCGAT8AiwFAALEBQgC9AUMAxgFEANABRQDVAUYA2gFHAPoBSQEnAUwBLwFNATgBTwFQAVABVwFRAV4BUgFjAVMBaAFUAY4BVgGaAVcBowFYAa0BWQGyAVoBtwFbAdcBXQIEAV8CBwFhAgwBYwIRAWQCFAFmAhkBZwIeAWgCIwFpAlIBbAEgAAAALAAR/gAPBAEBGPoABfsAQj/8AEgE+gAsBxRJA/wAPwP8AEgE+gAsAgT6AAc9AAABMQEyAAEAzwAAAJcAAwACAAAAXQM8KrYAShIZtgBLwAAYtgBZmQAGhAEBKrYAShIatgBLwAAYtgBZmQAGhAEBKrYAShIbtgBLwAAYtgBZmQAGhAEBKrYAibsAPlm3AD8btgBCEoq2AEG2AES2AEcbrAAAAAIA0AAAABoABgAAAXIAAgFzABcBdAAsAXUAQQF3AFsBeAEgAAAACAAD/AAXARQUAAABMwDOAAEAzwAAAE4ABQABAAAAJSq0AIvGAAwqtACLuQCMAQAqKrYAShAKuACNsgCOAbgAj7UAi7EAAAACANAAAAAOAAMAAAF/ABABgAAkAYEBIAAAAAMAARAAAAE0AM4AAQDPAAAAaAADAAIAAAA1BDwbEAijAC8qtgBKuwA+WbcAPxJAtgBBG7YAQhJhtgBBtgBEtgBLwAAYA7YAVIQBAaf/0bEAAAACANAAAAASAAQAAAGFAAgBhgAuAYUANAGIASAAAAAJAAL8AAIB+gAxAAABNQE2AAEAzwAAACYABAADAAAADicUAJBruACSihQAkG+vAAAAAQDQAAAABgABAAABjQAIATcAzgABAM8AAAIaAAcAAAAAAfoQCLwHWQMUAJNSWQQUAJVSWQUUAJdSWQYUAJlSWQcUAJtSWQgUAJ1SWRAGFACfUlkQBxQAoVKzAHcQB7wHWQMUAKNSWQQUAKVSWQUUAKdSWQYUAKlSWQcUAKtSWQgUAK1SWRAGFACvUrMAghAJvQCxWQMQCLwKWQMDT1kEBE9ZBQVPWQYGT1kHB09ZCAhPWRAGEAZPWRAHEAdPU1kEEAi8ClkDBE9ZBAVPWQUGT1kGB09ZBwhPWQgQBk9ZEAYQB09ZEAcDT1NZBRAIvApZAwVPWQQGT1kFB09ZBghPWQcQBk9ZCBAHT1kQBgNPWRAHBE9TWQYQCLwKWQMGT1kEB09ZBQhPWQYQBk9ZBxAHT1kIA09ZEAYET1kQBwVPU1kHEAi8ClkDB09ZBAhPWQUQBk9ZBhAHT1kHA09ZCARPWRAGBU9ZEAcGT1NZCBAIvApZAwhPWQQQBk9ZBRAHT1kGA09ZBwRPWQgFT1kQBgZPWRAHB09TWRAGEAi8ClkDEAZPWQQQB09ZBQNPWQYET1kHBU9ZCAZPWRAGB09ZEAcIT1NZEAcQCLwKWQMQB09ZBANPWQUET1kGBU9ZBwZPWQgHT1kQBghPWRAHEAZPU1kQCBAIvApZAwNPWQQET1kFBU9ZBgZPWQcHT1kICE9ZEAYQBk9ZEAcQB09TswBgsQAAAAEA0AAAAA4AAwAAAHAAOQBxAGsAcwACATgAAAACATkAtwAAAAoAAQC1AcMAtgYJ"/>
-    <p n="dependencies" v="program-rt;nre;baja"/>
-    <p n="checksum" v="-2046872424"/>
-    <p n="source" v="Clock.Ticket ticket;&#xa;long lastMainLogicRun = 0;&#xa;&#xa;// Temperature staging timer variables&#xa;int chillersStagedByTemp = 0;&#xa;long tempHighStartTime = 0;&#xa;boolean tempHighActive = false;&#xa;&#xa;int chillersStagedByLoad = 0;&#xa;long loadHighStartTime = 0;&#xa;boolean loadHighActive = false;&#xa;long loadLowStartTime = 0;&#xa;boolean loadLowActive = false;&#xa;&#xa;long loadChangeStartTime = 0;&#xa;boolean loadIncreasePending = false;&#xa;boolean loadDecreasePending = false;&#xa;&#xa;static final double[] loadUpThresholds = { 1.3, 2.6, 3.9, 5.2, 6.5, 7.8, 9.1, 10.4 }; // For staging up&#xa;static final double[] loadDownThresholds = { 1.2, 2.5, 3.8, 5.1, 6.4, 7.7, 9.0 };     // For staging down&#xa;&#xa;static final int[][] DUTY_ROTATIONS = {&#xa;    { 0, 1, 2, 3, 4, 5, 6, 7 }, // duty1&#xa;    { 1, 2, 3, 4, 5, 6, 7, 0 }, // duty2&#xa;    { 2, 3, 4, 5, 6, 7, 0, 1 }, // duty3&#xa;    { 3, 4, 5, 6, 7, 0, 1, 2 }, // duty4&#xa;    { 4, 5, 6, 7, 0, 1, 2, 3 }, // duty5&#xa;    { 5, 6, 7, 0, 1, 2, 3, 4 }, // duty6&#xa;    { 6, 7, 0, 1, 2, 3, 4, 5 }, // duty7&#xa;    { 7, 0, 1, 2, 3, 4, 5, 6 }, // duty8&#xa;    { 0, 1, 2, 3, 4, 5, 6, 7 }  // duty9 (reset to 1)&#xa;};&#xa;&#xa;public void onStart() throws Exception {&#xa;    safeSetNumeric(&#x22;waterTemp&#x22;, 18.0);&#xa;    safeSetNumeric(&#x22;tempSetpoint&#x22;, 18.0);&#xa;    safeSetNumeric(&#x22;loadMW&#x22;, 0.0);&#xa;    safeSetNumeric(&#x22;updateIntervalSeconds&#x22;, 15);&#xa;    safeSetNumeric(&#x22;currentDutyCycle&#x22;, 1);&#xa;&#xa;    safeSetBoolean(&#x22;systemEnable&#x22;, true);&#xa;    safeSetBoolean(&#x22;bladeRoom1Demand&#x22;, false);&#xa;    safeSetBoolean(&#x22;bladeRoom2Demand&#x22;, false);&#xa;    safeSetBoolean(&#x22;bladeRoom3Demand&#x22;, false);&#xa;&#xa;    for (int i = 1; i &lt;= 8; i++) {&#xa;        safeSetBoolean(&#x22;chiller&#x22; + i + &#x22;Available&#x22;, true);&#xa;    }&#xa;&#xa;    getStatusTraceSummary().setValue(&#x22;Program started.&#x22;);&#xa;&#xa;    lastMainLogicRun = System.currentTimeMillis();&#xa;    updateTimer();&#xa;}&#xa;&#xa;// ----------------- Safe Setters ------------------&#xa;&#xa;void safeSetNumeric(String slotName, double value) {&#xa;    try {&#xa;        BStatusNumeric point = (BStatusNumeric) getComponent().get(slotName);&#xa;        if (point != null) {&#xa;            point.setValue(value);&#xa;        } else {&#xa;            System.out.println(&#x22;[Startup] Missing slot: &#x22; + slotName);&#xa;        }&#xa;    } catch (Exception e) {&#xa;        System.out.println(&#x22;[Startup] Error setting numeric slot: &#x22; + slotName + &#x22; -&gt; &#x22; + e.getMessage());&#xa;    }&#xa;}&#xa;&#xa;void safeSetBoolean(String slotName, boolean value) {&#xa;    try {&#xa;        BStatusBoolean point = (BStatusBoolean) getComponent().get(slotName);&#xa;        if (point != null) {&#xa;            point.setValue(value);&#xa;        } else {&#xa;            System.out.println(&#x22;[Startup] Missing slot: &#x22; + slotName);&#xa;        }&#xa;    } catch (Exception e) {&#xa;        System.out.println(&#x22;[Startup] Error setting boolean slot: &#x22; + slotName + &#x22; -&gt; &#x22; + e.getMessage());&#xa;    }&#xa;}&#xa;&#xa;&#xa;public void onExecute() throws Exception {&#xa;    updateTimer();&#xa;&#xa;    long now = System.currentTimeMillis();&#xa;    if (getComponent() == null)&#xa;        return;&#xa;&#xa;    // NULL checks...&#xa;&#xa;    double intervalSec = ((BStatusNumeric) getComponent().get(&#x22;updateIntervalSeconds&#x22;)).getValue();&#xa;    if ((now - lastMainLogicRun) / 1000 &lt; intervalSec)&#xa;        return;&#xa;    lastMainLogicRun = now;&#xa;&#xa;    boolean systemEnable = ((BStatusBoolean) getComponent().get(&#x22;systemEnable&#x22;)).getValue();&#xa;    if (!systemEnable) {&#xa;        disableAllChillers();&#xa;        getStatusTraceSummary().setValue(&#x22;System disabled. All chillers OFF.&#x22;);&#xa;        return;&#xa;    }&#xa;&#xa;    double waterTemp = ((BStatusNumeric) getComponent().get(&#x22;waterTemp&#x22;)).getValue();&#xa;    double tempSet = ((BStatusNumeric) getComponent().get(&#x22;tempSetpoint&#x22;)).getValue();&#xa;    double load = ((BStatusNumeric) getComponent().get(&#x22;loadMW&#x22;)).getValue();&#xa;&#xa;    int chillersByTemp = handleTemperatureStaging(waterTemp, tempSet);&#xa;    int chillersByLoad = handleLoadStaging(load);&#xa;    int chillersByBladeRooms = handleBladeRoomDemand();&#xa;&#xa;    int minRequiredChillers = chillersByBladeRooms;&#xa;    int calculatedChillers = Math.max(chillersByTemp, chillersByLoad);&#xa;    int requiredChillers = Math.max(minRequiredChillers, calculatedChillers);&#xa;&#xa;&#xa;    int dutyScheduleIndex = (int) (((BStatusNumeric) getComponent().get(&#x22;currentDutyCycle&#x22;)).getValue()) - 1;&#xa;    if (dutyScheduleIndex &lt; 0 || dutyScheduleIndex &gt;= DUTY_ROTATIONS.length) {&#xa;        dutyScheduleIndex = 0; // Fallback to Rotation 1&#xa;    }&#xa;&#xa;    boolean[] chillerAvailable = new boolean[8];&#xa;    for (int i = 0; i &lt; 8; i++) {&#xa;        chillerAvailable[i] = ((BStatusBoolean) getComponent().get(&#x22;chiller&#x22; + (i + 1) + &#x22;Available&#x22;)).getValue();&#xa;    }&#xa;&#xa;    boolean[] chillerEnable = new boolean[8];&#xa;    int enabledCount = 0;&#xa;    int[] rotationOrder = DUTY_ROTATIONS[dutyScheduleIndex];&#xa;&#xa;    // Always enable the lead chiller&#xa;    int leadChillerIdx = rotationOrder[0];&#xa;    if (chillerAvailable[leadChillerIdx]) {&#xa;        chillerEnable[leadChillerIdx] = true;&#xa;        enabledCount = 1;&#xa;    }&#xa;&#xa;    for (int i = 1; i &lt; 8 &amp;&amp; enabledCount &lt; requiredChillers; i++) {&#xa;        int chillerIdx = rotationOrder[i];&#xa;        if (chillerAvailable[chillerIdx]) {&#xa;            chillerEnable[chillerIdx] = true;&#xa;            enabledCount++;&#xa;        }&#xa;    }&#xa;&#xa;    StringBuilder enabledChillers = new StringBuilder();&#xa;    for (int i = 0; i &lt; 8; i++) {&#xa;        ((BStatusBoolean) getComponent().get(&#x22;chiller&#x22; + (i + 1) + &#x22;Enable&#x22;)).setValue(chillerEnable[i]);&#xa;        if (chillerEnable[i]) {&#xa;            enabledChillers.append(&#x22;Chiller&#x22;).append(i + 1).append(&#x22; &#x22;);&#xa;        }&#xa;    }&#xa;&#xa;    ((BStatusNumeric) getComponent().get(&#x22;currentSequence&#x22;)).setValue(dutyScheduleIndex + 1);&#xa;&#xa;    getStatusTraceSummary().setValue(&#x22;Running. Enabled: &#x22; + enabledChillers.toString().trim());&#xa;}&#xa;&#xa;// --------------- Temp Staging -----------------&#xa;int handleTemperatureStaging(double waterTemp, double tempSet) {&#xa;    long now = System.currentTimeMillis();&#xa;&#xa;    if (waterTemp &gt;= tempSet + 1.0) {&#xa;        if (!tempHighActive) {&#xa;            tempHighActive = true;&#xa;            tempHighStartTime = now;&#xa;            chillersStagedByTemp = 1;&#xa;            getStatusTraceTemp().setValue(&#x22;WaterTemp high (&#x22; + round1(waterTemp) + &#x22;&#xb0;C). Start 10min timer.&#x22;);&#xa;        } else {&#xa;            long elapsed = (now - tempHighStartTime) / 1000;&#xa;            int stageCount = (int)(elapsed / 600);&#xa;            chillersStagedByTemp = Math.min(1 + stageCount, 8);&#xa;            getStatusTraceTemp().setValue(&#x22;Stage up: &#x22; + elapsed + &#x22;s elapsed. &#x22; + chillersStagedByTemp + &#x22; chillers staged.&#x22;);&#xa;        }&#xa;    } &#xa;    else if (waterTemp &lt;= tempSet) {&#xa;        if (tempHighActive) {&#xa;            long elapsed = (now - tempHighStartTime) / 1000;&#xa;            int stageCount = (int)(elapsed / 600);&#xa;            chillersStagedByTemp = Math.max(8 - stageCount, 0);&#xa;            if (chillersStagedByTemp == 0) {&#xa;                tempHighActive = false;&#xa;                tempHighStartTime = 0;&#xa;                getStatusTraceTemp().setValue(&#x22;WaterTemp normal (&#x22; + round1(waterTemp) + &#x22;&#xb0;C). All chillers de-staged.&#x22;);&#xa;            } else {&#xa;                getStatusTraceTemp().setValue(&#x22;Stage down: &#x22; + elapsed + &#x22;s elapsed. &#x22; + chillersStagedByTemp + &#x22; chillers staged.&#x22;);&#xa;            }&#xa;        } else {&#xa;            chillersStagedByTemp = 0;&#xa;            getStatusTraceTemp().setValue(&#x22;WaterTemp stable (&#x22; + round1(waterTemp) + &#x22;&#xb0;C). No staging needed.&#x22;);&#xa;        }&#xa;    }&#xa;    return chillersStagedByTemp;&#xa;}&#xa;&#xa;// --------------- Load Staging -----------------&#xa;int handleLoadStaging(double load) {&#xa;    long now = System.currentTimeMillis();&#xa;    int targetChillers = 1;&#xa;&#xa;    // Determine how many chillers are required based on load&#xa;    for (int i = loadUpThresholds.length - 1; i &gt;= 0; i--) {&#xa;        if (load &gt; loadUpThresholds[i]) {&#xa;            targetChillers = i + 2; // because index 0 = 1 chiller&#xa;            break;&#xa;        }&#xa;    }&#xa;&#xa;    // NEW LOGIC: If load is less than first threshold, no chillers required&#xa;    if (load &lt; loadUpThresholds[0]) {&#xa;        // Load is too low &#x2014; no staging up&#xa;        chillersStagedByLoad = 0;&#xa;        loadIncreasePending = false;&#xa;        loadDecreasePending = false;&#xa;        loadChangeStartTime = 0;&#xa;        getStatusTraceLoad().setValue(&#x22;Load too low (&#x22; + round1(load) + &#x22;MW). No chillers required.&#x22;);&#xa;        return 0;&#xa;    }&#xa;&#xa;    if (targetChillers &gt; chillersStagedByLoad) {&#xa;        // Need to stage up&#xa;        if (!loadIncreasePending) {&#xa;            loadIncreasePending = true;&#xa;            loadChangeStartTime = now;&#xa;            getStatusTraceLoad().setValue(&#x22;Load high (&#x22; + round1(load) + &#x22;MW). Start 20-min timer to add chiller.&#x22;);&#xa;        } else {&#xa;            long elapsed = (now - loadChangeStartTime) / 1000;&#xa;            if (elapsed &gt;= 1200) {&#xa;                chillersStagedByLoad++;&#xa;                loadIncreasePending = false;&#xa;                loadChangeStartTime = 0;&#xa;                getStatusTraceLoad().setValue(&#x22;Load high stable. Adding chiller. Now running: &#x22; + chillersStagedByLoad);&#xa;            } else {&#xa;                getStatusTraceLoad().setValue(&#x22;Load high (&#x22; + round1(load) + &#x22;MW). Timer: &#x22; + elapsed + &#x22;s&#x22;);&#xa;            }&#xa;        }&#xa;        loadDecreasePending = false;&#xa;    } else if (targetChillers &lt; chillersStagedByLoad) {&#xa;        // Need to stage down&#xa;        double downThreshold = (chillersStagedByLoad &lt;= 1) ? 0 : loadDownThresholds[chillersStagedByLoad - 2];&#xa;        if (load &lt; downThreshold) {&#xa;            if (!loadDecreasePending) {&#xa;                loadDecreasePending = true;&#xa;                loadChangeStartTime = now;&#xa;                getStatusTraceLoad().setValue(&#x22;Load low (&#x22; + round1(load) + &#x22;MW). Start 20-min timer to drop chiller.&#x22;);&#xa;            } else {&#xa;                long elapsed = (now - loadChangeStartTime) / 1000;&#xa;                if (elapsed &gt;= 1200) {&#xa;                    chillersStagedByLoad--;&#xa;                    loadDecreasePending = false;&#xa;                    loadChangeStartTime = 0;&#xa;                    getStatusTraceLoad().setValue(&#x22;Load low stable. Dropping chiller. Now running: &#x22; + chillersStagedByLoad);&#xa;                } else {&#xa;                    getStatusTraceLoad().setValue(&#x22;Load low (&#x22; + round1(load) + &#x22;MW). Timer: &#x22; + elapsed + &#x22;s&#x22;);&#xa;                }&#xa;            }&#xa;        } else {&#xa;            loadDecreasePending = false;&#xa;        }&#xa;        loadIncreasePending = false;&#xa;    } else {&#xa;        // Load within band, no action needed&#xa;        loadIncreasePending = false;&#xa;        loadDecreasePending = false;&#xa;        loadChangeStartTime = 0;&#xa;        getStatusTraceLoad().setValue(&#x22;Load stable (&#x22; + round1(load) + &#x22;MW). Running &#x22; + chillersStagedByLoad + &#x22; chillers.&#x22;);&#xa;    }&#xa;&#xa;    return chillersStagedByLoad;&#xa;}&#xa;&#xa;&#xa;// --------------- Blade Room Staging -----------------&#xa;int handleBladeRoomDemand() {&#xa;    int bladeRoomsDemanding = 0;&#xa;    if (((BStatusBoolean) getComponent().get(&#x22;bladeRoom1Demand&#x22;)).getValue()) bladeRoomsDemanding++;&#xa;    if (((BStatusBoolean) getComponent().get(&#x22;bladeRoom2Demand&#x22;)).getValue()) bladeRoomsDemanding++;&#xa;    if (((BStatusBoolean) getComponent().get(&#x22;bladeRoom3Demand&#x22;)).getValue()) bladeRoomsDemanding++;&#xa;&#xa;    getStatusTraceBlade().setValue(bladeRoomsDemanding + &#x22; blade rooms requesting cooling.&#x22;);&#xa;    return bladeRoomsDemanding;&#xa;}&#xa;&#xa;&#xa;&#xa;// Timer update method&#xa;void updateTimer() {&#xa;    if (ticket != null) ticket.cancel();&#xa;    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);&#xa;}&#xa;&#xa;// Disable all chillers method&#xa;void disableAllChillers() {&#xa;    for (int i = 1; i &lt;= 8; i++) {&#xa;        ((BStatusBoolean) getComponent().get(&#x22;chiller&#x22; + i + &#x22;Enable&#x22;)).setValue(false);&#xa;    }&#xa;}&#xa;&#xa;&#xa;// New rounding method&#xa;double round1(double val) {&#xa;    return Math.round(val * 10.0) / 10.0;&#xa;}&#xa;"/>
-   </p>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="66,46,27"/>
-   <p n="executePeriod" f="x" t="b:RelTime" v="1000"/>
-   <p n="initOnDelink" f="x" t="b:Boolean" v="true"/>
-   <p n="waterTemp" f="sL" t="b:StatusNumeric"><p n="value" v="20.3"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="tempSetpoint" f="sL" t="b:StatusNumeric"><p n="value" v="19.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="loadMW" f="sL" t="b:StatusNumeric"><p n="value" v="0.1"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="systemEnable" f="sL" t="b:StatusBoolean"><p n="value" v="true"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="bladeRoom1Demand" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="bladeRoom2Demand" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="bladeRoom3Demand" f="sL" t="b:StatusBoolean"><p n="value" v="false"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="chiller1Enable" f="rs" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <p n="chiller2Enable" f="rs" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <p n="chiller3Enable" f="rs" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <p n="chiller4Enable" f="rs" t="b:StatusBoolean"><p n="value" v="false"/></p>
-   <p n="chiller5Enable" f="rs" t="b:StatusBoolean"><p n="value" v="false"/></p>
-   <p n="chiller6Enable" f="rs" t="b:StatusBoolean"><p n="value" v="false"/></p>
-   <p n="chiller7Enable" f="rs" t="b:StatusBoolean"><p n="value" v="false"/></p>
-   <p n="chiller8Enable" f="rs" t="b:StatusBoolean"><p n="value" v="false"/></p>
-   <p n="displayNames" f="rho" t="b:NameMap" v="{chiller8Enable1=currentSequence;}"/>
-   <p n="currentSequence" f="rs" t="b:StatusNumeric"><p n="value" v="1.0"/></p>
-   <p n="updateIntervalSeconds" f="sL" t="b:StatusNumeric"><p n="value" v="10.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="chiller1Available" f="sL" t="b:StatusBoolean"><p n="value" v="true"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="chiller2Available" f="sL" t="b:StatusBoolean"><p n="value" v="true"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="chiller3Available" f="sL" t="b:StatusBoolean"><p n="value" v="true"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="chiller4Available" f="sL" t="b:StatusBoolean"><p n="value" v="true"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="chiller5Available" f="sL" t="b:StatusBoolean"><p n="value" v="true"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="chiller6Available" f="sL" t="b:StatusBoolean"><p n="value" v="true"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="chiller7Available" f="sL" t="b:StatusBoolean"><p n="value" v="true"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="chiller8Available" f="sL" t="b:StatusBoolean"><p n="value" v="true"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="Link3" t="b:Link"><p n="sourceOrd" v="h:559"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="tempSetpoint"/></p>
-   <p n="Link4" t="b:Link"><p n="sourceOrd" v="h:55b"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="systemEnable"/></p>
-   <p n="Link5" t="b:Link"><p n="sourceOrd" v="h:561"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="bladeRoom1Demand"/></p>
-   <p n="Link6" t="b:Link"><p n="sourceOrd" v="h:563"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="bladeRoom2Demand"/></p>
-   <p n="Link7" t="b:Link"><p n="sourceOrd" v="h:565"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="bladeRoom3Demand"/></p>
-   <p n="Link8" t="b:Link"><p n="sourceOrd" v="h:55f"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="updateIntervalSeconds"/></p>
-   <p n="Link9" t="b:Link"><p n="sourceOrd" v="h:55d"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="chiller1Available"/></p>
-   <p n="Link10" t="b:Link"><p n="sourceOrd" v="h:567"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="chiller2Available"/></p>
-   <p n="Link11" t="b:Link"><p n="sourceOrd" v="h:569"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="chiller3Available"/></p>
-   <p n="Link12" t="b:Link"><p n="sourceOrd" v="h:56b"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="chiller4Available"/></p>
-   <p n="Link13" t="b:Link"><p n="sourceOrd" v="h:56d"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="chiller5Available"/></p>
-   <p n="Link14" t="b:Link"><p n="sourceOrd" v="h:56f"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="chiller6Available"/></p>
-   <p n="Link15" t="b:Link"><p n="sourceOrd" v="h:571"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="chiller7Available"/></p>
-   <p n="Link16" t="b:Link"><p n="sourceOrd" v="h:573"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="chiller8Available"/></p>
-   <p n="currentDutyCycle" f="sL" t="b:StatusNumeric"><p n="value" v="2.0"/><p n="status" v="0;activeLevel=e:17@control:PriorityLevel"/></p>
-   <p n="Link" t="b:ConversionLink">
-    <p n="sourceOrd" t="b:Ord" v="h:575"/>
-    <p n="sourceSlotName" v="out"/>
-    <p n="targetSlotName" v="currentDutyCycle"/>
-    <p n="converter" t="conv:StatusEnumToStatusNumeric">
-    </p>
-   </p>
-   <p n="Link1" t="b:Link"><p n="sourceOrd" v="h:587"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="waterTemp"/></p>
-   <p n="Link2" t="b:Link"><p n="sourceOrd" v="h:589"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="out"/><p n="targetSlotName" v="loadMW"/></p>
-   <p n="statusTraceTemp" f="rs" t="b:StatusString"><p n="value" v="Stage up: 1250s elapsed. 3 chillers staged."/></p>
-   <p n="statusTraceLoad" f="rs" t="b:StatusString"><p n="value" v="Load too low (0.0MW). No chillers required."/></p>
-   <p n="statusTraceBlade" f="rs" t="b:StatusString"><p n="value" v="0 blade rooms requesting cooling."/></p>
-   <p n="statusTraceSummary" f="rs" t="b:StatusString"><p n="value" v="Running. Enabled: Chiller1 Chiller2 Chiller3"/></p>
-  </p>
-  <!-- /chillerRotater/waterSetpoint -->
-  <p n="waterSetpoint" h="559" t="c:NumericWritable">
-   <p n="fallback" t="b:StatusNumeric"><p n="value" v="19.0"/></p>
-   <a n="emergencyOverride" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="override" f="ho"/>
-   <a n="auto" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,36,12"/>
-   <p n="statusTraceSummary" f="h" t="b:StatusString"><p n="value" v=""/></p>
-  </p>
-  <!-- /chillerRotater/Enable -->
-  <p n="Enable" h="55b" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,42,12"/>
-  </p>
-  <!-- /chillerRotater/IsAvailChiller1 -->
-  <p n="IsAvailChiller1" h="55d" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,73,12"/>
-  </p>
-  <!-- /chillerRotater/updateInterval -->
-  <p n="updateInterval" h="55f" t="c:NumericWritable">
-   <p n="fallback" t="b:StatusNumeric"><p n="value" v="10.0"/></p>
-   <a n="emergencyOverride" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="override" f="ho"/>
-   <a n="auto" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,67,12"/>
-  </p>
-  <!-- /chillerRotater/BladeRmDemand1 -->
-  <p n="BladeRmDemand1" h="561" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="false"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,48,12"/>
-  </p>
-  <!-- /chillerRotater/BladeRmDemand2 -->
-  <p n="BladeRmDemand2" h="563" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="false"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,54,12"/>
-  </p>
-  <!-- /chillerRotater/BladeRmDemand3 -->
-  <p n="BladeRmDemand3" h="565" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="false"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,60,12"/>
-  </p>
-  <!-- /chillerRotater/IsAvailChiller2 -->
-  <p n="IsAvailChiller2" h="567" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,79,12"/>
-  </p>
-  <!-- /chillerRotater/IsAvailChiller3 -->
-  <p n="IsAvailChiller3" h="569" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,85,12"/>
-  </p>
-  <!-- /chillerRotater/IsAvailChiller4 -->
-  <p n="IsAvailChiller4" h="56b" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,91,12"/>
-  </p>
-  <!-- /chillerRotater/IsAvailChiller5 -->
-  <p n="IsAvailChiller5" h="56d" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,97,12"/>
-  </p>
-  <!-- /chillerRotater/IsAvailChiller6 -->
-  <p n="IsAvailChiller6" h="56f" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,103,12"/>
-  </p>
-  <!-- /chillerRotater/IsAvailChiller7 -->
-  <p n="IsAvailChiller7" h="571" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,108,12"/>
-  </p>
-  <!-- /chillerRotater/IsAvailChiller8 -->
-  <p n="IsAvailChiller8" h="573" t="c:BooleanWritable">
-   <p n="fallback" t="b:StatusBoolean"><p n="value" v="true"/></p>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="11,114,12"/>
-  </p>
-  <!-- /chillerRotater/DutyCycle -->
-  <p n="DutyCycle" h="575" t="c:EnumWritable">
-   <p n="facets" t="b:Facets" v="range=E:{duty1=1,duty2=2,duty3=3,duty4=4,duty5=5,duty6=6,duty7=7,duty8=8,duty9=9}"/>
-   <p n="in1" t="b:StatusEnum"><p n="value" v="0@{duty1=1,duty2=2,duty3=3,duty4=4,duty5=5,duty6=6,duty7=7,duty8=8,duty9=9}"/><p n="status" v="40"/></p>
-   <p n="in8" t="b:StatusEnum"><p n="value" v="0@{duty1=1,duty2=2,duty3=3,duty4=4,duty5=5,duty6=6,duty7=7,duty8=8,duty9=9}"/><p n="status" v="40"/></p>
-   <p n="fallback" t="b:StatusEnum"><p n="value" v="2@{duty1=1,duty2=2,duty3=3,duty4=4,duty5=5,duty6=6,duty7=7,duty8=8,duty9=9}"/></p>
-   <a n="emergencyOverride" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="override" f="ho"/>
-   <a n="auto" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="19,123,16"/>
-  </p>
-  <!-- /chillerRotater/RunChiller1 -->
-  <p n="RunChiller1" h="577" t="c:BooleanWritable">
-   <p n="in10" f="tsL"/>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="110,41,18"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="chiller1Enable"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/RunChiller2 -->
-  <p n="RunChiller2" h="579" t="c:BooleanWritable">
-   <p n="in10" f="tsL"/>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="110,47,18"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="chiller2Enable"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/RunChiller3 -->
-  <p n="RunChiller3" h="57b" t="c:BooleanWritable">
-   <p n="in10" f="tsL"/>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="110,53,18"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="chiller3Enable"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/RunChiller4 -->
-  <p n="RunChiller4" h="57d" t="c:BooleanWritable">
-   <p n="in10" f="tsL"/>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="110,59,18"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="chiller4Enable"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/RunChiller5 -->
-  <p n="RunChiller5" h="57f" t="c:BooleanWritable">
-   <p n="in10" f="tsL"/>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="110,65,18"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="chiller5Enable"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/RunChiller6 -->
-  <p n="RunChiller6" h="581" t="c:BooleanWritable">
-   <p n="in10" f="tsL"/>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="110,71,18"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="chiller6Enable"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/RunChiller7 -->
-  <p n="RunChiller7" h="583" t="c:BooleanWritable">
-   <p n="in10" f="tsL"/>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="110,77,18"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="chiller7Enable"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/RunChiller8 -->
-  <p n="RunChiller8" h="585" t="c:BooleanWritable">
-   <p n="in10" f="tsL"/>
-   <a n="emergencyActive" f="h"/>
-   <a n="emergencyInactive" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="set" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="110,83,18"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="chiller8Enable"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/simulateTemp -->
-  <p n="simulateTemp" h="587" t="c:NumericWritable">
-   <p n="fallback" t="b:StatusNumeric"><p n="value" v="20.3"/></p>
-   <a n="emergencyOverride" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="override" f="ho"/>
-   <a n="auto" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="50,30,14"/>
-  </p>
-  <!-- /chillerRotater/simulateLoad -->
-  <p n="simulateLoad" h="589" t="c:NumericWritable">
-   <p n="fallback" t="b:StatusNumeric"><p n="value" v="0.1"/></p>
-   <a n="emergencyOverride" f="h"/>
-   <a n="emergencyAuto" f="h"/>
-   <a n="override" f="ho"/>
-   <a n="auto" f="ho"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="50,36,14"/>
-  </p>
-  <!-- /chillerRotater/StatusTraceTemp -->
-  <p n="StatusTraceTemp" h="58b" t="c:StringWritable">
-   <p n="in10" f="tsL"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="99,93,19"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="statusTraceTemp"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/StatusTraceLoad -->
-  <p n="StatusTraceLoad" h="58d" t="c:StringWritable">
-   <p n="in10" f="tsL"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="99,99,19"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="statusTraceLoad"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/StatusTraceBlade -->
-  <p n="StatusTraceBlade" h="58f" t="c:StringWritable">
-   <p n="in10" f="tsL"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="99,105,19"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="statusTraceBlade"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <!-- /chillerRotater/StatusTraceSummary -->
-  <p n="StatusTraceSummary" h="591" t="c:StringWritable">
-   <p n="in10" f="tsL"/>
-   <p n="wsAnnotation" t="b:WsAnnotation" v="99,111,19"/>
-   <p n="Link" t="b:Link"><p n="sourceOrd" v="h:557"/><p n="relationTags" v=""/><p n="relationId" v="n:dataLink"/><p n="sourceSlotName" v="statusTraceSummary"/><p n="targetSlotName" v="in10"/></p>
-  </p>
-  <p n="Chillers" f="o" t="b:PxView">
-   <p n="pxFile" t="b:Ord" v="file:^px/Chillers.px"/>
-  </p>
-  <p n="wsAnnotation" t="b:WsAnnotation" v="16,27,8"/>
  </p>
 </p>
 </bajaObjectGraph>
