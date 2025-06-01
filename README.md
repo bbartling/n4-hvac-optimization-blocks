@@ -385,7 +385,7 @@ double round1(double val) {
 <details>
 <summary>🧊 Full Java Code for Chiller Rotator</summary>
 
-![Linkedin Article](https://www.linkedin.com/posts/activity-7334973935777652736-mrRk?utm_source=share&utm_medium=member_desktop&rcm=ACoAAA0kR5wBTiy3drJcr-0Nl_8MNQFMlHxnETU)
+[Linkedin Article](https://www.linkedin.com/posts/activity-7334973935777652736-mrRk?utm_source=share&utm_medium=member_desktop&rcm=ACoAAA0kR5wBTiy3drJcr-0Nl_8MNQFMlHxnETU)
 
 ```java
 // Full Java code starts here
