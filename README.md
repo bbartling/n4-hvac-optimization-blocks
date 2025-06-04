@@ -57,12 +57,12 @@ While this logic can easily be built using standard Wire Sheet blocks, it's a gr
 
 2. **Cooling Capacity Formula:**
 
+The math is burried inside the Java code as `coolingCapacity = (flowRateVal * specificHeatVal * temperatureDiffVal);` see if you can find it below!
+
 **Metric:**
 
 ```
 Cooling Capacity (W) = flowRate (m³/s) × specificHeat (J/kg°C) × ΔT (°C)
-
-Example:
 Cooling Capacity = 1.5 × 4184 × 11.0 = 69,036 Watts
 Cooling Capacity = 69.036 kW
 ```
@@ -71,8 +71,6 @@ Cooling Capacity = 69.036 kW
 
 ```
 Cooling Capacity (BTU/hr) = flowRate (GPM) × 500 × ΔT (°F)
-
-Example:
 Cooling Capacity = 500 × 500 × 11.0 = 2,750,000 BTU/hr
 ```
 
