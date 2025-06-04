@@ -20,7 +20,7 @@ To use:
 ---
 
 <details>
-<summary>📘 📝 <b>Cooling Capacity Calculation</b></summary>
+<summary>📘 📝 Cooling Capacity Calculation</summary>
 
 This program block calculates the **Cooling Capacity (kW)** of a chiller plant based on flow rate, fluid properties, and measured temperature difference across the system.
 
@@ -34,13 +34,13 @@ This program block calculates the **Cooling Capacity (kW)** of a chiller plant b
 
 ### ⚙️ **Inputs**
 
-| Input                   | Description                         | Units                                           |
-| ----------------------- | ----------------------------------- | ----------------------------------------------- |
-| `flowRate`              | Flow rate of the chilled water      | m³/s (cubic meters per second)                  |
-| `specificHeat`          | Specific heat capacity of the fluid | J/kg°C (joules per kilogram per degree Celsius) |
-| `returnTemp`            | Return water temperature            | °C (degrees Celsius)                            |
-| `supplyTemp`            | Supply water temperature            | °C (degrees Celsius)                            |
-| `updateIntervalSeconds` | Interval to update calculation      | seconds (s)                                     |
+| Input                   | Description                         | Metric Units (SI)                               | Imperial Units (IP)                      |
+| ----------------------- | ----------------------------------- | ----------------------------------------------- | ---------------------------------------- |
+| `flowRate`              | Flow rate of the chilled water      | m³/s (cubic meters per second)                  | GPM (gallons per minute)                 |
+| `specificHeat`          | Specific heat capacity of the fluid | J/kg°C (joules per kilogram per degree Celsius) | 500 (BTU/hr·gal·°F) — constant for water |
+| `returnTemp`            | Return water temperature            | °C (degrees Celsius)                            | °F (degrees Fahrenheit)                  |
+| `supplyTemp`            | Supply water temperature            | °C (degrees Celsius)                            | °F (degrees Fahrenheit)                  |
+| `updateIntervalSeconds` | Interval to update calculation      | seconds (s)                                     | seconds (s)                              |
 
 ---
 
@@ -52,16 +52,31 @@ $$
 \Delta T = \text{returnTemp} - \text{supplyTemp}
 $$
 
-* **(°C)** — In a chiller plant, the return water should be warmer than the supply water.
+* **Metric:** °C
+* **Imperial:** °F
 
-2. **Cooling Capacity:**
+---
 
-$$
-\text{Cooling Capacity (kW)} = \text{flowRate (m³/s)} \times \text{specificHeat (J/kg°C)} \times \Delta T
-$$
+2. **Cooling Capacity Formula:**
 
-* **No unit conversions are required** if flow rate is in **m³/s** and specific heat is in **J/kg°C**.
-* The result is directly output in **kilowatts (kW)**.
+| System       | Formula                                                                                                    | Output Units |
+| ------------ | ---------------------------------------------------------------------------------------------------------- | ------------ |
+| **Metric**   | $\text{Cooling Capacity (W)} = \text{flowRate (m³/s)} \times \text{specificHeat (J/kg°C)} \times \Delta T$ | Watts (W)    |
+| **Imperial** | $\text{Cooling Capacity (BTU/hr)} = \text{flowRate (GPM)} \times 500 \times \Delta T$                      | BTU/hr       |
+
+* **Metric Notes:**
+
+  * No unit conversions required if using **m³/s** for flow rate and **J/kg°C** for specific heat.
+  * Output is **Watts (W)**.
+* **Imperial Notes:**
+
+  * Flow rate must be in **GPM**, specific heat is a constant **500** for water.
+  * Output is **BTU/hr** (British Thermal Units per hour).
+
+---
+
+> **📝 Important:**
+> Engineers to ensure converted Watts to kilowatts (kW) or BTU/hr to tons/kW if needed downstream.
 
 ---
 
