@@ -2,7 +2,7 @@
 
 ![Leave Temp Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/vibecoder.png)
 
-This repo provides **Java-based optimization logic** for Niagara 4 (N4) control systems. All vibe coded designed and tested by Ben, the logic is modeled after **ASHRAE Guideline 36** strategies with enhancements for practical deployments.
+This repo provides the latest and greatest for vibe code addictions specifc to **Java-based optimization logic** for Niagara 4 (N4) control systems. This is a vibe code tutorial designed and tested by Ben, some strategies for optimization the logic is modeled after **ASHRAE Guideline 36** strategies with enhancements for practical deployments.
 
 ---
 
@@ -18,6 +18,140 @@ To use:
 4. Wire in your HVAC input/output points.
 
 ---
+
+<details>
+<summary>📘 Simple Adder Block (Getting Started Tutorial)</summary>
+
+This program block is a simple **Adder** example designed to help you get comfortable coding your first Niagara **Program Object** blocks in Java. It sums up to 4 numeric inputs (`in1`, `in2`, `in3`, `in4`) and outputs the result.
+
+It also counts how many inputs are *actually wired* and writes the number to a `wiredInCount` slot for debugging or diagnostics.
+
+While this could easily be done with basic Niagara Wire Sheet logic, it’s a perfect first step to move into **Java coding** for Niagara!
+
+---
+
+<p align="center">
+<img src="snips/adderBlockSnip.png" alt="Simple Adder Block Snip" width="500">
+</p>
+
+---
+
+### ⚙️ **Inputs**
+
+| Input          | Description                                       | Units                            |
+| -------------- | ------------------------------------------------- | -------------------------------- |
+| `in1`          | First number to add                               | Numeric (real number)            |
+| `in2`          | Second number to add                              | Numeric                          |
+| `in3`          | Third number to add                               | Numeric                          |
+| `in4`          | Fourth number to add                              | Numeric                          |
+| `wiredInCount` | *Status output* showing how many inputs are wired | String (e.g., `Wired Inputs: 3`) |
+
+---
+
+### 🧮 **Calculation**
+
+1. **Sum the Inputs:**
+
+```
+sum = in1 + in2 + in3 + in4
+```
+
+2. **Count Wired Inputs:**
+
+It uses `getComponent().getLinks(getComponent().getSlot("inX")).length` to count if something is wired to each input. If not wired, the input is cleared to `NULL`.
+
+---
+
+### 📤 **Output**
+
+| Output         | Description                      | Units        |
+| -------------- | -------------------------------- | ------------ |
+| `out`          | The sum of all wired inputs      | Numeric      |
+| `wiredInCount` | Number of inputs currently wired | StatusString |
+
+---
+
+### 📄 **Example Code**
+
+```java
+Clock.Ticket ticket;  
+
+long lastOnExecuteTicks;
+
+public void onStart() throws Exception {
+    updateTimer();
+}
+
+public void onExecute() throws Exception {
+    updateTimer(); 
+
+    double sum = 0;
+    int wiredCount = 0;
+
+    if (getInitOnDelink()) {
+        if (getComponent().getLinks(getComponent().getSlot("in1")).length == 0) { 
+            getIn1().setValue(0);
+            getIn1().setStatus(BStatus.NULL);
+        } else {
+            wiredCount++;
+        }
+
+        if (getComponent().getLinks(getComponent().getSlot("in2")).length == 0) { 
+            getIn2().setValue(0);
+            getIn2().setStatus(BStatus.NULL);
+        } else {
+            wiredCount++;
+        }
+
+        if (getComponent().getLinks(getComponent().getSlot("in3")).length == 0) { 
+            getIn3().setValue(0);
+            getIn3().setStatus(BStatus.NULL);
+        } else {
+            wiredCount++;
+        }
+
+        if (getComponent().getLinks(getComponent().getSlot("in4")).length == 0) { 
+            getIn4().setValue(0);
+            getIn4().setStatus(BStatus.NULL);
+        } else {
+            wiredCount++;
+        }
+    }  
+
+    sum = getIn1().getValue() + getIn2().getValue() + getIn3().getValue() + getIn4().getValue();
+    
+    getOut().setValue(sum);
+
+    getWiredInCount().setValue("Wired Inputs: " + wiredCount);
+}
+
+public void onStop() throws Exception {
+    if (ticket != null) {
+        ticket.cancel();
+    }
+}
+
+void updateTimer() {            
+    if (ticket != null) {
+        ticket.cancel();
+    }  
+    
+    ticket = Clock.schedule(getComponent(), getExecutePeriod(), BProgram.execute, null);
+}
+```
+
+---
+
+#### ✅ **Developer Notes**
+
+* `wiredInCount` can help in debug mode to show if anything is connected.
+* If a point is **not wired**, it is forcefully set to `NULL` to avoid invalid sums.
+* A great **starter block** before moving into more advanced HVAC control logic like Trim & Respond or Chiller Sequencing!
+
+</details>
+
+---
+
 
 <details>
 <summary>📘 Cooling Capacity Calculation</summary>
