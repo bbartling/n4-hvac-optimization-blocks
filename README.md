@@ -1,14 +1,14 @@
-# n4-hvac-optimization-blocks
+# niagara4-vibe-code-addict
 
 ![Leave Temp Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/vibecoder.png)
 
-This repo provides the latest and greatest for vibe code addictions specifc to **Java-based optimization logic** for Niagara 4 (N4) control systems. This is a vibe code tutorial designed and tested by Ben, some strategies for optimization the logic is modeled after **ASHRAE Guideline 36** strategies with enhancements for practical deployments.
+This repo delivers the latest and greatest for those addicted to vibe coding — specifically in Java-based optimization logic for Niagara 4 (N4) control systems. Think of it as a vibe-driven tutorial lab, crafted and tested by Ben. Many of the optimization strategies here take inspiration from ASHRAE Guideline 36, but with practical enhancements to make them deployment-ready for real-world HVAC systems.
 
 ---
 
-## 📦 Available Optimization Blocks
+## Available Optimization Blocks
 
-This repository includes drop-in Java algorithm blocks for Niagara 4. All logic is implemented in the `bensCustomPallette.pallette` file as `bog` wire sheet views. Download this repo as a zip file or use git directly.
+This repository includes drop-in Java algorithm blocks for Niagara 4 as `bog` files to use in wire sheet views in Workbench. Download this repo as a zip file or use git directly.
 
 To use:
 
@@ -20,7 +20,7 @@ To use:
 ---
 
 <details>
-<summary>📘 Simple Adder Block (Getting Started Tutorial)</summary>
+<summary>🧮 Simple Adder Block (Getting Started Tutorial)</summary>
 
 This program block is a simple **Adder** example designed to help you get comfortable coding your first Niagara **Program Object** blocks in Java. It sums up to 4 numeric inputs (`in1`, `in2`, `in3`, `in4`) and outputs the result.
 
@@ -48,7 +48,7 @@ While this could easily be done with basic Niagara Wire Sheet logic, it’s a pe
 
 ---
 
-### 🧮 **Calculation**
+### **Calculation**
 
 1. **Sum the Inputs:**
 
@@ -62,7 +62,7 @@ It uses `getComponent().getLinks(getComponent().getSlot("inX")).length` to count
 
 ---
 
-### 📤 **Output**
+### **Output**
 
 | Output         | Description                      | Units        |
 | -------------- | -------------------------------- | ------------ |
@@ -71,7 +71,7 @@ It uses `getComponent().getLinks(getComponent().getSlot("inX")).length` to count
 
 ---
 
-### 📄 **Example Code**
+### **Example Code**
 
 ```java
 Clock.Ticket ticket;  
@@ -142,7 +142,7 @@ void updateTimer() {
 
 ---
 
-#### ✅ **Developer Notes**
+#### **Developer Notes**
 
 * `wiredInCount` can help in debug mode to show if anything is connected.
 * If a point is **not wired**, it is forcefully set to `NULL` to avoid invalid sums.
@@ -154,7 +154,7 @@ void updateTimer() {
 
 
 <details>
-<summary>📘 Cooling Capacity Calculation</summary>
+<summary>❄️ Cooling Capacity Calculation</summary>
 
 This program block is a simple, practical example for anyone learning how to develop Niagara Program Object blocks. It calculates the Cooling Capacity of a chiller plant based on flow rate, fluid properties, and the measured temperature difference across the system.
 
@@ -166,7 +166,7 @@ While this logic can easily be built using standard Wire Sheet blocks, it's a gr
 
 ---
 
-### ⚙️ **Inputs**
+### **Inputs**
 
 | Input                   | Description                         | Metric Units (SI)                               | Imperial Units (IP)                      |
 | ----------------------- | ----------------------------------- | ----------------------------------------------- | ---------------------------------------- |
@@ -178,7 +178,7 @@ While this logic can easily be built using standard Wire Sheet blocks, it's a gr
 
 ---
 
-### 🧮 **Calculation**
+### **Calculation**
 
 1. **Temperature Difference (ΔT):**
 
@@ -327,13 +327,13 @@ void updateTimer() {
 
 
 <details>
-<summary>📘 AHU Duct Static Pressure Reset (Trim & Respond)</summary>
+<summary>🌀 AHU Duct Static Pressure Reset (Trim & Respond)</summary>
 
 **Purpose:** Save supply fan energy by resetting duct static pressure based on VAV damper positions.
 
 ![Duct Static Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/ahuDuctStaticResetSnip.png)
 
-#### ✅ Logic Summary:
+#### Logic Summary:
 
 * Every update interval, the logic reads connected VAV damper positions (up to 30).
 * **Trim up** if max VAV ≥ 90%, **trim down** if max VAV ≤ 80%.
@@ -342,13 +342,13 @@ void updateTimer() {
 * One or more rogue zones (e.g. wide open damper) can be excluded using **Ignore Count**.
 * Values are clamped between `ductPressMin` and `ductPressMax`.
 
-#### 🧠 Developer Notes:
+#### Developer Notes:
 
 * Uses internal `Clock.schedule()` 10s loop for responsive updates.
 * Status debug messages written to `statusTrace` (e.g., "Trim up", "Deadband").
 * Output written to: `ahuDuctPressStpOut`.
 
-#### 📄 Example Code:
+#### Example Code:
 
 ```java
 Clock.Ticket ticket;
@@ -505,13 +505,13 @@ double round1(double val) {
 ---
 
 <details>
-<summary>📗 AHU Supply Air Temperature Reset (Trim & Respond)</summary>
+<summary>🌡️ AHU Supply Air Temperature Reset (Trim & Respond)</summary>
 
 **Purpose:** Reset discharge air temp based on VAV zone demand values.
 
 ![Leave Temp Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/ahuLeaveTempBlockSnip.png)
 
-#### ✅ Logic Summary:
+#### Logic Summary:
 
 * Every update interval, reads demand values from up to 30 zones.
 * **Trim colder** if max VAV demand ≥ 30%, **trim warmer** if ≤ 10%.
@@ -519,13 +519,13 @@ double round1(double val) {
 * Handles **Startup Lag** and **Fan OFF** by forcing SAT to `startupAhuSATSetpoint`.
 * Ignores highest `N` values defined by **Ignore Count** to avoid rogue zones.
 
-#### 🧠 Developer Notes:
+#### Developer Notes:
 
 * Works with demand signals from zone controllers.
 * Uses internal 10s clock timer for status refresh.
 * Debug strings written to `statusTrace` (e.g., "Startup lag", "Lock to minSAT").
 
-#### 📄 Example Code:
+#### Example Code:
 
 ```java
 Clock.Ticket ticket;
