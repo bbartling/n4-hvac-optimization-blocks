@@ -20,11 +20,11 @@ To use:
 ---
 
 <details>
-<summary>📘 📝 Cooling Capacity Calculation</summary>
+<summary>📘 Cooling Capacity Calculation</summary>
 
-This program block calculates the **Cooling Capacity (kW)** of a chiller plant based on flow rate, fluid properties, and measured temperature difference across the system.
+This program block is a simple, practical example for anyone learning how to develop Niagara Program Object blocks. It calculates the Cooling Capacity of a chiller plant based on flow rate, fluid properties, and the measured temperature difference across the system.
 
-<br>
+While this logic can easily be built using standard Wire Sheet blocks, it's a great starting point for experimenting with AI-assisted Java coding in Niagara. Once you're comfortable with basic examples like this, you can confidently move on to building more advanced control logic — some examples are shown below!
 
 <p align="center">
 <img src="snips/unitConverterBlockSnip.png" alt="Cooling Capacity Snip" width="600">
@@ -48,64 +48,64 @@ This program block calculates the **Cooling Capacity (kW)** of a chiller plant b
 
 1. **Temperature Difference (ΔT):**
 
-$$
-\Delta T = \text{returnTemp} - \text{supplyTemp}
-$$
-
-* **Metric:** °C
-* **Imperial:** °F
+```
+ΔT = returnTemp - supplyTemp
+ΔT = 28.0°C - 17.0°C = 11.0°C
+```
 
 ---
 
 2. **Cooling Capacity Formula:**
 
-| System       | Formula                                                                                                    | Output Units |
-| ------------ | ---------------------------------------------------------------------------------------------------------- | ------------ |
-| **Metric**   | $\text{Cooling Capacity (W)} = \text{flowRate (m³/s)} \times \text{specificHeat (J/kg°C)} \times \Delta T$ | Watts (W)    |
-| **Imperial** | $\text{Cooling Capacity (BTU/hr)} = \text{flowRate (GPM)} \times 500 \times \Delta T$                      | BTU/hr       |
+**Metric:**
 
-* **Metric Notes:**
+```
+Cooling Capacity (W) = flowRate (m³/s) × specificHeat (J/kg°C) × ΔT (°C)
 
-  * No unit conversions required if using **m³/s** for flow rate and **J/kg°C** for specific heat.
-  * Output is **Watts (W)**.
-* **Imperial Notes:**
+Example:
+Cooling Capacity = 1.5 × 4184 × 11.0 = 69,036 Watts
+Cooling Capacity = 69.036 kW
+```
 
-  * Flow rate must be in **GPM**, specific heat is a constant **500** for water.
-  * Output is **BTU/hr** (British Thermal Units per hour).
+**Imperial:**
 
----
+```
+Cooling Capacity (BTU/hr) = flowRate (GPM) × 500 × ΔT (°F)
 
-> **📝 Important:**
-> Engineers to ensure converted Watts to kilowatts (kW) or BTU/hr to tons/kW if needed downstream.
-
----
-
-### 📐 **Example**
-
-Given:
-
-* `flowRate` = 1.5 m³/s
-* `specificHeat` = 4184 J/kg°C (typical for water)
-* `returnTemp` = 28.0°C
-* `supplyTemp` = 17.0°C
-
-Then:
-
-$$
-\Delta T = 28.0 - 17.0 = 11.0°C
-$$
-
-$$
-\text{Cooling Capacity} = 1.5 \times 4184 \times 11.0 = 69,036 \, \text{Watts} = 69.036 \, \text{kW}
-$$
+Example:
+Cooling Capacity = 500 × 500 × 11.0 = 2,750,000 BTU/hr
+```
 
 ---
 
-### 📤 **Output**
+### 📄 **Example**
 
-| Output            | Description                 | Units |
-| ----------------- | --------------------------- | ----- |
-| `coolingCapacity` | Calculated cooling capacity | kW    |
+**Metric Example:**
+
+```
+flowRate = 1.5 m³/s
+specificHeat = 4184 J/kg°C
+returnTemp = 28.0°C
+supplyTemp = 17.0°C
+
+ΔT = 28.0 - 17.0 = 11.0°C
+
+Cooling Capacity = 1.5 × 4184 × 11.0 = 69,036 Watts
+= 69.036 kW
+```
+
+**Imperial Example:**
+
+```
+flowRate = 500 GPM
+specificHeat = 500 (BTU/hr·gal·°F)
+returnTemp = 55.0°F
+supplyTemp = 44.0°F
+
+ΔT = 55.0 - 44.0 = 11.0°F
+
+Cooling Capacity = 500 × 500 × 11.0 = 2,750,000 BTU/hr
+```
 
 ---
 
