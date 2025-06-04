@@ -20,6 +20,166 @@ To use:
 ---
 
 <details>
+<summary>📘 📝 <b>Cooling Capacity Calculation</b></summary>
+
+This program block calculates the **Cooling Capacity (kW)** of a chiller plant based on flow rate, fluid properties, and measured temperature difference across the system.
+
+<br>
+
+<p align="center">
+<img src="snips/unitConverterBlockSnip.png" alt="Cooling Capacity Snip" width="600">
+</p>
+
+---
+
+### ⚙️ **Inputs**
+
+| Input                   | Description                         | Units                                           |
+| ----------------------- | ----------------------------------- | ----------------------------------------------- |
+| `flowRate`              | Flow rate of the chilled water      | m³/s (cubic meters per second)                  |
+| `specificHeat`          | Specific heat capacity of the fluid | J/kg°C (joules per kilogram per degree Celsius) |
+| `returnTemp`            | Return water temperature            | °C (degrees Celsius)                            |
+| `supplyTemp`            | Supply water temperature            | °C (degrees Celsius)                            |
+| `updateIntervalSeconds` | Interval to update calculation      | seconds (s)                                     |
+
+---
+
+### 🧮 **Calculation**
+
+1. **Temperature Difference (ΔT):**
+
+$$
+\Delta T = \text{returnTemp} - \text{supplyTemp}
+$$
+
+* **(°C)** — In a chiller plant, the return water should be warmer than the supply water.
+
+2. **Cooling Capacity:**
+
+$$
+\text{Cooling Capacity (kW)} = \text{flowRate (m³/s)} \times \text{specificHeat (J/kg°C)} \times \Delta T
+$$
+
+* **No unit conversions are required** if flow rate is in **m³/s** and specific heat is in **J/kg°C**.
+* The result is directly output in **kilowatts (kW)**.
+
+---
+
+### 📐 **Example**
+
+Given:
+
+* `flowRate` = 1.5 m³/s
+* `specificHeat` = 4184 J/kg°C (typical for water)
+* `returnTemp` = 28.0°C
+* `supplyTemp` = 17.0°C
+
+Then:
+
+$$
+\Delta T = 28.0 - 17.0 = 11.0°C
+$$
+
+$$
+\text{Cooling Capacity} = 1.5 \times 4184 \times 11.0 = 69,036 \, \text{Watts} = 69.036 \, \text{kW}
+$$
+
+---
+
+### 📤 **Output**
+
+| Output            | Description                 | Units |
+| ----------------- | --------------------------- | ----- |
+| `coolingCapacity` | Calculated cooling capacity | kW    |
+
+---
+
+```java
+Clock.Ticket ticket;
+
+long lastMainLogicRun = 0;
+
+public void onStart() throws Exception {
+    lastMainLogicRun = System.currentTimeMillis();
+    updateTimer();
+    System.out.println("CoolingCapacityCalculator started. Initial ticks (ms): " + lastMainLogicRun);
+}
+
+public void onExecute() throws Exception {
+    updateTimer();
+
+    long now = System.currentTimeMillis();
+    
+    int intervalSec = 10; // Default interval 10 seconds
+
+    BStatusNumeric intervalInput = getExecutePeriod(); // Interval input (seconds)
+
+    if (intervalInput.getStatus().isOk()) {
+        double raw = intervalInput.getValue();
+        intervalSec = (int) Math.max(5, Math.min(raw, 3600)); // Clamp between 5s and 3600s
+    }
+    
+    if ((now - lastMainLogicRun) / 1000 < intervalSec) {
+        System.out.println("Skipping update. Waiting for interval: " + intervalSec + " seconds.");
+        return;
+    }
+    
+    lastMainLogicRun = now;
+    System.out.println("Updating cooling capacity calculation...");
+
+    double coolingCapacity = 0;
+
+    if (getComponent().getLinks(getComponent().getSlot("flowRate")).length == 0) { 
+        getFlowRate().setValue(0);
+        getFlowRate().setStatus(BStatus.NULL);
+        System.out.println("flowRate input missing. Set to NULL.");
+    }
+
+    if (getComponent().getLinks(getComponent().getSlot("specificHeat")).length == 0) { 
+        getSpecificHeat().setValue(0);
+        getSpecificHeat().setStatus(BStatus.NULL);
+        System.out.println("specificHeat input missing. Set to NULL.");
+    }
+
+    if (getComponent().getLinks(getComponent().getSlot("temperatureDifference")).length == 0) { 
+        getTemperatureDifference().setValue(0);
+        getTemperatureDifference().setStatus(BStatus.NULL);
+        System.out.println("temperatureDifference input missing. Set to NULL.");
+    }
+
+    double flowRateVal = getFlowRate().getValue();
+    double specificHeatVal = getSpecificHeat().getValue();
+    double temperatureDiffVal = getTemperatureDifference().getValue();
+
+    coolingCapacity = (flowRateVal * specificHeatVal * temperatureDiffVal);
+
+    getCoolingCapacity().setValue(coolingCapacity);
+
+    System.out.println("Calculated coolingCapacity (kW): " + coolingCapacity);
+    System.out.println("Values used -> flowRate: " + flowRateVal + ", specificHeat: " + specificHeatVal + ", temperatureDifference: " + temperatureDiffVal);
+}
+
+public void onStop() throws Exception {
+    if (ticket != null) {
+        ticket.cancel();
+        System.out.println("CoolingCapacityCalculator stopped and timer cancelled.");
+    }
+}
+
+void updateTimer() {
+    if (ticket != null) {
+        ticket.cancel();
+    }
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
+}
+```
+
+</details>
+
+---
+
+
+<details>
 <summary>📘 AHU Duct Static Pressure Reset (Trim & Respond)</summary>
 
 **Purpose:** Save supply fan energy by resetting duct static pressure based on VAV damper positions.
