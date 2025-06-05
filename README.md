@@ -344,7 +344,12 @@ void updateTimer() {
 <details>
 <summary>📘 Min Max Avg Rolling Block (Another easier Getting Started Tutorial)</summary>
 
-This program block provides a **rolling statistical analysis** of up to four numeric inputs. It calculates:
+This program block provides a **rolling statistical analysis** of up to four numeric inputs. It differs from the standard `kitControl` Min/Max/Average block in that it samples input data every 10 seconds and stores these samples in memory. After the defined `updateIntervalSeconds` elapses, the block calculates the minimum, maximum, and average values based on the collected samples.
+
+Additionally, it computes a rolling average over a user-defined window of time specified by `rollingAvgMinutes`. This rolling average is calculated over the most recent samples, providing a smoothed view of the input trends.
+
+In contrast, the `kitControl` Min/Max/Average block performs calculations using only the instantaneous input values with a slot sheet setting ✅ execute on change, without maintaining any history of past samples. As a result, this block offers a more robust and stable analysis of input trends by filtering out short-term fluctuations and providing both interval-based and rolling statistical summaries.
+
 
 * **Minimum**, **Maximum**, and **Average** values over a user-configurable interval.
 * **Rolling Average** over a longer trailing window for smoother trend analysis.
