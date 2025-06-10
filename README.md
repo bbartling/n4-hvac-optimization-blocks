@@ -37,7 +37,7 @@ Niagara Workbench **auto-generates** important pieces of the Program Object code
 #### **❌ Do Not Generate or Modify These**
 
 > **LLMs must NOT generate:**
->
+> * Do not insert emoji into code as it will error out the compiling process.
 > * Class header and imports.
 > * `public class ProgramImpl extends ProgramBase`.
 > * Auto-generated slot getter and setter methods.
@@ -561,6 +561,88 @@ void updateTimer() {
 
 ---
 
+
+<details\>
+<summary\>⚡️ Execute on Change (Trigger-Based Logic)</summary\>
+
+This program block demonstrates how to use the **Execute on Change** flag to create highly efficient, trigger-based logic. Instead of using an internal `Clock.schedule()` timer that runs constantly, the program's `onExecute()` method will only run when the `updateNow` boolean slot changes value (e.g., from false to true).
+
+This is the most resource-friendly way to handle actions that only need to happen in response to a specific event.
+
+---
+
+\<p align="center"\>
+\<img src="snips/executeOnChangeSnip.png" alt="Execute on Change Wiresheet" width="600"\>
+\</p\>
+
+
+
+---
+
+### ⚙️ **Key Configuration**
+
+The magic happens in the **Slot Sheet**. For the `updateNow` boolean slot, you must open the **Config Flags** and check the **Execute On Change** box. This tells Niagara to execute the program component whenever this specific slot's value is written to.
+
+\<p align="center"\>
+\<img src="snips/executeOnChangeCheckSip.png" alt="Execute on Change Flag" width="600"\>
+\</p\>
+
+---
+
+### **Inputs & Outputs**
+
+| Slot Name | Description | Type | Writable |
+| --- | --- | --- | --- |
+| `updateNow` | A boolean that triggers the calculation. | BStatusBoolean | Yes |
+| `inputA` | The first number to add. | BStatusNumeric | Yes |
+| `inputB` | The second number to add. | BStatusNumeric | Yes |
+| `sum` | The calculated sum of `inputA` and `inputB`. | BStatusNumeric | No |
+
+---
+
+### **Example Code**
+
+Notice the absence of any timer logic. The `onExecute()` is lean and only runs when needed.
+
+```java
+public void onStart() throws Exception
+{
+  // Nothing needed here for trigger-based logic
+}
+
+public void onExecute() throws Exception
+{
+  // Only run the logic if the updateNow trigger is true
+  if (getUpdateNow().getValue()) {
+    double a = getInputA().getValue();
+    double b = getInputB().getValue();
+    double result = a + b;
+
+    // Set the output value
+    setSum(new BStatusNumeric(result));
+
+    // IMPORTANT: Reset the trigger back to false
+    // This makes it ready for the next trigger event.
+    setUpdateNow(new BStatusBoolean(false));
+  }
+}
+
+public void onStop() throws Exception
+{
+  // Nothing needed here
+}
+```
+
+---
+
+#### **Developer Notes**
+
+  * **Efficiency:** This method is far more efficient than a timed loop if your logic only needs to run occasionally. It consumes zero CPU resources while idle.
+  * **Resetting the Trigger:** It is critical to set the trigger (`updateNow`) back to `false` within the `onExecute()` method. If you don't, it won't be able to trigger again on the next false-to-true change.
+
+</details\>
+
+---
 
 <details>
 <summary>❄️ Cooling Capacity Calculation</summary>
