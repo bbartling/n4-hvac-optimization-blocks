@@ -451,7 +451,7 @@ This dual-buffer approach gives you real-time interval statistics *and* a traili
 * **Rolling Average**:
 
   * Calculated by averaging the last *N* samples in the `rollingBuffer`, where *N* is based on `rollingAvgMinutes`.
-  * `rollingBuffer` prunes itself to \~60 minutes of data to ensure memory safety.
+  * `rollingBuffer` prunes itself to ~60 minutes of data to ensure memory safety.
 
 ---
 
@@ -562,8 +562,8 @@ void updateTimer() {
 ---
 
 
-<details\>
-<summary\>⚡️ Execute on Change (Trigger-Based Logic)</summary\>
+<details>
+<summary>⚡️ Execute on Change (Trigger-Based Logic)</summary>
 
 This program block demonstrates how to use the **Execute on Change** flag to create highly efficient, trigger-based logic. Instead of using an internal `Clock.schedule()` timer that runs constantly, the program's `onExecute()` method will only run when the `updateNow` boolean slot changes value (e.g., from false to true).
 
@@ -571,11 +571,9 @@ This is the most resource-friendly way to handle actions that only need to happe
 
 ---
 
-\<p align="center"\>
-\<img src="snips/executeOnChangeSnip.png" alt="Execute on Change Wiresheet" width="600"\>
-\</p\>
-
-
+<p align="center">
+<img src="snips/executeOnChangeSnip.png" alt="Execute on Change Wiresheet" width="600">
+</p>
 
 ---
 
@@ -583,9 +581,9 @@ This is the most resource-friendly way to handle actions that only need to happe
 
 The magic happens in the **Slot Sheet**. For the `updateNow` boolean slot, you must open the **Config Flags** and check the **Execute On Change** box. This tells Niagara to execute the program component whenever this specific slot's value is written to.
 
-\<p align="center"\>
-\<img src="snips/executeOnChangeCheckSip.png" alt="Execute on Change Flag" width="600"\>
-\</p\>
+<p align="center">
+<img src="snips/executeOnChangeCheckSip.png" alt="Execute on Change Flag" width="600">
+</p>
 
 ---
 
@@ -640,7 +638,7 @@ public void onStop() throws Exception
   * **Efficiency:** This method is far more efficient than a timed loop if your logic only needs to run occasionally. It consumes zero CPU resources while idle.
   * **Resetting the Trigger:** It is critical to set the trigger (`updateNow`) back to `false` within the `onExecute()` method. If you don't, it won't be able to trigger again on the next false-to-true change.
 
-</details\>
+</details>
 
 ---
 
