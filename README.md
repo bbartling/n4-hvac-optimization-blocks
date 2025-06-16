@@ -643,7 +643,7 @@ public void onStop() throws Exception
 ---
 
 <details>
-<summary>⏳ Custom Off Delay Block with Countdown (Flexible Input Logic)</summary>
+<summary>⏳ Custom Off Delay Block with Countdown (Trigger-Based Logic)</summary>
 
 This program block implements a flexible **AND-style logic gate** with a **custom off delay**. When *all wired inputs are `true`*, the output immediately becomes `true`. If any input turns `false`, the output stays `true` for a configurable number of seconds before resetting to `NULL`. This is useful for *avoiding short cycling* or *holding ON states* briefly after a logic condition drops out.
 
@@ -698,7 +698,7 @@ In this example, the block is used to hold an `EquipmentRunPoint` active for a f
 
 ---
 
-### Java Snippet (Countdown Section Only)
+### Java Snippet 
 
 ```java
 Clock.Ticket ticket;
@@ -1009,161 +1009,6 @@ void updateTimer() {
 </details>
 
 ---
-
-<details>
-<summary>⏱️ Custom Off Delay AND Block (Safe Null Logic with Locked Countdown)</summary>
-
-This block functions as a standard AND gate with **delayed off behavior**. When all Boolean inputs are `true`, the output immediately becomes `true`. If any input becomes `false`, the output remains `true` for a defined delay period (`delaySeconds`) before resetting to `null`.
-
----
-
-### 🔒 Countdown Behavior
-
-Once the countdown begins, the output **will not return to `true`** even if inputs go back to `true` during the countdown. The delay must **fully expire**, and the output must become `null` before it can return to `true` on a new trigger cycle.
-
----
-
-### ⚠️ Null Handling
-
-> ❌ Do **not** use `setOutput(null);` — this can crash or halt Niagara program objects.
-> ✅ Use `getOutput().setStatus(BStatus.NULL);` to safely clear the output.
-
----
-
-### 🧠 Logic Flow Summary
-
-| Condition                        | Result                        |
-| -------------------------------- | ----------------------------- |
-| All inputs `true`                | Output → `true` immediately   |
-| Any input `false` (while `true`) | Start countdown               |
-| Countdown running                | Output remains `true`         |
-| Countdown expires                | Output → `null`               |
-| All inputs `true` again          | Output → `true`, cycle resets |
-
----
-
-### 🧩 Java Code (Final Working Version)
-
-```java
-Clock.Ticket ticket;
-long delayStartTime = 0;
-boolean outputActive = false;
-boolean inCountdown = false;
-
-public void onStart() throws Exception {
-    getOutput().setStatus(BStatus.NULL);
-    getStatusTrace().setValue("AND Delay block started.");
-    updateTimer();
-}
-
-public void onExecute() throws Exception {
-    updateTimer();
-
-    // Always check for disconnected wires
-    checkWireStatus("in1", getIn1());
-    checkWireStatus("in2", getIn2());
-    checkWireStatus("in3", getIn3());
-    checkWireStatus("in4", getIn4());
-
-    // Countdown mode: ignore inputs until delay expires
-    if (inCountdown) {
-        int delay = getDelayValue();
-        long elapsed = (System.currentTimeMillis() - delayStartTime) / 1000;
-        int remaining = (int) (delay - elapsed);
-
-        if (remaining < 1) {
-            getOutput().setStatus(BStatus.NULL);
-            outputActive = false;
-            delayStartTime = 0;
-            inCountdown = false;
-            cancelTimer();
-            getStatusTrace().setValue("Delay expired → Output = NULL");
-        } else {
-            getStatusTrace().setValue("Countdown active → " + remaining + "s remaining");
-        }
-        return;
-    }
-
-    // Evaluate current input states
-    BStatusBoolean[] inputs = { getIn1(), getIn2(), getIn3(), getIn4() };
-    boolean allTrue = true;
-    int validInputs = 0;
-
-    for (BStatusBoolean input : inputs) {
-        if (input.getStatus().isOk()) {
-            validInputs++;
-            if (!input.getValue()) {
-                allTrue = false;
-                break;
-            }
-        }
-    }
-
-    if (validInputs == 0) {
-        getOutput().setStatus(BStatus.NULL);
-        outputActive = false;
-        delayStartTime = 0;
-        inCountdown = false;
-        getStatusTrace().setValue("No inputs wired → Output = NULL");
-        return;
-    }
-
-    if (allTrue) {
-        setOutput(new BStatusBoolean(true));
-        outputActive = true;
-        delayStartTime = 0;
-        inCountdown = false;
-        cancelTimer();
-        getStatusTrace().setValue("All inputs TRUE → Output = true");
-    } else if (outputActive) {
-        delayStartTime = System.currentTimeMillis();
-        inCountdown = true;
-        getStatusTrace().setValue("Entering countdown mode...");
-    } else {
-        getOutput().setStatus(BStatus.NULL);
-        inCountdown = false;
-        getStatusTrace().setValue("Inputs not all TRUE → Output = NULL");
-    }
-}
-
-public void onStop() throws Exception {
-    cancelTimer();
-}
-
-void updateTimer() {
-    if (ticket != null) {
-        ticket.cancel();
-    }
-    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(1), BProgram.execute, null);
-}
-
-void checkWireStatus(String slotName, BStatusBoolean point) {
-    if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
-        point.setValue(false);
-        point.setStatus(BStatus.NULL);
-    }
-}
-
-void cancelTimer() {
-    if (ticket != null) {
-        ticket.cancel();
-        ticket = null;
-    }
-}
-
-int getDelayValue() {
-    int delay = 10;
-    if (getDelaySeconds().getStatus().isOk()) {
-        delay = (int) Math.max(1, Math.min(300, getDelaySeconds().getValue()));
-    }
-    return delay;
-}
-```
-
-</details>
-
----
-
 
 <details>
 <summary>🌀 AHU Duct Static Pressure Reset (Trim & Respond)</summary>
