@@ -580,7 +580,7 @@ This approach helps prevent chiller operation under low load when **economizer (
 ---
 
 <p align="center">
-  <img src="snips/41d59182-c825-48ba-aa5b-313c5c084d7f.png" alt="Chiller Start Logic Snip" width="800">
+  <img src="snips/chillerEnableBlockSnip.png" alt="Chiller Start Logic Snip" width="800"> 
 </p>
 
 ---
@@ -618,7 +618,7 @@ This approach helps prevent chiller operation under low load when **economizer (
 
 ---
 
-### Java Snippet (Key Decision Logic)
+### Java Snippet
 
 ```java
 Clock.Ticket ticket; // Used to manage the current timer
@@ -719,8 +719,6 @@ void updateTimer() {
 * Outputs `1.0` for *ON*, and `0.0` for *OFF*.
 * You can use this block with any AHU group by wiring in a `Maximum()` block first.
 * Great for systems that switch between **mechanical cooling** and **economizer/free cooling**.
-
----
 
 </details>
 
