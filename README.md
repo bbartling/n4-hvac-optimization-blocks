@@ -563,6 +563,171 @@ void updateTimer() {
 
 
 <details>
+<summary>🧊 Chiller Start/Stop Based on AHU Valve Demand (Anti-Short-Cycle Logic)</summary>
+
+This block is a **chiller enable/disable controller** based on the **maximum AHU cooling valve position**. It avoids short-cycling the chiller by enforcing:
+
+* A **minimum ON time** (30 minutes)
+* A **minimum OFF time** (15 minutes)
+
+The chiller will:
+
+* ✅ Enable if **any AHU cooling valve ≥ 30%** and off-time has passed.
+* ❌ Disable if **all valves drop ≤ 10%** and it has run for the minimum ON time.
+
+This approach helps prevent chiller operation under low load when **economizer (free cooling)** should be prioritized — potentially saving significant **electrical energy**.
+
+---
+
+<p align="center">
+  <img src="snips/41d59182-c825-48ba-aa5b-313c5c084d7f.png" alt="Chiller Start Logic Snip" width="800">
+</p>
+
+---
+
+### **Inputs & Parameters**
+
+| Slot Name                       | Description                                  | Type             | Writable |
+| ------------------------------- | -------------------------------------------- | ---------------- | -------- |
+| `ahuMaxClgVlv`                  | Maximum valve % from all AHUs                | `BStatusNumeric` | Yes      |
+| `ahuStartChillerMaxClgVlvThres` | Threshold to **start** chiller (default 30%) | `BStatusNumeric` | No       |
+| `ahuStopChillerMaxClgVlvThres`  | Threshold to **stop** chiller (default 10%)  | `BStatusNumeric` | No       |
+| `minOnTime`                     | Minimum ON duration (default 30 min)         | `BStatusNumeric` | No       |
+| `minOffTime`                    | Minimum OFF duration (default 15 min)        | `BStatusNumeric` | No       |
+
+---
+
+### **Outputs**
+
+| Slot Name                       | Description                             | Type             |
+| ------------------------------- | --------------------------------------- | ---------------- |
+| `ChillerEnableCommand`          | Set to `1.0` when chiller should run    | `BStatusNumeric` |
+| `ChillerRunStatus`              | Also `1.0` when running (optional flag) | `BStatusNumeric` |
+| `elapsedChillerOnTimerMinutes`  | Running time tracker                    | `BStatusNumeric` |
+| `elapsedChillerOffTimerMinutes` | Idle time tracker                       | `BStatusNumeric` |
+
+---
+
+### **Logic Summary**
+
+| Condition                                   | Action                |
+| ------------------------------------------- | --------------------- |
+| AHU valve ≥ 30% **and** min off time passed | ✅ Enable chiller      |
+| AHU valve ≤ 10% **and** min on time passed  | ❌ Disable chiller     |
+| Invalid or disconnected input               | Chiller OFF and reset |
+
+---
+
+### Java Snippet (Key Decision Logic)
+
+```java
+Clock.Ticket ticket; // Used to manage the current timer
+boolean chillerRunning = false; // Tracks chiller state
+boolean firstRun = true;
+
+int offTimeCounterSeconds = 0;  // Tracks OFF time in seconds
+int onTimeCounterSeconds  = 0;  // Tracks ON time in seconds
+
+// Constants
+final double AHU_START_THRESHOLD = 30.0;  // Chiller starts when valve ≥ 30%
+final double AHU_STOP_THRESHOLD  = 10.0;  // Chiller stops when valve ≤ 10%
+final double MIN_ON_TIME_MIN     = 30.0;  // Minimum ON duration
+final double MIN_OFF_TIME_MIN    = 15.0;  // Minimum OFF duration
+
+public void onStart() throws Exception {
+    updateTimer(); // Schedule recurring execution
+}
+
+public void onExecute() throws Exception {
+    updateTimer(); // Reschedule every 10 seconds
+
+    // Input and output slots
+    BStatusNumeric clgVlv    = getAhuMaxClgVlv();
+    BStatusNumeric onTimer   = getElapsedChillerOnTimerMinutes();
+    BStatusNumeric offTimer  = getElapsedChillerOffTimerMinutes();
+    BStatusNumeric enableOut = getChillerEnableCommand();
+    BStatusNumeric runFlag   = getChillerRunStatus();
+
+    // Update thresholds for viewing in wire sheet
+    getAhuStartChillerMaxClgVlvThres().setValue(AHU_START_THRESHOLD);
+    getAhuStopChillerMaxClgVlvThres().setValue(AHU_STOP_THRESHOLD);
+    getMinOnTime().setValue(MIN_ON_TIME_MIN);
+    getMinOffTime().setValue(MIN_OFF_TIME_MIN);
+
+    if (clgVlv.getStatus().isOk()) {
+        double valve = clgVlv.getValue();
+        int minOnSec  = (int)(MIN_ON_TIME_MIN * 60);
+        int minOffSec = (int)(MIN_OFF_TIME_MIN * 60);
+
+        if (!chillerRunning) {
+            offTimeCounterSeconds += 10;
+            offTimer.setValue(offTimeCounterSeconds / 60.0);
+
+            if ((firstRun || offTimeCounterSeconds >= minOffSec) && valve >= AHU_START_THRESHOLD) {
+                chillerRunning = true;
+                firstRun = false;
+                offTimeCounterSeconds = 0;
+                onTimeCounterSeconds = 0;
+                offTimer.setValue(0.0);
+                System.out.println("Chiller started.");
+            }
+        } else {
+            onTimeCounterSeconds += 10;
+            onTimer.setValue(onTimeCounterSeconds / 60.0);
+
+            if (valve <= AHU_STOP_THRESHOLD && onTimeCounterSeconds >= minOnSec) {
+                chillerRunning = false;
+                onTimeCounterSeconds = 0;
+                onTimer.setValue(0.0);
+                System.out.println("Chiller stopped.");
+            }
+        }
+
+        runFlag.setValue(chillerRunning ? 1.0 : 0.0);
+        enableOut.setValue(chillerRunning ? 1.0 : 0.0);
+    } else {
+        chillerRunning = false;
+        onTimeCounterSeconds = 0;
+        offTimeCounterSeconds = 0;
+        runFlag.setValue(0.0);
+        enableOut.setValue(0.0);
+        onTimer.setValue(0.0);
+        offTimer.setValue(0.0);
+        System.out.println("Invalid cooling valve input.");
+    }
+}
+
+public void onStop() throws Exception {
+    if (ticket != null) ticket.cancel();
+}
+
+public BComponent getProgram() {
+    return (BComponent) getComponent();
+}
+
+void updateTimer() {
+    if (ticket != null) ticket.cancel();
+    ticket = Clock.schedule(getProgram(), BRelTime.makeSeconds(10), BProgram.execute, null);
+}
+```
+
+---
+
+### Developer Notes
+
+* The logic evaluates every 10 seconds via `Clock.schedule()`.
+* Outputs `1.0` for *ON*, and `0.0` for *OFF*.
+* You can use this block with any AHU group by wiring in a `Maximum()` block first.
+* Great for systems that switch between **mechanical cooling** and **economizer/free cooling**.
+
+---
+
+</details>
+
+---
+
+
+<details>
 <summary>⚡️ Execute on Change (Trigger-Based Logic)</summary>
 
 This program block demonstrates how to use the **Execute on Change** flag to create highly efficient, trigger-based logic. Instead of using an internal `Clock.schedule()` timer that runs constantly, the program's `onExecute()` method will only run when the `updateNow` boolean slot changes value (e.g., from false to true).
