@@ -4,6 +4,8 @@
 
 This repo delivers the latest and greatest for those addicted to vibe coding — specifically in Java-based optimization logic for Niagara 4 (N4) control systems. Think of it as a vibe-driven tutorial lab, crafted and tested by Ben. Many of the optimization strategies here take inspiration from ASHRAE Guideline 36, but with practical enhancements to make them deployment-ready for real-world HVAC systems.
 
+[🎥 Talk Shop With Ben on YouTube](https://www.youtube.com/@TalkShopWithBen)
+
 ---
 
 ## Available Optimization Blocks
@@ -1861,6 +1863,8 @@ double round1(double val) {
 This block implements a **self-learning Optimal Start/Stop algorithm** for zone recovery in Niagara 4.  
 It continuously tunes heating & cooling rates with an Exponential Moving Average (EMA) so the zone reaches setpoint **just-in-time**—saving energy without sacrificing comfort.
 
+* See sub directory for `pdf` of the PNNL white paper.
+
 <p align="center">
   <img src="snips/optimalStartSnip.png"  alt="Optimal Start Program Object" width="550">
   <br><em>Program Object wiring sheet</em>
@@ -1910,7 +1914,7 @@ It continuously tunes heating & cooling rates with an Exponential Moving Average
 
 ---
 
-### Java Code Snippet
+### Full Java Code (6/22/25)
 
 > **Developer note:** create a `historyLog` `BStatusString` slot in Workbench before pasting.
 
