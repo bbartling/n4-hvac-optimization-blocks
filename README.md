@@ -1889,7 +1889,7 @@ It continuously tunes heating & cooling rates with an Exponential Moving Average
 | `maxMinutesAllowed` | `BStatusNumeric` | Safety limit (default = 180 min) |
 | `tempTolerance` | `BStatusNumeric` | °F tolerance band (default = 1 °F) |
 | `emaWeightingFactor` | `BStatusNumeric` | 1 – 10 (default = 2) |
-| `commandOffDelaySeconds` | `BStatusNumeric` | Off-delay for output NULLing |
+| `commandOffDelaySeconds` | `BStatusNumeric` | Off-delay for output NULL when release back to building |
 | `clearHistoryNow` | `BStatusBoolean` | Manual reset of learned model |
 
 ### Outputs
@@ -1914,9 +1914,7 @@ It continuously tunes heating & cooling rates with an Exponential Moving Average
 
 ---
 
-### Full Java Code (6/22/25)
-
-> **Developer note:** create a `historyLog` `BStatusString` slot in Workbench before pasting.
+### Full Java Code
 
 ```java
 // Developer Note: For the `historyLog` feature to work, please add a new
@@ -1944,13 +1942,15 @@ private Clock.Ticket ticket;
 private long startTimestamp = 0;
 private boolean isOptimalStartRunning = false;
 private long lastStartTriggerTimestamp = 0; 
-private static final double DEFAULT_RATE_DEG_PER_MIN = 0.1; // Default rate: 6 degrees per hour
+private static final double DEFAULT_RATE_DEG_PER_MIN = 0.1;
 
-// State variables for the command off-delay timer
-private boolean isCommandActive = false;
-private boolean isCountdownActive = false;
-private long countdownStartTime = 0;
+// New variables to store state during a run
+private boolean setpointWasMetDuringRun = false;
+private double minutesToReachSetpoint = 0.0;
 
+// ADD THESE TWO LINES FOR THE OFF-DELAY TIMER
+private boolean isOffDelayActive = false;
+private long offDelayStartTime = 0;
 
 // Two separate lists to store performance history for each mode.
 private java.util.List<PerformanceRecord> heatHistory = new java.util.ArrayList<>();
@@ -1960,34 +1960,24 @@ private java.util.List<PerformanceRecord> coolHistory = new java.util.ArrayList<
  * Called once when the program starts. Initializes defaults.
  */
 public void onStart() throws Exception {
-    // Set default values for configurable parameters if they are not already set
+    // Set default values for configurable parameters
     if (getMaxMinutesAllowed().isNull()) setMaxMinutesAllowed(new BStatusNumeric(180.0));
     if (getTempTolerance().isNull()) setTempTolerance(new BStatusNumeric(0.5));
     if (getHistoryDaysToRetain().isNull()) setHistoryDaysToRetain(new BStatusNumeric(10.0));
     if (getEmaWeightingFactor().isNull()) setEmaWeightingFactor(new BStatusNumeric(2.0));
     
-    // This ensures the default is set correctly on first startup.
-    if (getCommandOffDelaySeconds().getValue() == 0.0) {
-        double delayInSeconds = getMaxMinutesAllowed().getValue() * 60.0;
-        setCommandOffDelaySeconds(new BStatusNumeric(delayInSeconds));
-    }
-
-
     // Initialize output/status slots
     setIsRunning(new BStatusBoolean(false));
     setMinutesToSetpoint(new BStatusNumeric(getMaxMinutesAllowed().getValue()));
     setDegreesPerMinuteHeat(new BStatusNumeric(DEFAULT_RATE_DEG_PER_MIN));
     setDegreesPerMinuteCool(new BStatusNumeric(DEFAULT_RATE_DEG_PER_MIN));
-    setEquipmentStartCommand(new BStatusBoolean(false)); 
+    getEquipmentStartCommand().setValue(false); 
     getEquipmentStartCommand().setStatus(BStatus.NULL); 
-    getCountdownToNullStatus().setValue("Inactive");
-    setStartTimerNow(new BStatusBoolean(false)); // Initialize the visual indicator
-    setFormattedStatusLog("[onStart] Optimal Start block initialized.");
+    getStatusLog().setValue("[onStart] Optimal Start block initialized.");
     
-    // Initialize history log and update model to load any persistent values
+    // Initialize history log and update model
     updateHistoryLog(); 
     updateModel();
-
     setZoneAtTempTolerance(new BStatusBoolean(false)); 
     
     updateTimer();
@@ -1996,38 +1986,36 @@ public void onStart() throws Exception {
 /**
  * Main execution loop, called periodically by the timer.
  */
+
 public void onExecute() throws Exception {
     updateTimer(); 
 
     updateZoneAtTempTolerance();
-
-    // The startTimerNow trigger is now handled internally by updateEquipmentStartCommand().
-    // The manual trigger block has been removed.
 
     if (getClearHistoryNow().getValue()) {
         clearHistory();
         setClearHistoryNow(new BStatusBoolean(false));
     }
 
+    // Core logic execution
     if (isOptimalStartRunning) {
         monitorActiveRun();
     } else {
         updateIdleEstimate();
     }
     
-    // Always update the final equipment start command based on the latest values.
+    // Always update the final equipment start command based on the latest state.
     updateEquipmentStartCommand();
 
-    // Debug logging if enabled
+    // ADDED BACK: Optional debug tracing
     if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
-        System.out.println("--- [onExecute Debug Trace] ---");
+        System.out.println("--- [Debug] ---");
         System.out.println("isOptimalStartRunning: " + isOptimalStartRunning);
-        System.out.println("isCountdownActive: " + isCountdownActive);
-        System.out.println("isCommandActive: " + isCommandActive);
-        System.out.println("zoneAtTempTolerance: " + getZoneAtTempTolerance().getValue());
-        System.out.println("minutesToSetpoint: " + round1(getMinutesToSetpoint().getValue()));
-        System.out.println("equipmentStartCommand: " + getEquipmentStartCommand().getValue() + " (" + getEquipmentStartCommand().getStatus() + ")");
-        System.out.println("---------------------------------");
+        System.out.println("isOffDelayActive: " + isOffDelayActive);
+        System.out.println("setpointWasMetDuringRun: " + setpointWasMetDuringRun);
+        System.out.println("minutesToSetpoint (estimate): " + round1(getMinutesToSetpoint().getValue()));
+        System.out.println("equipmentStartCommand: " + getEquipmentStartCommand().getValue() + " (Status: " + getEquipmentStartCommand().getStatus() + ")");
+        System.out.println("-----------------");
     }
 }
 
@@ -2044,6 +2032,84 @@ public void onStop() throws Exception {
 // --- Core Logic Methods ---
 //================================================================
 
+private void updateEquipmentStartCommand() {
+    // --- Off-Delay Timer Management ---
+    // First, check if the off-delay countdown is currently active.
+    if (isOffDelayActive) {
+        long elapsedSeconds = (System.currentTimeMillis() - offDelayStartTime) / 1000;
+        long delayDuration = 60; // Default 60s
+        if (getCommandOffDelaySeconds().getStatus().isOk()) {
+            delayDuration = (long) getCommandOffDelaySeconds().getValue();
+        }
+
+        if (elapsedSeconds >= delayDuration) {
+            // Timer has expired. Release the command to NULL.
+            isOffDelayActive = false;
+            getEquipmentStartCommand().setValue(false);
+            getEquipmentStartCommand().setStatus(BStatus.NULL);
+            getCountdownToNullStatus().setValue(false); // Set to FALSE because the countdown is over.
+            setFormattedStatusLog("Off-delay expired. Command released to NULL.");
+        } else {
+            // Timer is still running. The countdown is active.
+            getCountdownToNullStatus().setValue(true); // Set to TRUE because the countdown is active.
+            setFormattedStatusLog("Command off-delay active. " + (delayDuration - elapsedSeconds) + "s remaining.");
+        }
+        // IMPORTANT: Skip all other logic while the timer is active.
+        return;
+    }
+
+    // --- Standard Start/Stop Logic ---
+    if (!getScheduleNextValue().getStatus().isOk() || !getScheduleNextEventTime().getStatus().isOk()) {
+        getEquipmentStartCommand().setValue(false);
+        getEquipmentStartCommand().setStatus(BStatus.NULL);
+        getCountdownToNullStatus().setValue(false); // Set to FALSE on error.
+        return;
+    }
+
+    boolean isNextPeriodOccupied = getScheduleNextValue().getValue();
+    boolean startConditionMet = false;
+
+    // --- Start Condition Logic ---
+    if (isNextPeriodOccupied && !isOptimalStartRunning) {
+        long currentTime = System.currentTimeMillis();
+        long nextEventTime = (long) getScheduleNextEventTime().getValue();
+        double timeToNextMinutes = (nextEventTime - currentTime) / 60000.0;
+        if (timeToNextMinutes < 0) timeToNextMinutes = 0;
+        
+        double optimalStartMinutes = getMinutesToSetpoint().getValue();
+
+        if (optimalStartMinutes >= timeToNextMinutes) {
+            startConditionMet = true;
+        }
+    }
+
+    // --- Final Command Output Logic ---
+    if (startConditionMet) {
+        // CASE 1: Start the equipment.
+        startOptimalStartSequence();
+        getEquipmentStartCommand().setValue(true);
+        getEquipmentStartCommand().setStatus(BStatus.ok);
+        getCountdownToNullStatus().setValue(false); // Set to FALSE because no countdown is active.
+    } else if (isOptimalStartRunning) {
+        // CASE 2: Hold the equipment ON because a run is active.
+        getEquipmentStartCommand().setValue(true);
+        getEquipmentStartCommand().setStatus(BStatus.ok);
+        getCountdownToNullStatus().setValue(false); // Set to FALSE because no countdown is active.
+    } else {
+        // CASE 3: The command should be OFF. Instead of releasing immediately, start the countdown.
+        // Only start the countdown if the command was previously ON.
+        if (getEquipmentStartCommand().getValue()) {
+            isOffDelayActive = true;
+            offDelayStartTime = System.currentTimeMillis();
+            getCountdownToNullStatus().setValue(true); // Set to TRUE to indicate the countdown has started.
+            setFormattedStatusLog("Entering command off-delay countdown...");
+        } else {
+            // If the command was already off, the countdown is not active.
+            getCountdownToNullStatus().setValue(false);
+        }
+    }
+}
+
 /**
  * Starts a new warmup/cooldown sequence.
  */
@@ -2059,8 +2125,13 @@ private void startOptimalStartSequence() {
         return;
     }
 
+    // Reset state for the new run
+    setpointWasMetDuringRun = false;
+    minutesToReachSetpoint = 0.0;
+
     startTimestamp = System.currentTimeMillis();
     isOptimalStartRunning = true;
+    lastStartTriggerTimestamp = System.currentTimeMillis();
     setIsRunning(new BStatusBoolean(true));
     setZoneTempAtStart(new BStatusNumeric(getZoneTemp().getValue()));
     
@@ -2079,39 +2150,35 @@ private void startOptimalStartSequence() {
 private void monitorActiveRun() {
     long now = System.currentTimeMillis();
     double elapsedMinutes = (now - startTimestamp) / 60000.0;
-    
-    // NEW: Added detailed debug logging for active runs
-    if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
-        System.out.println("--- [monitorActiveRun Debug] ---");
-        System.out.println("Current Zone Temp: " + round1(getZoneTemp().getValue()));
-        System.out.println("Target Setpoint: " + round1(getTargetZoneTempSetpoint().getValue()));
-        System.out.println("Elapsed Minutes: " + round1(elapsedMinutes));
-        System.out.println("Is zone at temp tolerance?: " + getZoneAtTempTolerance().getValue());
-        System.out.println("--------------------------------");
+
+    // 1. Check if the setpoint has been met for the first time.
+    if (getZoneAtTempTolerance().getValue() && !setpointWasMetDuringRun) {
+        setpointWasMetDuringRun = true;
+        minutesToReachSetpoint = elapsedMinutes;
+        setFormattedStatusLog("[Monitor] Target met in " + round1(minutesToReachSetpoint) + " min. Stored value for final calculation.");
     }
 
-    if (getZoneAtTempTolerance().getValue()) {
-        setFormattedStatusLog("[Monitor] Target met in " + round1(elapsedMinutes) + " minutes.");
-        stopAndRecordPerformance(elapsedMinutes);
-        return;
-    }
-    
+    // 2. Handle a loss of sensor data as a hard stop.
     if (!getZoneTemp().getStatus().isOk() || !getTargetZoneTempSetpoint().getStatus().isOk()) {
         setFormattedStatusLog("[Monitor] Run stopped: Lost Zone Temp or Target Setpoint.");
         stopAndRecordPerformance(elapsedMinutes);
         return;
     }
-    
-    setWarmupTimeMinutes(new BStatusNumeric(elapsedMinutes));
 
-    if (elapsedMinutes >= getMaxMinutesAllowed().getValue()) {
-        setFormattedStatusLog("[Monitor] Max runtime reached after " + round1(elapsedMinutes) + " minutes.");
-        stopAndRecordPerformance(elapsedMinutes);
+    // 3. The schedule changing state is the primary trigger to end the run.
+    boolean isNextPeriodOccupied = getScheduleNextValue().getValue();
+    if (!isNextPeriodOccupied) {
+        double finalPerformanceMinutes = setpointWasMetDuringRun ? minutesToReachSetpoint : elapsedMinutes;
+        setFormattedStatusLog("[Monitor] Schedule occupied. Recording performance using " + round1(finalPerformanceMinutes) + " min.");
+        stopAndRecordPerformance(finalPerformanceMinutes);
     }
+    
+    // This provides a live stopwatch for the user interface.
+    setWarmupTimeMinutes(new BStatusNumeric(elapsedMinutes));
 }
 
 /**
- * Stops the run and records its performance into the correct history list.
+ * Stops the run and records its performance.
  */
 private void stopAndRecordPerformance(double actualMinutes) {
     isOptimalStartRunning = false;
@@ -2121,57 +2188,80 @@ private void stopAndRecordPerformance(double actualMinutes) {
     double zoneNow = getZoneTemp().getValue();
     double delta = Math.abs(zoneNow - zoneStart);
     
-    if (actualMinutes <= 0.1) {
-        setFormattedStatusLog("[Record] Run was too short. Performance not recorded.");
-        return;
-    }
+    if (actualMinutes > 0.1) {
+        double rate = delta / actualMinutes;
+        String mode = (zoneStart < getTargetZoneTempSetpoint().getValue()) ? "HEAT" : "COOL";
+        double outdoorStart = getOutdoorTempAtStart().getStatus().isOk() ? getOutdoorTempAtStart().getValue() : Double.NaN;
+        
+        // ADDED BACK: Log the performance record details
+        if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
+            System.out.println("[Performance Record] Recording with duration: " + round1(actualMinutes) + " min, Rate: " + round1(rate) + " deg/min, Mode: " + mode);
+        }
+        
+        PerformanceRecord newRecord = new PerformanceRecord(System.currentTimeMillis(), rate, mode, zoneStart, outdoorStart);
 
-    double rate = delta / actualMinutes;
-    String mode = (zoneStart < getTargetZoneTempSetpoint().getValue()) ? "HEAT" : "COOL";
-    double outdoorStart = getOutdoorTempAtStart().getStatus().isOk() ? getOutdoorTempAtStart().getValue() : Double.NaN;
-    
-    PerformanceRecord newRecord = new PerformanceRecord(System.currentTimeMillis(), rate, mode, zoneStart, outdoorStart);
-
-    if ("HEAT".equals(mode)) {
-        heatHistory.add(newRecord);
+        if ("HEAT".equals(mode)) {
+            heatHistory.add(newRecord);
+        } else {
+            coolHistory.add(newRecord);
+        }
+        setFormattedStatusLog("[" + mode + "] run recorded. Rate: " + round1(rate) + " deg/min.");
+        updateModel();
     } else {
-        coolHistory.add(newRecord);
+       setFormattedStatusLog("[Record] Run was too short. Performance not recorded.");
     }
-
-    // NEW: Added debug logging for performance recording
-    if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
-        System.out.println("--- [stopAndRecordPerformance Debug] ---");
-        System.out.println("Run Duration (minutes): " + round1(actualMinutes));
-        System.out.println("Temp Change (delta): " + round1(delta));
-        System.out.println("Calculated Rate (deg/min): " + round1(rate));
-        System.out.println("Mode: " + mode);
-        System.out.println("--------------------------------------");
-    }
-
-    setFormattedStatusLog("[" + mode + "] run recorded. Rate: " + round1(rate) + " deg/min.");
-    updateModel();
 }
 
 /**
- * Updates the learned performance model using an EMA of historical data for each mode.
+ * Updates the learned performance model using an EMA of historical data.
  */
 private void updateModel() {
     pruneHistory();
     double heatRateEma = computeEmaForMode("HEAT");
     double coolRateEma = computeEmaForMode("COOL");
-    if (heatRateEma > 0.0) {
-        setDegreesPerMinuteHeat(new BStatusNumeric(heatRateEma));
-    } else {
-        setDegreesPerMinuteHeat(new BStatusNumeric(DEFAULT_RATE_DEG_PER_MIN));
+    setDegreesPerMinuteHeat(new BStatusNumeric(heatRateEma > 0.0 ? heatRateEma : DEFAULT_RATE_DEG_PER_MIN));
+    setDegreesPerMinuteCool(new BStatusNumeric(coolRateEma > 0.0 ? coolRateEma : DEFAULT_RATE_DEG_PER_MIN));
+    
+    // ADDED: Optional logging to show the data behind the EMA calculation
+    if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
+        System.out.println("--- [Model Update] ---");
+
+        // Build and print the HEAT history array
+        StringBuilder heatRates = new StringBuilder("HEAT Rates (deg/min): [");
+        if (heatHistory.isEmpty()) {
+            heatRates.append("No history]");
+        } else {
+            for (int i = 0; i < heatHistory.size(); i++) {
+                heatRates.append(round1(heatHistory.get(i).rate));
+                if (i < heatHistory.size() - 1) {
+                    heatRates.append(", ");
+                }
+            }
+            heatRates.append("]");
+        }
+        System.out.println(heatRates.toString());
+        System.out.println("New HEAT EMA: " + round1(heatRateEma));
+
+        // Build and print the COOL history array
+        StringBuilder coolRates = new StringBuilder("COOL Rates (deg/min): [");
+        if (coolHistory.isEmpty()) {
+            coolRates.append("No history]");
+        } else {
+            for (int i = 0; i < coolHistory.size(); i++) {
+                coolRates.append(round1(coolHistory.get(i).rate));
+                if (i < coolHistory.size() - 1) {
+                    coolRates.append(", ");
+                }
+            }
+            coolRates.append("]");
+        }
+        System.out.println(coolRates.toString());
+        System.out.println("New COOL EMA: " + round1(coolRateEma));
+        System.out.println("----------------------");
     }
-    if (coolRateEma > 0.0) {
-        setDegreesPerMinuteCool(new BStatusNumeric(coolRateEma));
-    } else {
-        setDegreesPerMinuteCool(new BStatusNumeric(DEFAULT_RATE_DEG_PER_MIN));
-    }
+    
     updateCurrentHistoryRecordCount();
     updateHistoryLog();
-    setFormattedStatusLog("[Model Updated] Heat Rate: " + round1(getDegreesPerMinuteHeat().getValue()) + ", Cool Rate: " + round1(getDegreesPerMinuteCool().getValue()));
 }
 
 /**
@@ -2190,135 +2280,30 @@ private void updateIdleEstimate() {
     double delta = Math.abs(target - zone);
     double maxMinutes = getMaxMinutesAllowed().getValue();
     double estimatedMinutes = maxMinutes;
-    if (zone < target) {
+    
+    if (zone < target) { // Heating needed
         double heatRate = getDegreesPerMinuteHeat().getValue();
-        if (heatRate > 0.01) { 
-            estimatedMinutes = delta / heatRate;
-        }
-    } else {
+        if (heatRate > 0.01) estimatedMinutes = delta / heatRate;
+    } else { // Cooling needed
         double coolRate = getDegreesPerMinuteCool().getValue();
-        if (coolRate > 0.01) {
-            estimatedMinutes = delta / coolRate;
-        }
+        if (coolRate > 0.01) estimatedMinutes = delta / coolRate;
     }
     setMinutesToSetpoint(new BStatusNumeric(Math.min(estimatedMinutes, maxMinutes)));
 }
 
 //================================================================
-// --- Helper Methods ---
+// --- Helper and Utility Methods ---
 //================================================================
 
-/**
- * This method now contains the final start/stop logic and internally triggers the performance run.
- */
-private void updateEquipmentStartCommand() {
-    if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
-        System.out.println("--- [updateEquipmentStartCommand Debug] ---");
-    }
-    
-    if (isCountdownActive) {
-        int delay = getCommandOffDelayValue();
-        long elapsed = (System.currentTimeMillis() - countdownStartTime) / 1000;
-        int remaining = (int) (delay - elapsed);
-
-        if (remaining < 1) {
-            getEquipmentStartCommand().setStatus(BStatus.NULL);
-            getEquipmentStartCommand().setValue(false);
-            isCommandActive = false;
-            isCountdownActive = false;
-            getCountdownToNullStatus().setValue("Delay expired -> Output = NULL");
-        } else {
-            getCountdownToNullStatus().setValue("Countdown active -> " + remaining + "s remaining");
-        }
-        return; 
-    }
-
-    boolean startConditionMet = false;
-    if (getScheduleNextValue().getStatus().isOk() && 
-        getScheduleNextEventTime().getStatus().isOk() && 
-        getMinutesToSetpoint().getStatus().isOk()) {
-        
-        long currentTime = System.currentTimeMillis();
-        long nextEventTime = (long) getScheduleNextEventTime().getValue();
-        double timeToNextMinutes = (nextEventTime - currentTime) / 60000.0;
-
-        if (timeToNextMinutes < 0) {
-            timeToNextMinutes = 0;
-        }
-
-        boolean nextScheduleIsOccupied = getScheduleNextValue().getValue();
-        double optimalStartMinutes = getMinutesToSetpoint().getValue();
-        
-        if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
-            System.out.println("scheduleNextValue: " + nextScheduleIsOccupied);
-            System.out.println("optimalStartMinutes (minutesToSetpoint): " + round1(optimalStartMinutes));
-            System.out.println("timeToNextSchedule (minutes): " + round1(timeToNextMinutes));
-            System.out.println("Core condition (optimalStartMinutes >= timeToNextMinutes): " + (optimalStartMinutes >= timeToNextMinutes));
-        }
-
-        if (nextScheduleIsOccupied && (optimalStartMinutes >= timeToNextMinutes)) {
-            startConditionMet = true;
-        }
-    }
-    
-    // Logic to set output, start performance run, or start countdown
-    if (startConditionMet) {
-        getEquipmentStartCommand().setValue(true);
-        getEquipmentStartCommand().setStatus(BStatus.ok); 
-        isCommandActive = true;
-        isCountdownActive = false;
-        getCountdownToNullStatus().setValue("Active: Conditions Met");
-        
-        if (!isOptimalStartRunning) {
-            setFormattedStatusLog("[Internal Trigger] Start condition met. Initiating performance run.");
-            lastStartTriggerTimestamp = System.currentTimeMillis();
-            startOptimalStartSequence();
-            setStartTimerNow(new BStatusBoolean(true));
-        }
-    } else if (isCommandActive && getZoneAtTempTolerance().getValue()) {
-        isCountdownActive = true;
-        countdownStartTime = System.currentTimeMillis();
-        getCountdownToNullStatus().setValue("Entering countdown: Zone at temp.");
-        setStartTimerNow(new BStatusBoolean(false));
-    } else {
-        getEquipmentStartCommand().setValue(false);
-        getEquipmentStartCommand().setStatus(BStatus.NULL);
-        isCommandActive = false;
-        getCountdownToNullStatus().setValue("Inactive");
-        setStartTimerNow(new BStatusBoolean(false));
-    }
-}
-
-
-/**
- * Safely gets the off-delay value for the equipment command.
- */
-int getCommandOffDelayValue() {
-    int delay = 5400;
-    if (getCommandOffDelaySeconds().getStatus().isOk()) {
-        delay = (int) Math.max(1, getCommandOffDelaySeconds().getValue());
-    }
-    return delay;
-}
-
-
-/**
- * Sets the status log with a prepended timestamp of the last trigger.
- */
 private void setFormattedStatusLog(String message) {
     String lastTriggerTimeStr = "never";
     if (lastStartTriggerTimestamp > 0) {
         java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
         lastTriggerTimeStr = sdf.format(new java.util.Date(lastStartTriggerTimestamp));
     }
-    
-    String finalMessage = "[Last Trigger: " + lastTriggerTimeStr + "] " + message;
-    setStatusLog(new BStatusString(finalMessage));
+    getStatusLog().setValue("[Last Trigger: " + lastTriggerTimeStr + "] " + message);
 }
 
-/**
- * Continuously checks if the zone is within tolerance and updates the status slot.
- */
 private void updateZoneAtTempTolerance() {
     if (!getZoneTemp().getStatus().isOk() || !getTargetZoneTempSetpoint().getStatus().isOk() || getTempTolerance().isNull()) {
         setZoneAtTempTolerance(new BStatusBoolean(false));
@@ -2327,27 +2312,16 @@ private void updateZoneAtTempTolerance() {
     double zone = getZoneTemp().getValue();
     double target = getTargetZoneTempSetpoint().getValue();
     double tolerance = getTempTolerance().getValue();
-    boolean isWithinTolerance = Math.abs(zone - target) <= tolerance;
-    setZoneAtTempTolerance(new BStatusBoolean(isWithinTolerance));
+    setZoneAtTempTolerance(new BStatusBoolean(Math.abs(zone - target) <= tolerance));
 }
 
-/**
- * Removes old records from the performanceHistory list.
- */
 private void pruneHistory() {
     if (getHistoryDaysToRetain().isNull()) return;
     int maxRecords = (int) getHistoryDaysToRetain().getValue();
-    while (heatHistory.size() > maxRecords) {
-        heatHistory.remove(0);
-    }
-    while (coolHistory.size() > maxRecords) {
-        coolHistory.remove(0);
-    }
+    while (heatHistory.size() > maxRecords) heatHistory.remove(0);
+    while (coolHistory.size() > maxRecords) coolHistory.remove(0);
 }
 
-/**
- * Clears all learned history and resets the logs.
- */
 private void clearHistory() {
     heatHistory.clear();
     coolHistory.clear();
@@ -2355,23 +2329,14 @@ private void clearHistory() {
     setFormattedStatusLog("[History] All performance records have been cleared.");
 }
 
-/**
- * Computes the Exponential Moving Average (EMA) for a specific mode.
- */
 private double computeEmaForMode(String mode) {
     java.util.List<PerformanceRecord> relevantHistory = "HEAT".equals(mode) ? heatHistory : coolHistory;
     if (relevantHistory.isEmpty()) return 0.0;
     double[] series = new double[relevantHistory.size()];
-    for (int i = 0; i < relevantHistory.size(); i++) {
-        series[i] = relevantHistory.get(i).rate;
-    }
-    if (series.length == 1) return series[0];
-    return computeEMA(series);
+    for (int i = 0; i < relevantHistory.size(); i++) series[i] = relevantHistory.get(i).rate;
+    return (series.length == 1) ? series[0] : computeEMA(series);
 }
 
-/**
- * Generic EMA calculation.
- */
 private double computeEMA(double[] series) {
     if (series.length == 0) return 0.0;
     double weightingFactor = 2.0;
@@ -2386,63 +2351,7 @@ private double computeEMA(double[] series) {
     return ema;
 }
 
-/**
- * Updates the detailed multi-line history log string and prints to console.
- */
 private void updateHistoryLog() {
-    if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
-        System.out.println("--- [MODEL UPDATE] Dumping Full Performance History ---");
-        
-        System.out.println("--- HEAT History (" + heatHistory.size() + " records) ---");
-        if (heatHistory.isEmpty()) {
-            System.out.println("No heat records available.");
-        } else {
-            StringBuilder heatRatesArray = new StringBuilder("Heat Rates (deg/min): [");
-            for (int i = 0; i < heatHistory.size(); i++) {
-                heatRatesArray.append(round1(heatHistory.get(i).rate));
-                if (i < heatHistory.size() - 1) {
-                    heatRatesArray.append(", ");
-                }
-            }
-            heatRatesArray.append("]");
-            System.out.println(heatRatesArray.toString());
-            System.out.println("---"); 
-
-            for (int i = 0; i < heatHistory.size(); i++) {
-                PerformanceRecord r = heatHistory.get(i);
-                String logEntry = String.format("%d) Rate: %.1f | ZoneStart: %.1f | OAT: %s",
-                    i + 1, r.rate, r.zoneTempStart,
-                    Double.isNaN(r.outdoorTempStart) ? "N/A" : String.valueOf(round1(r.outdoorTempStart)));
-                System.out.println(logEntry);
-            }
-        }
-        
-        System.out.println("\n--- COOL History (" + coolHistory.size() + " records) ---");
-        if (coolHistory.isEmpty()) {
-            System.out.println("No cool records available.");
-        } else {
-            StringBuilder coolRatesArray = new StringBuilder("Cool Rates (deg/min): [");
-            for (int i = 0; i < coolHistory.size(); i++) {
-                coolRatesArray.append(round1(coolHistory.get(i).rate));
-                if (i < coolHistory.size() - 1) {
-                    coolRatesArray.append(", ");
-                }
-            }
-            coolRatesArray.append("]");
-            System.out.println(coolRatesArray.toString());
-            System.out.println("---"); 
-
-            for (int i = 0; i < coolHistory.size(); i++) {
-                PerformanceRecord r = coolHistory.get(i);
-                String logEntry = String.format("%d) Rate: %.1f | ZoneStart: %.1f | OAT: %s",
-                    i + 1, r.rate, r.zoneTempStart,
-                    Double.isNaN(r.outdoorTempStart) ? "N/A" : String.valueOf(round1(r.outdoorTempStart)));
-                System.out.println(logEntry);
-            }
-        }
-        System.out.println("\n--- End of History Dump ---");
-    }    
-    
     try {
         BStatusString historyLogSlot = (BStatusString)get("historyLog");
         if (historyLogSlot == null) return;
@@ -2463,26 +2372,15 @@ private void updateHistoryLog() {
     }
 }
 
-/**
- * Updates the output slot that shows the current number of historical records.
- */
 private void updateCurrentHistoryRecordCount() {
     setCurrentHistoryRecordCount(new BStatusNumeric(heatHistory.size() + coolHistory.size()));
 }
 
-/**
- * Reschedules the onExecute method to run again.
- */
 private void updateTimer() {
-    if (ticket != null) {
-        ticket.cancel();
-    }
+    if (ticket != null) ticket.cancel();
     ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(15), BProgram.execute, null);
 }
 
-/**
- * Utility function to round a double to one decimal place.
- */
 private double round1(double v) {
     if (Double.isNaN(v)) return 0.0;
     return Math.round(v * 10.0) / 10.0;
