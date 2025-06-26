@@ -1541,9 +1541,7 @@ double round1(double val) {
 
 <details>
 
-<summary>🧊</summary>
-
-### 🧊 Advanced Chiller Rotator (Per-Chiller Duty Cycle)
+<summary>🧊 Advanced Chiller Rotator (Per-Chiller Duty Cycle)</summary>
 
 This program block implements an advanced chiller staging and rotation strategy designed for high reliability and equipment protection. It calculates the total number of required chillers based on temperature, load, and critical room demands, and then intelligently enables chillers based on their individual availability and readiness.
 
@@ -1554,10 +1552,8 @@ This logic supersedes simpler staging methods by enforcing **per-chiller minimum
 
 <p align="center">
   <img src="snips/chillerRotatorBlockSnip.png" alt="Chiller Rotator Wiresheet" width="800">
-</p>
-
-<p align="center">
-  <img src="snips/chillerRotatorBlockLogs.png" alt="Chiller Rotator Wiresheet" width="800">
+  <img src="snips/chillerRotatorBlockLogs.png" alt="Chiller Rotator Console Logs" width="800">
+  <br><em>Chiller Rotator wiresheet with corresponding console logs showing per-chiller timer status.</em>
 </p>
 
 ---
