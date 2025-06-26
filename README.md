@@ -1553,7 +1553,7 @@ This logic supersedes simpler staging methods by enforcing **per-chiller minimum
 <p align="center">
   <img src="snips/chillerRotatorBlockSnip.png" alt="Chiller Rotator Wiresheet" width="800">
   <img src="snips/chillerRotatorBlockLogs.png" alt="Chiller Rotator Console Logs" width="800">
-  <br><em>Chiller Rotator wiresheet with corresponding console logs showing per-chiller timer status.</em>
+  <br><em>Chiller Rotator wiresheet with corresponding console logs in the Platform Admin showing per-chiller timer status.</em>
 </p>
 
 ---
@@ -1637,9 +1637,14 @@ private ChillerState[] chillerStates = new ChillerState[8];
 static final double[] LOAD_UP_THRESHOLDS = { 1.3, 2.6, 3.9, 5.2, 6.5, 7.8, 9.1, 10.4 };
 static final double[] LOAD_DOWN_THRESHOLDS = { 1.2, 2.5, 3.8, 5.1, 6.4, 7.7, 9.0 };
 static final int[][] DUTY_ROTATIONS = {
-    { 0, 1, 2, 3, 4, 5, 6, 7 }, { 1, 2, 3, 4, 5, 6, 7, 0 }, { 2, 3, 4, 5, 6, 7, 0, 1 },
-    { 3, 4, 5, 6, 7, 0, 1, 2 }, { 4, 5, 6, 7, 0, 1, 2, 3 }, { 5, 6, 7, 0, 1, 2, 3, 4 },
-    { 6, 7, 0, 1, 2, 3, 4, 5 }, { 7, 0, 1, 2, 3, 4, 5, 6 }
+    { 0, 1, 2, 3, 4, 5, 6, 7 }, 
+    { 1, 2, 3, 4, 5, 6, 7, 0 }, 
+    { 2, 3, 4, 5, 6, 7, 0, 1 },
+    { 3, 4, 5, 6, 7, 0, 1, 2 }, 
+    { 4, 5, 6, 7, 0, 1, 2, 3 }, 
+    { 5, 6, 7, 0, 1, 2, 3, 4 },
+    { 6, 7, 0, 1, 2, 3, 4, 5 }, 
+    { 7, 0, 1, 2, 3, 4, 5, 6 }
 };
 
 /**
