@@ -50,7 +50,7 @@ class OptimalStartModel:
         self._temp_tolerance = 1.0
         self._history_days_to_retain = 10
         self._ema_weighting_factor = 2.0
-        self._command_off_delay_seconds = 30.0 # Default value
+        self._command_off_delay_seconds = 30.0
         self._print_to_console_log = True
 
         # --- Outputs ---
@@ -62,7 +62,8 @@ class OptimalStartModel:
         self._zone_at_temp_tolerance = False
         self._status_log = ""
         self._warmup_time_minutes = 0.0
-        self._countdown_to_null_status = False # UPDATED to be a boolean
+        self._countdown_to_null_status = False
+        self._current_history_record_count = 0 # Added for completeness
 
     # --- "onStart" Equivalent ---
     def start(self):
@@ -83,12 +84,16 @@ class OptimalStartModel:
             self._clear_history()
             self.set_clear_history_now(False)
 
+        # --- REVISED: Explicit State-Based Logic ---
         if self._is_optimal_start_running:
+            # STATE 1: ACTIVE RUN
             self._monitor_active_run()
+            self.set_equipment_start_command(True)
+            self.set_countdown_to_null_status(False)
         else:
+            # STATE 2: NOT RUNNING (Idle, Estimating, or in Off-Delay)
             self._update_idle_estimate()
-
-        self._update_equipment_start_command()
+            self._update_equipment_start_command()
         
         if self.get_print_to_console_log():
             print("--- [Debug] ---")
@@ -101,12 +106,7 @@ class OptimalStartModel:
             print("-----------------")
 
 
-    # --- ###################################################### ---
-    # --- ### UPDATED METHODS TO MATCH FINAL JAVA LOGIC ### ---
-    # --- ###################################################### ---
-
     def _update_equipment_start_command(self):
-        # --- Off-Delay Timer Management ---
         if self._is_off_delay_active:
             elapsed_seconds = (time.time() * 1000 - self._off_delay_start_time) / 1000
             delay_duration = self.get_command_off_delay_seconds() or 60
@@ -121,12 +121,10 @@ class OptimalStartModel:
                 self._set_formatted_status_log(f"Command off-delay active. {int(delay_duration - elapsed_seconds)}s remaining.")
             return
 
-        # --- Standard Start/Stop Logic ---
-        # (Assuming schedule points are valid for simulation)
         is_next_period_occupied = self.get_schedule_next_value()
         start_condition_met = False
 
-        if is_next_period_occupied and not self._is_optimal_start_running:
+        if is_next_period_occupied:
             current_time = time.time() * 1000
             next_event_time = self.get_schedule_next_event_time()
             time_to_next_minutes = max(0, (next_event_time - current_time) / 60000.0)
@@ -134,12 +132,8 @@ class OptimalStartModel:
             if optimal_start_minutes >= time_to_next_minutes:
                 start_condition_met = True
 
-        # --- Final Command Output Logic ---
         if start_condition_met:
             self._start_optimal_start_sequence()
-            self.set_equipment_start_command(True)
-            self.set_countdown_to_null_status(False)
-        elif self._is_optimal_start_running:
             self.set_equipment_start_command(True)
             self.set_countdown_to_null_status(False)
         else:
@@ -157,10 +151,8 @@ class OptimalStartModel:
             self.set_minutes_to_setpoint(0.0)
             return
 
-        # NEW: Reset state for the new run
         self._setpoint_was_met_during_run = False
         self._minutes_to_reach_setpoint = 0.0
-
         self._start_timestamp = int(time.time() * 1000)
         self._is_optimal_start_running = True
         self._last_start_trigger_timestamp = self._start_timestamp
@@ -171,15 +163,11 @@ class OptimalStartModel:
         now = int(time.time() * 1000)
         elapsed_minutes = (now - self._start_timestamp) / 60000.0
 
-        # 1. Check if the setpoint has been met for the first time.
         if self.get_zone_at_temp_tolerance() and not self._setpoint_was_met_during_run:
             self._setpoint_was_met_during_run = True
             self._minutes_to_reach_setpoint = elapsed_minutes
             self._set_formatted_status_log(f"[Monitor] Target met in {elapsed_minutes:.1f} min. Stored value.")
 
-        # 2. Handle a loss of sensor data (simulated as always OK)
-
-        # 3. The schedule changing state is the primary trigger to end the run.
         is_next_period_occupied = self.get_schedule_next_value()
         if not is_next_period_occupied:
             final_performance_minutes = self._minutes_to_reach_setpoint if self._setpoint_was_met_during_run else elapsed_minutes
@@ -187,10 +175,6 @@ class OptimalStartModel:
             self._stop_and_record_performance(final_performance_minutes)
         
         self.set_warmup_time_minutes(elapsed_minutes)
-
-    # --- ###################################################### ---
-    # --- ### END OF UPDATED METHODS ### ---
-    # --- ###################################################### ---
 
     def _update_zone_at_temp_tolerance(self):
         zone = self.get_zone_temp()
@@ -203,7 +187,6 @@ class OptimalStartModel:
         self._is_optimal_start_running = False
         self.set_is_running(False)
         
-        # In a real scenario, you'd get the current temp. Here we simulate the change.
         zone_start = 80.0 
         zone_now = self.get_target_zone_temp_setpoint()
         delta = abs(zone_now - zone_start)
@@ -215,7 +198,7 @@ class OptimalStartModel:
             if self.get_print_to_console_log():
                 print(f"[Performance Record] Duration: {actual_minutes:.1f} min, Rate: {rate:.2f} deg/min, Mode: {mode}")
 
-            new_record = PerformanceRecord(int(time.time() * 1000), rate, mode, zone_start, 50.0) # Assuming 50F OAT
+            new_record = PerformanceRecord(int(time.time() * 1000), rate, mode, zone_start, 50.0)
             if mode == "HEAT": self._heat_history.append(new_record)
             else: self._cool_history.append(new_record)
 
@@ -231,6 +214,7 @@ class OptimalStartModel:
 
         self.set_degrees_per_minute_heat(heat_rate_ema if heat_rate_ema > 0 else self.DEFAULT_RATE_DEG_PER_MIN)
         self.set_degrees_per_minute_cool(cool_rate_ema if cool_rate_ema > 0 else self.DEFAULT_RATE_DEG_PER_MIN)
+        self.set_current_history_record_count(len(self._heat_history) + len(self._cool_history))
         
         if self.get_print_to_console_log():
             print("--- [Model Update] ---")
@@ -327,6 +311,8 @@ class OptimalStartModel:
     def set_countdown_to_null_status(self, value): self._countdown_to_null_status = value
     def get_warmup_time_minutes(self): return self._warmup_time_minutes
     def set_warmup_time_minutes(self, value): self._warmup_time_minutes = value
+    def get_current_history_record_count(self): return self._current_history_record_count
+    def set_current_history_record_count(self, value): self._current_history_record_count = value
 
 # --- Main Execution Block (Simulation) ---
 if __name__ == "__main__":

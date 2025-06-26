@@ -1539,316 +1539,356 @@ double round1(double val) {
 
 ---
 
-<details>
-<summary>🧊 Full Java Code for Chiller Rotator</summary>
 
-[Linkedin Article](https://www.linkedin.com/posts/activity-7334973935777652736-mrRk?utm_source=share&utm_medium=member_desktop&rcm=ACoAAA0kR5wBTiy3drJcr-0Nl_8MNQFMlHxnETU)
+<details>
+<summary>🧊</summary>
+
+### 🧊 Advanced Chiller Rotator (Per-Chiller Duty Cycle)
+
+This program block implements an advanced chiller staging and rotation strategy designed for high reliability and equipment protection. It calculates the total number of required chillers based on temperature, load, and critical room demands, and then intelligently enables chillers based on their individual availability and readiness.
+
+This logic supersedes simpler staging methods by enforcing **per-chiller minimum run and off times**, ensuring that if the lead chiller in the rotation is not ready (e.g., has just shut off), the system will instantly **skip it** and bring on the next available unit to meet demand without delay.
+
+🔗 [LinkedIn Article](https://www.linkedin.com/posts/activity-7334973935777652736-mrRk?utm_source=share&utm_medium=member_desktop&rcm=ACoAAA0kR5wBTiy3drJcr-0Nl_8MNQFMlHxnETU)
+
+
+<p align="center">
+  <img src="snips/chillerRotatorBlockSnip.png" alt="Chiller Rotator Wiresheet" width="800">
+</p>
+
+<p align="center">
+  <img src="snips/chillerRotatorBlockLogs.png" alt="Chiller Rotator Wiresheet" width="800">
+</p>
+
+---
+
+### **Inputs**
+
+| Slot | Type | Notes |
+| :--- | :--- | :--- |
+| `waterTemp` | `BStatusNumeric` | Current chilled water temperature. |
+| `tempSetpoint` | `BStatusNumeric` | The desired water temperature setpoint. |
+| `loadMW` | `BStatusNumeric` | The current cooling load in megawatts (MW). |
+| `systemEnable` | `BStatusBoolean` | Master enable for the entire program. |
+| `bladeRoom1Demand` | `BStatusBoolean` | `true` if Blade Room 1 requires a chiller. |
+| `bladeRoom2Demand` | `BStatusBoolean` | `true` if Blade Room 2 requires a chiller. |
+| `bladeRoom3Demand` | `BStatusBoolean` | `true` if Blade Room 3 requires a chiller. |
+| `chillerXAvailable` | `BStatusBoolean` | Individual availability status for each chiller (1-8). |
+| `currentDutyCycle` | `BStatusNumeric` | The active duty rotation sequence (1–8). |
+| `tempStageUpDeadband` | `BStatusNumeric` | Temperature deadband to prevent staging on minor fluctuations. |
+| `minChillerRunTimeMinutes` | `BStatusNumeric` | Minimum runtime before a chiller can be turned off. |
+| `minChillerOffTimeMinutes` | `BStatusNumeric` | Minimum off-time before a chiller can be restarted. |
+| `updateIntervalSeconds` | `BStatusNumeric` | Logic execution rate in seconds. |
+| `printLogsToConsole` | `BStatusBoolean` | Enables verbose output to Niagara console when `true`. |
+
+---
+
+### **Outputs**
+
+| Slot | Type | Description |
+| :--- | :--- | :--- |
+| `chillerXEnable` | `BStatusBoolean` | Run command for each chiller (1–8). |
+| `currentSequence` | `BStatusNumeric` | Current duty rotation being followed. |
+| `statusTraceSummary` | `BStatusString` | Displays number of chillers required vs enabled. |
+| `statusTraceTemp` | `BStatusString` | Status message from temperature staging logic. |
+| `statusTraceLoad` | `BStatusString` | Status message from load-based staging logic. |
+| `statusTraceBlade` | `BStatusString` | Displays how many blade rooms are actively requesting cooling. |
+
+---
+
+### **Key Features**
+
+- **Per-Chiller Timers:** Tracks `lastStartTime` and `lastStopTime` for every chiller to enforce individual run/off time constraints.
+- **Instant Skip Logic:** If a chiller is unavailable or cooling down, the logic instantly skips to the next one in sequence.
+- **Demand Aggregation:** Adds 1 chiller per blade room demand in addition to temperature/load-based requirements.
+- **Minimum Chiller Guarantee:** Always enables at least 1 chiller (if any are available) for redundancy and flow.
+- **Verbose Logging:** Use `printLogsToConsole = true` to display trace messages in the `Application Director Console`
+
+---
+
+### Full Java Code `version 2`
 
 ```java
-Clock.Ticket ticket;
-long lastMainLogicRun = 0;
+/**
+ * REWRITTEN CHILLER ROTATOR LOGIC (June 2025, version 2)
+ *
+ * This program manages a chiller plant using advanced, per-chiller duty cycle logic.
+ *
+ * Staging Logic:
+ * 1. A "base demand" is calculated from the maximum of Temperature Demand and Load Demand.
+ * 2. Blade Room Demand is ADDITIVE, instantly adding to the base demand.
+ * 3. A MINIMUM of one chiller is always required to run.
+ * 4. A data structure now tracks the state of each individual chiller.
+ * 5. The logic enforces a Minimum Run Time and Minimum Off Time on a PER-CHILLER basis.
+ * 6. If the lead chiller in the duty cycle is not ready (e.g., in min-off-time),
+ * the logic will instantly SKIP IT and enable the next available and ready chiller in the rotation.
+ */
 
-// Temperature staging timer variables
-int chillersStagedByTemp = 0;
-long tempHighStartTime = 0;
-boolean tempHighActive = false;
+// An inner class to hold the individual state for each chiller.
+static class ChillerState {
+    long lastStartTime = 0; // Timestamp when the chiller was last started.
+    long lastStopTime = 0;  // Timestamp when the chiller was last stopped.
+}
 
-int chillersStagedByLoad = 0;
-long loadHighStartTime = 0;
-boolean loadHighActive = false;
-long loadLowStartTime = 0;
-boolean loadLowActive = false;
+// Member variables
+private Clock.Ticket ticket;
+private long lastMainLogicRun = 0;
 
-long loadChangeStartTime = 0;
-boolean loadIncreasePending = false;
-boolean loadDecreasePending = false;
+// An array to hold the state objects for all 8 chillers.
+private ChillerState[] chillerStates = new ChillerState[8];
 
-static final double[] loadUpThresholds = { 1.3, 2.6, 3.9, 5.2, 6.5, 7.8, 9.1, 10.4 }; // For staging up
-static final double[] loadDownThresholds = { 1.2, 2.5, 3.8, 5.1, 6.4, 7.7, 9.0 };     // For staging down
-
+// Static constants for load thresholds and duty rotations remain the same.
+static final double[] LOAD_UP_THRESHOLDS = { 1.3, 2.6, 3.9, 5.2, 6.5, 7.8, 9.1, 10.4 };
+static final double[] LOAD_DOWN_THRESHOLDS = { 1.2, 2.5, 3.8, 5.1, 6.4, 7.7, 9.0 };
 static final int[][] DUTY_ROTATIONS = {
-    { 0, 1, 2, 3, 4, 5, 6, 7 }, // duty1
-    { 1, 2, 3, 4, 5, 6, 7, 0 }, // duty2
-    { 2, 3, 4, 5, 6, 7, 0, 1 }, // duty3
-    { 3, 4, 5, 6, 7, 0, 1, 2 }, // duty4
-    { 4, 5, 6, 7, 0, 1, 2, 3 }, // duty5
-    { 5, 6, 7, 0, 1, 2, 3, 4 }, // duty6
-    { 6, 7, 0, 1, 2, 3, 4, 5 }, // duty7
-    { 7, 0, 1, 2, 3, 4, 5, 6 }, // duty8
-    { 0, 1, 2, 3, 4, 5, 6, 7 }  // duty9 (reset to 1)
+    { 0, 1, 2, 3, 4, 5, 6, 7 }, { 1, 2, 3, 4, 5, 6, 7, 0 }, { 2, 3, 4, 5, 6, 7, 0, 1 },
+    { 3, 4, 5, 6, 7, 0, 1, 2 }, { 4, 5, 6, 7, 0, 1, 2, 3 }, { 5, 6, 7, 0, 1, 2, 3, 4 },
+    { 6, 7, 0, 1, 2, 3, 4, 5 }, { 7, 0, 1, 2, 3, 4, 5, 6 }
 };
 
+/**
+ * Called once when the program starts. Initializes default values and the chiller state array.
+ */
 public void onStart() throws Exception {
-    safeSetNumeric("waterTemp", 18.0);
-    safeSetNumeric("tempSetpoint", 18.0);
-    safeSetNumeric("loadMW", 0.0);
-    safeSetNumeric("updateIntervalSeconds", 15);
-    safeSetNumeric("currentDutyCycle", 1);
+    // --- Initialize Input Slots with Defaults ---
+    if (getWaterTemp().isNull()) setWaterTemp(new BStatusNumeric(18.0));
+    if (getTempSetpoint().isNull()) setTempSetpoint(new BStatusNumeric(18.0));
+    if (getLoadMW().isNull()) setLoadMW(new BStatusNumeric(0.0));
+    if (getUpdateIntervalSeconds().isNull()) setUpdateIntervalSeconds(new BStatusNumeric(15));
+    if (getCurrentDutyCycle().isNull()) setCurrentDutyCycle(new BStatusNumeric(1));
+    if (getTempStageUpDeadband().isNull()) setTempStageUpDeadband(new BStatusNumeric(0.5));
+    if (getMinChillerRunTimeMinutes().isNull()) setMinChillerRunTimeMinutes(new BStatusNumeric(15.0));
+    if (getMinChillerOffTimeMinutes().isNull()) setMinChillerOffTimeMinutes(new BStatusNumeric(10.0));
+    if (getBladeRoom1Demand().isNull()) setBladeRoom1Demand(new BStatusBoolean(false));
+    if (getBladeRoom2Demand().isNull()) setBladeRoom2Demand(new BStatusBoolean(false));
+    if (getBladeRoom3Demand().isNull()) setBladeRoom3Demand(new BStatusBoolean(false));
+    if (getPrintLogsToConsole().isNull()) setPrintLogsToConsole(new BStatusBoolean(false));
 
-    safeSetBoolean("systemEnable", true);
-    safeSetBoolean("bladeRoom1Demand", false);
-    safeSetBoolean("bladeRoom2Demand", false);
-    safeSetBoolean("bladeRoom3Demand", false);
-
-    for (int i = 1; i <= 8; i++) {
-        safeSetBoolean("chiller" + i + "Available", true);
+    // --- Initialize the state object for each chiller ---
+    for (int i = 0; i < 8; i++) {
+        chillerStates[i] = new ChillerState();
     }
-
+    
     getStatusTraceSummary().setValue("Program started.");
-
-    lastMainLogicRun = System.currentTimeMillis();
     updateTimer();
 }
 
-// ----------------- Safe Setters ------------------
-
-void safeSetNumeric(String slotName, double value) {
-    try {
-        BStatusNumeric point = (BStatusNumeric) getComponent().get(slotName);
-        if (point != null) {
-            point.setValue(value);
-        } else {
-            System.out.println("[Startup] Missing slot: " + slotName);
-        }
-    } catch (Exception e) {
-        System.out.println("[Startup] Error setting numeric slot: " + slotName + " -> " + e.getMessage());
-    }
-}
-
-void safeSetBoolean(String slotName, boolean value) {
-    try {
-        BStatusBoolean point = (BStatusBoolean) getComponent().get(slotName);
-        if (point != null) {
-            point.setValue(value);
-        } else {
-            System.out.println("[Startup] Missing slot: " + slotName);
-        }
-    } catch (Exception e) {
-        System.out.println("[Startup] Error setting boolean slot: " + slotName + " -> " + e.getMessage());
-    }
-}
-
-
+/**
+ * Main execution loop, completely rewritten for per-chiller logic.
+ */
 public void onExecute() throws Exception {
     updateTimer();
 
     long now = System.currentTimeMillis();
-    if (getComponent() == null)
+    if ((now - lastMainLogicRun) / 1000 < getUpdateIntervalSeconds().getValue()) {
         return;
-
-    // NULL checks...
-
-    double intervalSec = ((BStatusNumeric) getComponent().get("updateIntervalSeconds")).getValue();
-    if ((now - lastMainLogicRun) / 1000 < intervalSec)
-        return;
+    }
     lastMainLogicRun = now;
 
-    boolean systemEnable = ((BStatusBoolean) getComponent().get("systemEnable")).getValue();
-    if (!systemEnable) {
+    if (!getSystemEnable().getValue()) {
         disableAllChillers();
         getStatusTraceSummary().setValue("System disabled. All chillers OFF.");
         return;
     }
 
-    double waterTemp = ((BStatusNumeric) getComponent().get("waterTemp")).getValue();
-    double tempSet = ((BStatusNumeric) getComponent().get("tempSetpoint")).getValue();
-    double load = ((BStatusNumeric) getComponent().get("loadMW")).getValue();
+    logDebug("--- [Cycle Start] ---");
 
-    int chillersByTemp = handleTemperatureStaging(waterTemp, tempSet);
-    int chillersByLoad = handleLoadStaging(load);
+    // --- 1. Demand Calculation ---
+    int chillersByTemp = handleTemperatureStaging(getWaterTemp().getValue(), getTempSetpoint().getValue());
+    int chillersByLoad = handleLoadStaging(getLoadMW().getValue());
     int chillersByBladeRooms = handleBladeRoomDemand();
+    
+    int baseDemand = Math.max(chillersByTemp, chillersByLoad);
+    int requiredChillers = Math.min(8, Math.max(1, baseDemand + chillersByBladeRooms));
+    logDebug(String.format("Demand -> Temp: %d, Load: %d, Blade: %d | Final Required: %d",
+        chillersByTemp, chillersByLoad, requiredChillers - baseDemand, requiredChillers));
 
-    int minRequiredChillers = chillersByBladeRooms;
-    int calculatedChillers = Math.max(chillersByTemp, chillersByLoad);
-    int requiredChillers = Math.max(minRequiredChillers, calculatedChillers);
+    // --- 2. Get Current State and Rotation ---
+    int dutyIndex = (int) getCurrentDutyCycle().getValue() - 1;
+    if (dutyIndex < 0 || dutyIndex >= DUTY_ROTATIONS.length) dutyIndex = 0;
+    int[] rotationOrder = DUTY_ROTATIONS[dutyIndex];
+    getCurrentSequence().setValue(dutyIndex + 1);
 
+    boolean[] isAvailable = {
+        getChiller1Available().getValue(), getChiller2Available().getValue(), getChiller3Available().getValue(), getChiller4Available().getValue(),
+        getChiller5Available().getValue(), getChiller6Available().getValue(), getChiller7Available().getValue(), getChiller8Available().getValue()
+    };
+    boolean[] isRunning = new boolean[8];
+    for(int i = 0; i < 8; i++) isRunning[i] = getChillerEnable(i+1).getValue();
 
-    int dutyScheduleIndex = (int) (((BStatusNumeric) getComponent().get("currentDutyCycle")).getValue()) - 1;
-    if (dutyScheduleIndex < 0 || dutyScheduleIndex >= DUTY_ROTATIONS.length) {
-        dutyScheduleIndex = 0; // Fallback to Rotation 1
-    }
-
-    boolean[] chillerAvailable = new boolean[8];
-    for (int i = 0; i < 8; i++) {
-        chillerAvailable[i] = ((BStatusBoolean) getComponent().get("chiller" + (i + 1) + "Available")).getValue();
-    }
-
-    boolean[] chillerEnable = new boolean[8];
+    // --- 3. Determine Next Enable State with Per-Chiller Timers ---
+    boolean[] nextEnableState = new boolean[8];
     int enabledCount = 0;
-    int[] rotationOrder = DUTY_ROTATIONS[dutyScheduleIndex];
+    long minRunTimeMillis = (long) (getMinChillerRunTimeMinutes().getValue() * 60 * 1000);
+    long minOffTimeMillis = (long) (getMinChillerOffTimeMinutes().getValue() * 60 * 1000);
 
-    // Always enable the lead chiller
-    int leadChillerIdx = rotationOrder[0];
-    if (chillerAvailable[leadChillerIdx]) {
-        chillerEnable[leadChillerIdx] = true;
-        enabledCount = 1;
-    }
-
-    for (int i = 1; i < 8 && enabledCount < requiredChillers; i++) {
-        int chillerIdx = rotationOrder[i];
-        if (chillerAvailable[chillerIdx]) {
-            chillerEnable[chillerIdx] = true;
+    // First, lock in any chillers that MUST keep running due to min-run-time.
+    for (int i = 0; i < 8; i++) {
+        if (isRunning[i] && (now - chillerStates[i].lastStartTime < minRunTimeMillis)) {
+            nextEnableState[i] = true;
             enabledCount++;
         }
     }
+    logDebug("Chillers locked by min-run time: " + enabledCount);
 
-    StringBuilder enabledChillers = new StringBuilder();
-    for (int i = 0; i < 8; i++) {
-        ((BStatusBoolean) getComponent().get("chiller" + (i + 1) + "Enable")).setValue(chillerEnable[i]);
-        if (chillerEnable[i]) {
-            enabledChillers.append("Chiller").append(i + 1).append(" ");
-        }
-    }
-
-    ((BStatusNumeric) getComponent().get("currentSequence")).setValue(dutyScheduleIndex + 1);
-
-    getStatusTraceSummary().setValue("Running. Enabled: " + enabledChillers.toString().trim());
-}
-
-// --------------- Temp Staging -----------------
-int handleTemperatureStaging(double waterTemp, double tempSet) {
-    long now = System.currentTimeMillis();
-
-    if (waterTemp >= tempSet + 1.0) {
-        if (!tempHighActive) {
-            tempHighActive = true;
-            tempHighStartTime = now;
-            chillersStagedByTemp = 1;
-            getStatusTraceTemp().setValue("WaterTemp high (" + round1(waterTemp) + "°C). Start 10min timer.");
-        } else {
-            long elapsed = (now - tempHighStartTime) / 1000;
-            int stageCount = (int)(elapsed / 600);
-            chillersStagedByTemp = Math.min(1 + stageCount, 8);
-            getStatusTraceTemp().setValue("Stage up: " + elapsed + "s elapsed. " + chillersStagedByTemp + " chillers staged.");
-        }
-    } 
-    else if (waterTemp <= tempSet) {
-        if (tempHighActive) {
-            long elapsed = (now - tempHighStartTime) / 1000;
-            int stageCount = (int)(elapsed / 600);
-            chillersStagedByTemp = Math.max(8 - stageCount, 0);
-            if (chillersStagedByTemp == 0) {
-                tempHighActive = false;
-                tempHighStartTime = 0;
-                getStatusTraceTemp().setValue("WaterTemp normal (" + round1(waterTemp) + "°C). All chillers de-staged.");
-            } else {
-                getStatusTraceTemp().setValue("Stage down: " + elapsed + "s elapsed. " + chillersStagedByTemp + " chillers staged.");
-            }
-        } else {
-            chillersStagedByTemp = 0;
-            getStatusTraceTemp().setValue("WaterTemp stable (" + round1(waterTemp) + "°C). No staging needed.");
-        }
-    }
-    return chillersStagedByTemp;
-}
-
-// --------------- Load Staging -----------------
-int handleLoadStaging(double load) {
-    long now = System.currentTimeMillis();
-    int targetChillers = 1;
-
-    // Determine how many chillers are required based on load
-    for (int i = loadUpThresholds.length - 1; i >= 0; i--) {
-        if (load > loadUpThresholds[i]) {
-            targetChillers = i + 2; // because index 0 = 1 chiller
-            break;
-        }
-    }
-
-    // NEW LOGIC: If load is less than first threshold, no chillers required
-    if (load < loadUpThresholds[0]) {
-        // Load is too low — no staging up
-        chillersStagedByLoad = 0;
-        loadIncreasePending = false;
-        loadDecreasePending = false;
-        loadChangeStartTime = 0;
-        getStatusTraceLoad().setValue("Load too low (" + round1(load) + "MW). No chillers required.");
-        return 0;
-    }
-
-    if (targetChillers > chillersStagedByLoad) {
-        // Need to stage up
-        if (!loadIncreasePending) {
-            loadIncreasePending = true;
-            loadChangeStartTime = now;
-            getStatusTraceLoad().setValue("Load high (" + round1(load) + "MW). Start 20-min timer to add chiller.");
-        } else {
-            long elapsed = (now - loadChangeStartTime) / 1000;
-            if (elapsed >= 1200) {
-                chillersStagedByLoad++;
-                loadIncreasePending = false;
-                loadChangeStartTime = 0;
-                getStatusTraceLoad().setValue("Load high stable. Adding chiller. Now running: " + chillersStagedByLoad);
-            } else {
-                getStatusTraceLoad().setValue("Load high (" + round1(load) + "MW). Timer: " + elapsed + "s");
-            }
-        }
-        loadDecreasePending = false;
-    } else if (targetChillers < chillersStagedByLoad) {
-        // Need to stage down
-        double downThreshold = (chillersStagedByLoad <= 1) ? 0 : loadDownThresholds[chillersStagedByLoad - 2];
-        if (load < downThreshold) {
-            if (!loadDecreasePending) {
-                loadDecreasePending = true;
-                loadChangeStartTime = now;
-                getStatusTraceLoad().setValue("Load low (" + round1(load) + "MW). Start 20-min timer to drop chiller.");
-            } else {
-                long elapsed = (now - loadChangeStartTime) / 1000;
-                if (elapsed >= 1200) {
-                    chillersStagedByLoad--;
-                    loadDecreasePending = false;
-                    loadChangeStartTime = 0;
-                    getStatusTraceLoad().setValue("Load low stable. Dropping chiller. Now running: " + chillersStagedByLoad);
+    // Now, iterate through the duty cycle to bring on additional chillers if needed.
+    if (enabledCount < requiredChillers) {
+        for (int chillerIndex : rotationOrder) {
+            if (enabledCount >= requiredChillers) break;
+            if (!nextEnableState[chillerIndex] && isAvailable[chillerIndex]) {
+                if (now - chillerStates[chillerIndex].lastStopTime >= minOffTimeMillis) {
+                    nextEnableState[chillerIndex] = true;
+                    enabledCount++;
                 } else {
-                    getStatusTraceLoad().setValue("Load low (" + round1(load) + "MW). Timer: " + elapsed + "s");
+                    logDebug("Skipping Chiller " + (chillerIndex + 1) + ": in min-off-time.");
                 }
             }
-        } else {
-            loadDecreasePending = false;
         }
-        loadIncreasePending = false;
-    } else {
-        // Load within band, no action needed
-        loadIncreasePending = false;
-        loadDecreasePending = false;
-        loadChangeStartTime = 0;
-        getStatusTraceLoad().setValue("Load stable (" + round1(load) + "MW). Running " + chillersStagedByLoad + " chillers.");
     }
+    
+    // --- 4. Set Final Outputs and Update State Timestamps ---
+    StringBuilder enabledChillersStr = new StringBuilder();
+    for (int i = 0; i < 8; i++) {
+        boolean shouldBeRunning = nextEnableState[i];
+        
+        if (shouldBeRunning && !isRunning[i]) {
+            chillerStates[i].lastStartTime = now;
+            logDebug("Chiller " + (i+1) + " STARTING.");
+        } 
+        else if (!shouldBeRunning && isRunning[i]) {
+            chillerStates[i].lastStopTime = now;
+            logDebug("Chiller " + (i+1) + " STOPPING.");
+        }
 
-    return chillersStagedByLoad;
+        setChillerEnable(i + 1, shouldBeRunning);
+        if (shouldBeRunning) {
+            enabledChillersStr.append("Chiller").append(i + 1).append(" ");
+        }
+    }
+    logDebug("Final Enable Array: " + java.util.Arrays.toString(nextEnableState));
+    
+    // NEW: Log the individual run/off times for each chiller for better debugging.
+    if (getPrintLogsToConsole().getStatus().isOk() && getPrintLogsToConsole().getValue()) {
+        StringBuilder timerLog = new StringBuilder("-- Chiller Timers --\n");
+        for (int i = 0; i < 8; i++) {
+            if (nextEnableState[i]) {
+                long runMillis = now - chillerStates[i].lastStartTime;
+                timerLog.append(String.format(" Chiller %d: RUNNING for %.1f mins\n", i + 1, runMillis / 60000.0));
+            } else {
+                long offMillis = now - chillerStates[i].lastStopTime;
+                if (chillerStates[i].lastStopTime > 0) {
+                     timerLog.append(String.format(" Chiller %d: OFF for %.1f mins\n", i + 1, offMillis / 60000.0));
+                } else {
+                     timerLog.append(String.format(" Chiller %d: OFF (never run)\n", i + 1));
+                }
+            }
+        }
+        System.out.println(timerLog.toString().trim());
+    }
+    
+    getStatusTraceSummary().setValue("Required: " + requiredChillers + " | Enabled: " + (enabledChillersStr.length() > 0 ? enabledChillersStr.toString().trim() : "None"));
 }
 
 
-// --------------- Blade Room Staging -----------------
-int handleBladeRoomDemand() {
-    int bladeRoomsDemanding = 0;
-    if (((BStatusBoolean) getComponent().get("bladeRoom1Demand")).getValue()) bladeRoomsDemanding++;
-    if (((BStatusBoolean) getComponent().get("bladeRoom2Demand")).getValue()) bladeRoomsDemanding++;
-    if (((BStatusBoolean) getComponent().get("bladeRoom3Demand")).getValue()) bladeRoomsDemanding++;
+/**
+ * SIMPLIFIED load staging logic.
+ */
+private int handleLoadStaging(double load) {
+    int targetChillers = 0;
+    for (int i = 0; i < LOAD_UP_THRESHOLDS.length; i++) {
+        if (load > LOAD_UP_THRESHOLDS[i]) {
+            targetChillers = i + 1;
+        }
+    }
+    targetChillers = Math.min(targetChillers, 8);
+    getStatusTraceLoad().setValue("Load requires " + targetChillers + " chiller(s).");
+    logDebug("[Load Calc] Load of " + round1(load) + " MW requires " + targetChillers + " chiller(s).");
+    return targetChillers;
+}
 
-    getStatusTraceBlade().setValue(bladeRoomsDemanding + " blade rooms requesting cooling.");
+
+// --- Unchanged Methods ---
+
+private int handleTemperatureStaging(double waterTemp, double setpoint) {
+    double deadband = getTempStageUpDeadband().getValue();
+    double delta = waterTemp - setpoint;
+    if (delta <= deadband) {
+        getStatusTraceTemp().setValue("Temp stable (" + round1(waterTemp) + "°C).");
+        return 0;
+    } else {
+        int required = (int) Math.floor(delta - deadband);
+        required = Math.min(required, 8);
+        getStatusTraceTemp().setValue("Temp high (" + round1(waterTemp) + "°C). Staging " + required + " chiller(s).");
+        return required;
+    }
+}
+
+private int handleBladeRoomDemand() {
+    int bladeRoomsDemanding = 0;
+    if (getBladeRoom1Demand().getValue()) bladeRoomsDemanding++;
+    if (getBladeRoom2Demand().getValue()) bladeRoomsDemanding++;
+    if (getBladeRoom3Demand().getValue()) bladeRoomsDemanding++;
+    getStatusTraceBlade().setValue(bladeRoomsDemanding + " blade room(s) requesting cooling.");
     return bladeRoomsDemanding;
 }
 
-
-
-// Timer update method
-void updateTimer() {
-    if (ticket != null) ticket.cancel();
-    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
-}
-
-// Disable all chillers method
-void disableAllChillers() {
-    for (int i = 1; i <= 8; i++) {
-        ((BStatusBoolean) getComponent().get("chiller" + i + "Enable")).setValue(false);
+private void logDebug(String message) {
+    if (getPrintLogsToConsole().getStatus().isOk() && getPrintLogsToConsole().getValue()) {
+        System.out.println(message);
     }
 }
 
+// Helper to get current enable state of a specific chiller
+private BStatusBoolean getChillerEnable(int chillerNum) {
+    switch (chillerNum) {
+        case 1: return getChiller1Enable();
+        case 2: return getChiller2Enable();
+        case 3: return getChiller3Enable();
+        case 4: return getChiller4Enable();
+        case 5: return getChiller5Enable();
+        case 6: return getChiller6Enable();
+        case 7: return getChiller7Enable();
+        case 8: return getChiller8Enable();
+    }
+    return null; // Should not happen
+}
 
-// New rounding method
-double round1(double val) {
+private void setChillerEnable(int chillerNum, boolean enable) {
+    switch (chillerNum) {
+        case 1: getChiller1Enable().setValue(enable); break;
+        case 2: getChiller2Enable().setValue(enable); break;
+        case 3: getChiller3Enable().setValue(enable); break;
+        case 4: getChiller4Enable().setValue(enable); break;
+        case 5: getChiller5Enable().setValue(enable); break;
+        case 6: getChiller6Enable().setValue(enable); break;
+        case 7: getChiller7Enable().setValue(enable); break;
+        case 8: getChiller8Enable().setValue(enable); break;
+    }
+}
+
+private void disableAllChillers() {
+    for (int i = 1; i <= 8; i++) {
+        setChillerEnable(i, false);
+    }
+}
+
+private void updateTimer() {
+    if (ticket != null) ticket.cancel();
+    int interval = 15;
+    if (getUpdateIntervalSeconds().getStatus().isOk()) {
+        interval = (int) getUpdateIntervalSeconds().getValue();
+    }
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(interval), BProgram.execute, null);
+}
+
+private double round1(double val) {
     return Math.round(val * 10.0) / 10.0;
+}
+
+public void onStop() throws Exception {
+    if (ticket != null) {
+        ticket.cancel();
+    }
 }
 
 ```
@@ -1880,29 +1920,35 @@ It continuously tunes heating & cooling rates with an Exponential Moving Average
 ### Inputs
 
 | Slot | Type | Notes |
-|------|------|-------|
-| `zoneTemp` | `BStatusNumeric` | Current zone temperature |
-| `targetZoneTempSetpoint` | `BStatusNumeric` | Occupied setpoint |
-| `outdoorAirTemp` | `BStatusNumeric` | Optional—used for logging |
-| `scheduleNextValue` | `BStatusBoolean` | Next schedule occupancy flag |
-| `scheduleNextEventTime` | `BStatusNumeric` | Unix ms of next schedule event |
-| `maxMinutesAllowed` | `BStatusNumeric` | Safety limit (default = 180 min) |
-| `tempTolerance` | `BStatusNumeric` | °F tolerance band (default = 1 °F) |
-| `emaWeightingFactor` | `BStatusNumeric` | 1 – 10 (default = 2) |
-| `commandOffDelaySeconds` | `BStatusNumeric` | Off-delay for output NULL when release back to building |
-| `clearHistoryNow` | `BStatusBoolean` | Manual reset of learned model |
+| :--- | :--- | :--- |
+| `zoneTemp` | `BStatusNumeric` | Current zone temperature. |
+| `targetZoneTempSetpoint` | `BStatusNumeric` | The desired occupied setpoint. |
+| `outdoorAirTemp` | `BStatusNumeric` | Optional outdoor air temperature, used for logging performance history. |
+| `scheduleNextValue` | `BStatusBoolean` | The occupancy value of the *next* schedule event (`true` if occupied). |
+| `scheduleNextEventTime` | `BStatusNumeric` | The timestamp (in Java milliseconds) of the next schedule event. |
+| `maxMinutesAllowed` | `BStatusNumeric` | Safety cap for the maximum calculated `minutesToSetpoint` (default = 180 min). |
+| `tempTolerance` | `BStatusNumeric` | The acceptable temperature deviation from setpoint (e.g., 1.0°F, default = 0.5°F). |
+| `historyDaysToRetain` | `BStatusNumeric` | The number of recent performance records to keep for learning (default = 10). |
+| `emaWeightingFactor` | `BStatusNumeric` | The smoothing factor for the EMA learning algorithm (1-10, default = 2). |
+| `commandOffDelaySeconds`| `BStatusNumeric`| Countdown delay in seconds that starts after the optimal start run ends to release to `null`. |
+| `clearHistoryNow` | `BStatusBoolean` | A manual trigger to erase all learned performance history. |
+| `printToConsoleLog` | `BStatusBoolean` | Set to `true` to enable detailed debug messages in the Niagara console. |
 
 ### Outputs
 
 | Slot | Type | Description |
-|------|------|-------------|
-| `equipmentStartCommand` | `BStatusBoolean` | `true` when AHU/HP should run |
-| `minutesToSetpoint` | `BStatusNumeric` | Real-time recovery estimate |
-| `degreesPerMinuteHeat` | `BStatusNumeric` | Learned heat rate |
-| `degreesPerMinuteCool` | `BStatusNumeric` | Learned cool rate |
-| `currentHistoryRecordCount` | `BStatusNumeric` | Total retained records |
-| `statusLog` | `BStatusString` | Timestamped status messages |
-| `historyLog` | `BStatusString` | Multi-line performance dump |
+| :--- | :--- | :--- |
+| `equipmentStartCommand` | `BStatusBoolean` | **The final output command; `true` when the equipment should run else `null`. **|
+| `minutesToSetpoint` | `BStatusNumeric` | The last run actual time recorded to reach setpoint based on the learning model. |
+| `degreesPerMinuteHeat` | `BStatusNumeric` | Active value used in the heating rate in °F / minute. |
+| `degreesPerMinuteCool` | `BStatusNumeric` | Active value used in the cooling rate in °F / minute. |
+| `currentHistoryRecordCount`| `BStatusNumeric` | The total number of HEAT and COOL performance records being stored. |
+| `statusLog` | `BStatusString` | A timestamped log of the block's most recent major action. |
+| `historyLog` | `BStatusString` | A multi-line string showing a dump of all performance history records. |
+| `isRunning` | `BStatusBoolean` | `True` only when a learning run is actively in progress.** |
+| `zoneAtTempTolerance` | `BStatusBoolean` | `True` if the current `zoneTemp` is within the tolerance of the `targetZoneTempSetpoint`. |
+| `warmupTimeMinutes` | `BStatusNumeric` | A live stopwatch showing how many minutes the current run has been active. |
+| `countdownToNullStatus`| `BStatusBoolean` | Returns `True` only when the off-delay countdown is active. |
 
 ### Key Features
 
@@ -1914,7 +1960,7 @@ It continuously tunes heating & cooling rates with an Exponential Moving Average
 
 ---
 
-### Full Java Code
+### Full Java Code `version 4c`
 
 ```java
 // Developer Note: For the `historyLog` feature to work, please add a new
@@ -1943,12 +1989,8 @@ private long startTimestamp = 0;
 private boolean isOptimalStartRunning = false;
 private long lastStartTriggerTimestamp = 0; 
 private static final double DEFAULT_RATE_DEG_PER_MIN = 0.1;
-
-// New variables to store state during a run
 private boolean setpointWasMetDuringRun = false;
 private double minutesToReachSetpoint = 0.0;
-
-// ADD THESE TWO LINES FOR THE OFF-DELAY TIMER
 private boolean isOffDelayActive = false;
 private long offDelayStartTime = 0;
 
@@ -1985,8 +2027,8 @@ public void onStart() throws Exception {
 
 /**
  * Main execution loop, called periodically by the timer.
+ * REVISED to act as a master state controller.
  */
-
 public void onExecute() throws Exception {
     updateTimer(); 
 
@@ -1997,17 +2039,25 @@ public void onExecute() throws Exception {
         setClearHistoryNow(new BStatusBoolean(false));
     }
 
-    // Core logic execution
+    // --- REVISED: Explicit State-Based Logic ---
     if (isOptimalStartRunning) {
+        // STATE 1: ACTIVE RUN
+        // The ONLY logic that can stop the run is inside monitorActiveRun.
         monitorActiveRun();
-    } else {
-        updateIdleEstimate();
-    }
-    
-    // Always update the final equipment start command based on the latest state.
-    updateEquipmentStartCommand();
 
-    // ADDED BACK: Optional debug tracing
+        // As a safeguard, force the command to stay ON during the run.
+        getEquipmentStartCommand().setValue(true);
+        getEquipmentStartCommand().setStatus(BStatus.ok);
+        getCountdownToNullStatus().setValue(false);
+
+    } else {
+        // STATE 2: NOT RUNNING (Idle, Estimating, or in Off-Delay)
+        // Only run the estimate and start-command logic when not in an active run.
+        updateIdleEstimate();
+        updateEquipmentStartCommand();
+    }
+
+    // Optional debug tracing remains the same
     if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
         System.out.println("--- [Debug] ---");
         System.out.println("isOptimalStartRunning: " + isOptimalStartRunning);
@@ -2028,13 +2078,12 @@ public void onStop() throws Exception {
     }
 }
 
-//================================================================
-// --- Core Logic Methods ---
-//================================================================
-
+/**
+ * This method now ONLY handles starting a new run or managing the off-delay.
+ * It is no longer called when a run is active.
+ */
 private void updateEquipmentStartCommand() {
     // --- Off-Delay Timer Management ---
-    // First, check if the off-delay countdown is currently active.
     if (isOffDelayActive) {
         long elapsedSeconds = (System.currentTimeMillis() - offDelayStartTime) / 1000;
         long delayDuration = 60; // Default 60s
@@ -2043,34 +2092,33 @@ private void updateEquipmentStartCommand() {
         }
 
         if (elapsedSeconds >= delayDuration) {
-            // Timer has expired. Release the command to NULL.
+            // Timer has expired.
             isOffDelayActive = false;
             getEquipmentStartCommand().setValue(false);
             getEquipmentStartCommand().setStatus(BStatus.NULL);
-            getCountdownToNullStatus().setValue(false); // Set to FALSE because the countdown is over.
+            getCountdownToNullStatus().setValue(false); 
             setFormattedStatusLog("Off-delay expired. Command released to NULL.");
         } else {
-            // Timer is still running. The countdown is active.
-            getCountdownToNullStatus().setValue(true); // Set to TRUE because the countdown is active.
+            // Timer is still running.
+            getCountdownToNullStatus().setValue(true);
             setFormattedStatusLog("Command off-delay active. " + (delayDuration - elapsedSeconds) + "s remaining.");
         }
-        // IMPORTANT: Skip all other logic while the timer is active.
-        return;
+        return; // Skip all other logic while timer is active.
     }
 
-    // --- Standard Start/Stop Logic ---
+    // --- Standard Start/Stop Logic (Sensor check removed as it's handled elsewhere) ---
     if (!getScheduleNextValue().getStatus().isOk() || !getScheduleNextEventTime().getStatus().isOk()) {
         getEquipmentStartCommand().setValue(false);
         getEquipmentStartCommand().setStatus(BStatus.NULL);
-        getCountdownToNullStatus().setValue(false); // Set to FALSE on error.
+        getCountdownToNullStatus().setValue(false);
         return;
     }
 
     boolean isNextPeriodOccupied = getScheduleNextValue().getValue();
     boolean startConditionMet = false;
 
-    // --- Start Condition Logic ---
-    if (isNextPeriodOccupied && !isOptimalStartRunning) {
+    // --- Start Condition Logic (is now only evaluated when a run is not active) ---
+    if (isNextPeriodOccupied) { // No longer need !isOptimalStartRunning check here
         long currentTime = System.currentTimeMillis();
         long nextEventTime = (long) getScheduleNextEventTime().getValue();
         double timeToNextMinutes = (nextEventTime - currentTime) / 60000.0;
@@ -2085,30 +2133,24 @@ private void updateEquipmentStartCommand() {
 
     // --- Final Command Output Logic ---
     if (startConditionMet) {
-        // CASE 1: Start the equipment.
+        // Start the equipment.
         startOptimalStartSequence();
         getEquipmentStartCommand().setValue(true);
         getEquipmentStartCommand().setStatus(BStatus.ok);
-        getCountdownToNullStatus().setValue(false); // Set to FALSE because no countdown is active.
-    } else if (isOptimalStartRunning) {
-        // CASE 2: Hold the equipment ON because a run is active.
-        getEquipmentStartCommand().setValue(true);
-        getEquipmentStartCommand().setStatus(BStatus.ok);
-        getCountdownToNullStatus().setValue(false); // Set to FALSE because no countdown is active.
+        getCountdownToNullStatus().setValue(false);
     } else {
-        // CASE 3: The command should be OFF. Instead of releasing immediately, start the countdown.
-        // Only start the countdown if the command was previously ON.
+        // The command should be OFF. Start the countdown if needed.
         if (getEquipmentStartCommand().getValue()) {
             isOffDelayActive = true;
             offDelayStartTime = System.currentTimeMillis();
-            getCountdownToNullStatus().setValue(true); // Set to TRUE to indicate the countdown has started.
+            getCountdownToNullStatus().setValue(true);
             setFormattedStatusLog("Entering command off-delay countdown...");
         } else {
-            // If the command was already off, the countdown is not active.
             getCountdownToNullStatus().setValue(false);
         }
     }
 }
+
 
 /**
  * Starts a new warmup/cooldown sequence.
