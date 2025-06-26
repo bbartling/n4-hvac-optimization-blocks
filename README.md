@@ -1539,8 +1539,8 @@ double round1(double val) {
 
 ---
 
-
 <details>
+
 <summary>🧊</summary>
 
 ### 🧊 Advanced Chiller Rotator (Per-Chiller Duty Cycle)
@@ -2462,8 +2462,7 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 ## 🔄 Future Plans
 
-* Chiller optimization blocks
-* Tutorials for how to push ChatGPT in program object block development
+* Future plans include creating tutorials on AI-driven 'Vibe Coding' best practices. These YouTube videos will cover building chiller plant management logic from scratch and converting it to other codebases like Python, or JavaScript for Node-RED and other frameworks like the Normal Framework. If you have an idea, please create a GitHub Issue or start a Discussion, and I'll consider making it into a YouTube video! Feel free to DM me on linkedin as well!
 
 
 ---
