@@ -1916,6 +1916,111 @@ It continuously tunes heating & cooling rates with an Exponential Moving Average
   <br><em>Recovery trend illustrating learned cool-down rate&nbsp;≈ 0.15 °F /min</em>
 </p>
 
+### Opt Start Activity Diagram
+
+```mermaid
+flowchart TD
+    Start([Start])
+    
+    CheckZoneAtTemp{Zone Within Temp Tolerance?}
+    SetSetpointToZero[[Set minutesToSetpoint = 0.0]]
+    EstimateRecovery[[Estimate Minutes to Setpoint using EMA]]
+
+    GetScheduleData[[Read Next Schedule Event Time & Value]]
+    CheckScheduleState{Is Next Schedule State OCC?}
+    CompareTimeDelta{Is Time to Next OCC < EMA Minutes?}
+
+    StartOptimalStart[[Start Optimal Start Sequence]]
+    IsRunning{Is Optimal Start Running?}
+    MonitorRun[[Monitor Active Warmup/Cooldown]]
+    SetpointMet{Setpoint Reached?}
+    RecordPerformance[[Record Performance]]
+    UpdateEma[[Update EMA Model]]
+    ScheduleChange{Schedule Changed to Occupied?}
+    
+    EnterOffDelay[[Enter Command Off-Delay]]
+    OffDelayActive{Off-Delay Countdown Done?}
+    
+    OutputCommand[[Set Command = true]]
+    NullCommand[[Set Command = NULL]]
+    
+    Wait([Wait 15s])
+    Loop([Loop Back to Start])
+
+    Start --> CheckZoneAtTemp
+
+    %% If at temp, set minutesToSetpoint = 0.0 and exit
+    CheckZoneAtTemp -->|True| SetSetpointToZero --> Wait
+    CheckZoneAtTemp -->|False| EstimateRecovery --> GetScheduleData --> CheckScheduleState
+
+    CheckScheduleState -->|False| Wait
+    CheckScheduleState -->|True| CompareTimeDelta
+    CompareTimeDelta -->|False| Wait
+    CompareTimeDelta -->|True| StartOptimalStart --> IsRunning
+
+    IsRunning -->|Yes| MonitorRun --> SetpointMet
+    SetpointMet -->|Yes| RecordPerformance
+    SetpointMet -->|No| ScheduleChange
+    ScheduleChange -->|True| RecordPerformance --> UpdateEma --> EnterOffDelay
+    ScheduleChange -->|False| MonitorRun
+
+    EnterOffDelay --> OffDelayActive
+    OffDelayActive -->|Yes| NullCommand --> Wait
+    OffDelayActive -->|No| Wait
+
+    IsRunning -->|No| Wait
+
+    Wait --> Loop --> Start
+
+```
+
+### Opt Start Class Diagram
+
+```mermaid
+classDiagram
+    class OptimalStartBlock {
+        - ticket : Clock.Ticket
+        - startTimestamp : long
+        - lastStartTriggerTimestamp : long
+        - isOptimalStartRunning : boolean
+        - setpointWasMetDuringRun : boolean
+        - minutesToReachSetpoint : double
+        - isOffDelayActive : boolean
+        - offDelayStartTime : long
+        - DEFAULT_RATE_DEG_PER_MIN : double
+        - heatHistory : List<PerformanceRecord>
+        - coolHistory : List<PerformanceRecord>
+
+        + onStart()
+        + onExecute()
+        + onStop()
+        - updateModel()
+        - updateIdleEstimate()
+        - updateEquipmentStartCommand()
+        - startOptimalStartSequence()
+        - monitorActiveRun()
+        - stopAndRecordPerformance(actualMinutes: double)
+        - updateZoneAtTempTolerance()
+        - computeEmaForMode(mode: String): double
+        - computeEMA(series: double[]): double
+        - updateTimer()
+        - clearHistory()
+        - pruneHistory()
+        - updateHistoryLog()
+        - updateCurrentHistoryRecordCount()
+    }
+
+    class PerformanceRecord {
+        + timestamp : long
+        + rate : double
+        + mode : String
+        + zoneTempStart : double
+        + outdoorTempStart : double
+    }
+
+    OptimalStartBlock --> PerformanceRecord : uses
+```
+
 ---
 
 ### Inputs
