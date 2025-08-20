@@ -1176,177 +1176,202 @@ void updateTimer() {
 ---
 
 <details>
-<summary>🌀 AHU Duct Static Pressure Reset (Trim & Respond)</summary>
+<summary>🌀 GL36 AHU Duct Static Pressure Reset (Trim & Respond)</summary>
 
 **Purpose:** Save supply fan energy by resetting duct static pressure based on VAV damper positions.
 
 ![Duct Static Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/ahuDuctStaticResetSnip.png)
 
-#### Logic Summary:
-
-* Every update interval, the logic reads connected VAV damper positions (up to 30).
-* **Trim up** if max VAV ≥ 90%, **trim down** if max VAV ≤ 80%.
-* Neutral zone in between (hold pressure steady).
-* During **AHU OFF** or **Startup Lag**, hold a defined **Startup Duct Pressure Setpoint**.
-* One or more rogue zones (e.g. wide open damper) can be excluded using **Ignore Count**.
-* Values are clamped between `ductPressMin` and `ductPressMax`.
 
 #### Developer Notes:
 
-* Uses internal `Clock.schedule()` 10s loop for responsive updates.
-* Status debug messages written to `statusTrace` (e.g., "Trim up", "Deadband").
-* Output written to: `ahuDuctPressStpOut`.
+* Guideline 36 compliant and tested in field by Ben. Designed to work in conjuction with a VAV box pressure requesting `VAV_GL36_Pressure_Req.bog`. All VAV needs to be totallized in wired into the total requests input as well as fan status and the occupancy command.
 
-#### Example Code:
+#### Java Code:
 
 ```java
+/**
+ * Duct Static Pressure Trim & Respond Program
+ * Version 5 - Final Robust Version.
+ * This program resets duct static pressure based on VAV damper requests,
+ * inspired by ASHRAE Guideline 36 and the Normal Framework implementation.
+ * This version ensures the output setpoint is ALWAYS driven to a known state
+ * in every possible logic path within onExecute().
+ */
+
+// ===== Class-level state =====
 Clock.Ticket ticket;
 
-boolean fanWasOff = true;
-long fanOnTimestamp = 0;
-long lastMainLogicRun = 0;
+long lastMainLogicRunMs = 0;   // enforces UpdateMinutes cadence
+long fanOnStableSinceMs = 0;   // enforces StartUpDelayMinutes true-for window
+boolean lastFanRun = false;    // edge detect for fan ON
 
+// ===== onStart =====
 public void onStart() throws Exception {
-    getTrimRespVal().setValue(0.1);
-    getDuctPressMin().setValue(0.5);
-    getDuctPressMax().setValue(1.2);
-    getStartupLagSeconds().setValue(600);
-    getStartupAhuDuctPressSetpoint().setValue(0.5);
-    getAhuDuctPressStpOut().setValue(1.2);
-    getActiveUpdateInterval().setValue(300.0);
-    getStatusTrace().setValue("Program started.");
+    // Initialize state variables and start the timer.
+    // The onExecute() method is responsible for all output driving.
+    getStatusTrace().setValue("sp-trim-and-respond: program started.");
+    lastMainLogicRunMs = 0;
+    fanOnStableSinceMs = 0;
+    lastFanRun = false;
 
-    lastMainLogicRun = System.currentTimeMillis();
-    updateTimer();
+    updateTimer(); // 10s heartbeat
 }
 
+// ===== onExecute (Main logic loop) =====
 public void onExecute() throws Exception {
-    updateTimer();
-
-    BStatusNumeric[] vavDprInputs = {
-        getVavDprPos1(), getVavDprPos2(), getVavDprPos3(), getVavDprPos4(), getVavDprPos5(),
-        getVavDprPos6(), getVavDprPos7(), getVavDprPos8(), getVavDprPos9(), getVavDprPos10(),
-        getVavDprPos11(), getVavDprPos12(), getVavDprPos13(), getVavDprPos14(), getVavDprPos15(),
-        getVavDprPos16(), getVavDprPos17(), getVavDprPos18(), getVavDprPos19(), getVavDprPos20(),
-        getVavDprPos21(), getVavDprPos22(), getVavDprPos23(), getVavDprPos24(), getVavDprPos25(),
-        getVavDprPos26(), getVavDprPos27(), getVavDprPos28(), getVavDprPos29(), getVavDprPos30()
-    };
-
-    for (int i = 0; i < vavDprInputs.length; i++) {
-        if (getComponent().getLinks(getComponent().getSlot("vavDprPos" + (i + 1))).length == 0) {
-            vavDprInputs[i].setValue(0);
-            vavDprInputs[i].setStatus(BStatus.NULL);
-        }
-    }
-
+    updateTimer(); // Reschedule the next execution
     long now = System.currentTimeMillis();
-    int intervalSec = 300;
-    BStatusNumeric intervalInput = getUpdateIntervalSeconds();
-    if (intervalInput.getStatus().isOk()) {
-        double raw = intervalInput.getValue();
-        intervalSec = (int) Math.max(10, Math.min(raw, 3600));
-    }
-    getActiveUpdateInterval().setValue(intervalSec);
-    if ((now - lastMainLogicRun) / 1000 < intervalSec) return;
-    lastMainLogicRun = now;
 
-    int ignoreCount = 0;
-    BStatusNumeric nInput = getIgnoreCount();
-    if (nInput.getStatus().isOk()) {
-        ignoreCount = (int) Math.max(0, Math.min(nInput.getValue(), 30));
-    }
+    // ---- Null-wire checker (inputs only) ----
+    ensureNumericWiredOrNull("totalRequests", getTotalRequests());
+    ensureBooleanWiredOrNull("fanRunCmd", getFanRunCmd());
 
-    double trimIncrement = Math.max(0.0, getTrimRespVal().getValue());
-    double minPress = Math.max(0.0, Math.min(getDuctPressMin().getValue(), 10.0));
-    double maxPress = Math.max(minPress, Math.min(getDuctPressMax().getValue(), 10.0));
-    int lagSeconds = (int) Math.max(0, Math.min(getStartupLagSeconds().getValue(), 3600));
+    // ---- Read config with safe defaults ----
+    double SP0      = numericOrDefault(getSP0(), 1.25);
+    double SPmin    = numericOrDefault(getSPmin(), 0.40);
+    double SPmax    = numericOrDefault(getSPmax(), 1.75);
+    int TdSec       = minutesToSecondsSafe(getStartUpDelayMinutes(), 10);
+    int TSec        = minutesToSecondsSafe(getUpdateMinutes(), 2);
+    double Ignore   = numericOrDefault(getIgnore(), 6.0);
+    double SPtrim   = numericOrDefault(getSPtrim(), -0.02);
+    double SPres    = numericOrDefault(getSPres(), 0.04);
+    double SPResMax = numericOrDefault(getSPResMax(), 0.08);
 
-    ArrayList<Double> validValues = new ArrayList<>();
-    for (BStatusNumeric input : vavDprInputs) {
-        if (input.getStatus().isOk()) {
-            validValues.add(input.getValue());
+    boolean fanRun = getFanRunCmd().getStatus().isOk() && getFanRunCmd().getValue();
+    double currentSp = getDischargeAirPressureSp().getStatus().isOk()
+        ? getDischargeAirPressureSp().getValue()
+        : SP0;
+
+    // --- State 1: Fan is OFF ---
+    // Unconditionally drive the output to the initial setpoint (SP0).
+    if (!fanRun) {
+        double sp0 = clamp(SP0, SPmin, SPmax);
+        getDischargeAirPressureSp().setValue(sp0);
+
+        if (lastFanRun) { // Log only on the transition from ON to OFF
+            getStatusTrace().setValue("Fan OFF -> driving SP0 = " + round3(sp0));
+            getLastActionTs().setValue(new java.util.Date(now).toString());
         }
-    }
-
-    if (validValues.isEmpty() || validValues.size() <= ignoreCount) {
-        getVavDprFilteredMax().setValue(0.0);
-        getVavDprFilteredAvg().setValue(0.0);
-        getAhuDuctPressStpOut().setValue(maxPress);
-        getStatusTrace().setValue("No valid VAV data → fallback to maxPress: " + round1(maxPress));
+        
+        fanOnStableSinceMs = 0; // Reset startup timer
+        lastFanRun = false;     // Set state for next edge detection
         return;
     }
 
-    validValues.sort(Collections.reverseOrder());
-    List<Double> filtered = validValues.subList(ignoreCount, validValues.size());
-
-    double sum = 0.0;
-    for (double val : filtered) sum += val;
-    double vavAvg = sum / filtered.size();
-    double vavMax = filtered.get(0);
-
-    getVavDprFilteredMax().setValue(vavMax);
-    getVavDprFilteredAvg().setValue(vavAvg);
-
-    // Fan tracking
-    BStatusBoolean fanStatus = getAhuFanStatus();
-    boolean fanOn = fanStatus.getValue();
-    
-    double currentSP = getAhuDuctPressStpOut().getStatus().isOk()
-        ? getAhuDuctPressStpOut().getValue()
-        : maxPress;
-    
-    double startupPress = getStartupAhuDuctPressSetpoint().getStatus().isOk()
-        ? getStartupAhuDuctPressSetpoint().getValue()
-        : maxPress;
-    
-    double targetPress;
-    
-    if (!fanOn) {
-        fanWasOff = true;
-        fanOnTimestamp = 0;
-        targetPress = startupPress;
-        getStatusTrace().setValue("Fan OFF → waiting for building startup...  SP = " + round1(targetPress));
-    } else if (fanWasOff) {
-        fanWasOff = false;
-        fanOnTimestamp = now;
-        targetPress = startupPress;
-        getStatusTrace().setValue("Fan ON → startup lag begins...  SP = " + round1(targetPress));
-    } else if ((now - fanOnTimestamp) / 1000 < lagSeconds) {
-        targetPress = startupPress;
-        getStatusTrace().setValue("Startup lag active → holding SP = " + round1(targetPress));
-    } else {
-        if (vavMax >= 90.0) {
-            targetPress = Math.min(currentSP + trimIncrement, maxPress);
-            getStatusTrace().setValue("Trim ↑ Increase SP → VAV Max = " + round1(vavMax) + "  → SP = " + round1(targetPress));
-        } else if (vavMax <= 80.0) {
-            targetPress = Math.max(currentSP - trimIncrement, minPress);
-            getStatusTrace().setValue("Trim ↓ Decrease SP → VAV Max = " + round1(vavMax) + "  → SP = " + round1(targetPress));
-        } else {
-            targetPress = currentSP;
-            getStatusTrace().setValue("Deadband → Hold SP = " + round1(targetPress));
-        }
+    // --- State 2: Fan just turned ON (Edge Detection) ---
+    // Explicitly set the setpoint to SP0 to begin the startup delay period.
+    if (!lastFanRun && fanRun) {
+        fanOnStableSinceMs = now;
+        lastFanRun = true;
+        double sp0 = clamp(SP0, SPmin, SPmax);
+        getDischargeAirPressureSp().setValue(sp0); // Explicitly drive output
+        getStatusTrace().setValue("Fan ON -> holding SP0 during startup delay...");
+        getLastActionTs().setValue(new java.util.Date(now).toString());
+        return;
     }
-    getAhuDuctPressStpOut().setValue(targetPress);
+    
+    // Ensure fan state is correct for the current cycle
+    lastFanRun = true;
+
+    // --- State 3: Fan is ON, but waiting for startup delay to complete ---
+    boolean isStartupDelayMet = (now - fanOnStableSinceMs) / 1000 >= TdSec;
+    if (!isStartupDelayMet) {
+        long remaining = TdSec - ((now - fanOnStableSinceMs) / 1000);
+        double sp0 = clamp(SP0, SPmin, SPmax);
+        getDischargeAirPressureSp().setValue(sp0); // Explicitly hold output at SP0
+        getStatusTrace().setValue("Waiting Td (" + remaining + "s left)... SP=" + round3(sp0));
+        return;
+    }
+    
+    // --- State 4: Waiting for T&R update cadence ---
+    boolean isUpdateCadenceMet = (lastMainLogicRunMs == 0) || ((now - lastMainLogicRunMs) / 1000 >= TSec);
+    if (!isUpdateCadenceMet) {
+        // It is safe to return here, as the previous T&R cycle already set the value.
+        // The status trace is not updated to prevent log spam.
+        return;
+    }
+
+    // --- State 5: Run Core Trim & Respond Logic ---
+    if (!getTotalRequests().getStatus().isOk()) {
+        getStatusTrace().setValue("Missing totalRequests -> no T&R action this cycle.");
+        return;
+    }
+    double R = getTotalRequests().getValue();
+
+    double newSetpoint;
+    String action;
+
+    if (R <= Ignore) {
+        action = "trim";
+        newSetpoint = clamp(currentSp + SPtrim, SPmin, SPmax);
+    } else {
+        action = "respond";
+        double respondAmount = Math.min(SPres * (R - Ignore), SPResMax);
+        newSetpoint = clamp(currentSp + respondAmount, SPmin, SPmax);
+    }
+
+    getDischargeAirPressureSp().setValue(newSetpoint);
+    lastMainLogicRunMs = now;
+
+    String detail = "R=" + round3(R) + " -> " + action.toUpperCase() + " SP: " + round3(currentSp) + " -> " + round3(newSetpoint);
+    getStatusTrace().setValue(detail);
+    getLastActionTs().setValue(new java.util.Date(now).toString());
 }
 
+// ===== onStop =====
 public void onStop() throws Exception {
-    if (ticket != null) ticket.cancel();
+    if (ticket != null) {
+        ticket.cancel();
+    }
 }
 
-public BComponent getProgram() {
-    return (BComponent) getComponent();
-}
-
+// ===== Helper Methods =====
 void updateTimer() {
-    if (ticket != null) ticket.cancel();
-    ticket = Clock.schedule(getProgram(), BRelTime.makeSeconds(10), BProgram.execute, null);
+    if (ticket != null) {
+        ticket.cancel();
+    }
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
 }
 
-// Round to 1 decimal place
-double round1(double val) {
-    return Math.round(val * 10.0) / 10.0;
+void ensureNumericWiredOrNull(String slotName, BStatusNumeric point) {
+    try {
+        if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
+            point.setValue(0);
+            point.setStatus(BStatus.NULL);
+        }
+    } catch (Exception e) { /* ignore */ }
 }
 
+void ensureBooleanWiredOrNull(String slotName, BStatusBoolean point) {
+    try {
+        if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
+            point.setValue(false);
+            point.setStatus(BStatus.NULL);
+        }
+    } catch (Exception e) { /* ignore */ }
+}
+
+double clamp(double v, double lo, double hi) {
+    return Math.max(lo, Math.min(v, hi));
+}
+
+int minutesToSecondsSafe(BStatusNumeric minsSlot, int defMin) {
+    double m = defMin;
+    if (minsSlot.getStatus().isOk()) {
+        m = minsSlot.getValue();
+    }
+    m = Math.max(0.0, Math.min(m, 240.0)); // Clamp 0–240 min
+    return (int)Math.round(m * 60.0);
+}
+
+double numericOrDefault(BStatusNumeric slot, double defVal) {
+    return slot.getStatus().isOk() ? slot.getValue() : defVal;
+}
+
+double round3(double v) {
+    return Math.round(v * 1000.0) / 1000.0;
+}
 ```
 
 </details>
@@ -1354,183 +1379,223 @@ double round1(double val) {
 ---
 
 <details>
-<summary>🌡️ AHU Supply Air Temperature Reset (Trim & Respond)</summary>
-
-**Purpose:** Reset discharge air temp based on VAV zone demand values.
+<summary>🌡️ GL36 AHU Supply Air Temperature Reset (Trim & Respond)</summary>
 
 ![Leave Temp Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/ahuLeaveTempBlockSnip.png)
 
-#### Logic Summary:
-
-* Every update interval, reads demand values from up to 30 zones.
-* **Trim colder** if max VAV demand ≥ 30%, **trim warmer** if ≤ 10%.
-* If outside air temp is very high (OAT > threshold), **lock to minSAT** to prevent humidity issues.
-* Handles **Startup Lag** and **Fan OFF** by forcing SAT to `startupAhuSATSetpoint`.
-* Ignores highest `N` values defined by **Ignore Count** to avoid rogue zones.
-
 #### Developer Notes:
 
-* Works with demand signals from zone controllers.
-* Uses internal 10s clock timer for status refresh.
-* Debug strings written to `statusTrace` (e.g., "Startup lag", "Lock to minSAT").
+* Guideline 36 compliant and tested in field by Ben. Designed to work in conjuction with a VAV box pressure requesting `VAV_GL36_Cooling_Req.bog`. All VAV needs to be totallized in wired into the total requests input as well as fan status and the occupancy command.
 
-#### Example Code:
+#### Java Code:
 
 ```java
+/**
+ * AHU Supply Air Temperature (SAT) Trim & Respond Program
+ * Version 7 - HOT FIX - Corrected tMaxState feedback loop to prevent setpoint from getting stuck. (Aug 20, 2025)
+ * Version 6 - Removed tMaxCalculated slot, uses private variable instead.
+ * This program resets the SAT setpoint based on zone requests and outside air temp,
+ * inspired by ASHRAE Guideline 36.
+ */
+
+// ===== Class-level state =====
 Clock.Ticket ticket;
 
-boolean fanWasOff = true;
-long fanOnTimestamp = 0;
-long lastMainLogicRun = 0;
+long lastMainLogicRunMs = 0;   // enforces UpdateMinutes cadence
+long fanOnStableSinceMs = 0;   // enforces StartUpDelayMinutes true-for window
+boolean lastFanRun = false;    // edge detect for fan ON
+private double tMaxState = 70.0; // Private variable to hold tMax state
 
+// ===== onStart =====
 public void onStart() throws Exception {
-    getTrimRespVal().setValue(0.5);
-    getSatMin().setValue(55.0);
-    getSatMax().setValue(65.0);
-    getOutTempConstSatMinStp().setValue(80.0);
-    getStartupLagSeconds().setValue(600);
-    getStartupAhuSATSetpoint().setValue(65.0);
-    getAhuSATSetpointOut().setValue(65.0);
-    getActiveUpdateInterval().setValue(300.0);
-    getStatusTrace().setValue("Program started.");
+    // Initialize state variables and start the timer.
+    getStatusTrace().setValue("sat-trim-and-respond: program started.");
+    lastMainLogicRunMs = 0;
+    fanOnStableSinceMs = 0;
+    lastFanRun = false;
+    this.tMaxState = numericOrDefault(getSatMax(), 70.0);
 
-    lastMainLogicRun = System.currentTimeMillis();
-    updateTimer();
+    updateTimer(); // 10s heartbeat
 }
 
+// ===== onExecute (Main logic loop) =====
 public void onExecute() throws Exception {
-    updateTimer();
-
-    BStatusNumeric[] vavDemandInputs = {
-        getVavZoneDemand1(), getVavZoneDemand2(), getVavZoneDemand3(), getVavZoneDemand4(), getVavZoneDemand5(),
-        getVavZoneDemand6(), getVavZoneDemand7(), getVavZoneDemand8(), getVavZoneDemand9(), getVavZoneDemand10(),
-        getVavZoneDemand11(), getVavZoneDemand12(), getVavZoneDemand13(), getVavZoneDemand14(), getVavZoneDemand15(),
-        getVavZoneDemand16(), getVavZoneDemand17(), getVavZoneDemand18(), getVavZoneDemand19(), getVavZoneDemand20(),
-        getVavZoneDemand21(), getVavZoneDemand22(), getVavZoneDemand23(), getVavZoneDemand24(), getVavZoneDemand25(),
-        getVavZoneDemand26(), getVavZoneDemand27(), getVavZoneDemand28(), getVavZoneDemand29(), getVavZoneDemand30()
-    };
-
-    for (int i = 0; i < vavDemandInputs.length; i++) {
-        if (getComponent().getLinks(getComponent().getSlot("vavZoneDemand" + (i + 1))).length == 0) {
-            vavDemandInputs[i].setValue(0);
-            vavDemandInputs[i].setStatus(BStatus.NULL);
-        }
-    }
-
+    updateTimer(); // Reschedule the next execution
     long now = System.currentTimeMillis();
-    int intervalSec = 300;
-    BStatusNumeric intervalInput = getUpdateIntervalSeconds();
-    if (intervalInput.getStatus().isOk()) {
-        double raw = intervalInput.getValue();
-        intervalSec = (int) Math.max(10, Math.min(raw, 3600));
-    }
-    getActiveUpdateInterval().setValue(intervalSec);
-    if ((now - lastMainLogicRun) / 1000 < intervalSec) return;
-    lastMainLogicRun = now;
 
-    int ignoreCount = 0;
-    BStatusNumeric nInput = getIgnoreCount();
-    if (nInput.getStatus().isOk()) {
-        ignoreCount = (int) Math.max(0, Math.min(nInput.getValue(), 30));
-    }
+    // ---- Null-wire checker (inputs only) ----
+    ensureNumericWiredOrNull("totalRequests", getTotalRequests());
+    ensureBooleanWiredOrNull("fanRunCmd", getFanRunCmd());
+    ensureNumericWiredOrNull("outsideAirTemp", getOutsideAirTemp());
 
-    double trimIncrement = Math.max(0.0, getTrimRespVal().getValue());
-    double minSAT = Math.max(50.0, Math.min(getSatMin().getValue(), 65.0));
-    double maxSAT = Math.max(minSAT, Math.min(getSatMax().getValue(), 70.0));
-    int lagSeconds = (int) Math.max(0, Math.min(getStartupLagSeconds().getValue(), 3600));
+    // ---- Read config with safe defaults ----
+    double minSAT    = numericOrDefault(getSatMin(), 55.0);
+    double maxSAT    = numericOrDefault(getSatMax(), 70.0);
+    double minOAT    = numericOrDefault(getOatMin(), 60.0);
+    double maxOAT    = numericOrDefault(getOatMax(), 70.0);
+    int TdSec        = minutesToSecondsSafe(getStartUpDelayMinutes(), 10);
+    int TSec         = minutesToSecondsSafe(getUpdateMinutes(), 2);
+    double Ignore    = numericOrDefault(getIgnore(), 2.0);
+    double trimVal   = numericOrDefault(getSPtrim(), 0.2);
+    double respVal   = numericOrDefault(getSPres(), -0.3);
+    double respMax   = numericOrDefault(getSPResMax(), -1.0);
 
-    ArrayList<Double> validValues = new ArrayList<>();
-    for (BStatusNumeric input : vavDemandInputs) {
-        if (input.getStatus().isOk()) {
-            validValues.add(input.getValue());
+    boolean fanRun = getFanRunCmd().getStatus().isOk() && getFanRunCmd().getValue();
+    double oat = getOutsideAirTemp().getStatus().isOk() ? getOutsideAirTemp().getValue() : minOAT;
+    
+    // NOTE: We no longer need 'currentSp' for the T&R calculation with the fix.
+    // It is only used here for initializing the display on the first run.
+    double currentSp = getDischargeAirTempSp().getStatus().isOk() ? getDischargeAirTempSp().getValue() : maxSAT;
+
+    // --- State 1: Fan is OFF ---
+    if (!fanRun) {
+        this.tMaxState = maxSAT; // When fan is off, reset tMax to the maximum SAT
+        double newSetpoint = interpolate(oat, minOAT, this.tMaxState, maxOAT, minSAT, minSAT, maxSAT);
+        getDischargeAirTempSp().setValue(newSetpoint);
+
+        if (lastFanRun) { // Log only on the transition from ON to OFF
+            getStatusTrace().setValue("Fan OFF -> holding reset logic. SP=" + round1(newSetpoint));
+            getLastActionTs().setValue(new java.util.Date(now).toString());
         }
-    }
-
-    if (validValues.isEmpty() || validValues.size() <= ignoreCount) {
-        getVavZoneDemandFilteredMax().setValue(0.0);
-        getVavZoneDemandFilteredAvg().setValue(0.0);
-        getAhuSATSetpointOut().setValue(maxSAT);
-        getStatusTrace().setValue("No valid VAV demand → fallback to maxSAT: " + round1(maxSAT));
+        
+        fanOnStableSinceMs = 0;
+        lastFanRun = false;
         return;
     }
 
-    validValues.sort(Collections.reverseOrder());
-    List<Double> filtered = validValues.subList(ignoreCount, validValues.size());
+    // --- State 2: Fan just turned ON (Edge Detection) ---
+    if (!lastFanRun && fanRun) {
+        fanOnStableSinceMs = now;
+        lastFanRun = true;
+        this.tMaxState = maxSAT; // Reset tMax to the maximum SAT on startup
+        double newSetpoint = interpolate(oat, minOAT, this.tMaxState, maxOAT, minSAT, minSAT, maxSAT);
+        getDischargeAirTempSp().setValue(newSetpoint);
+        getStatusTrace().setValue("Fan ON -> holding initial SP during startup delay...");
+        getLastActionTs().setValue(new java.util.Date(now).toString());
+        return;
+    }
+    
+    lastFanRun = true;
 
-    double sum = 0.0;
-    for (double val : filtered) sum += val;
-    double demandAvg = sum / filtered.size();
-    double demandMax = filtered.get(0);
-
-    getVavZoneDemandFilteredMax().setValue(demandMax);
-    getVavZoneDemandFilteredAvg().setValue(demandAvg);
-
-    // Fan tracking
-    BStatusBoolean fanStatus = getAhuFanStatus();
-    BStatusNumeric oat = getOutsideAirTemp();
-    boolean fanOn = fanStatus.getValue();
-
-    if (!fanOn) {
-        fanWasOff = true;
-        fanOnTimestamp = 0;
+    // --- State 3: Fan is ON, but waiting for startup delay ---
+    boolean isStartupDelayMet = (now - fanOnStableSinceMs) / 1000 >= TdSec;
+    if (!isStartupDelayMet) {
+        long remaining = TdSec - ((now - fanOnStableSinceMs) / 1000);
+        // tMaxState holds its value from the previous cycle
+        double newSetpoint = interpolate(oat, minOAT, this.tMaxState, maxOAT, minSAT, minSAT, maxSAT);
+        getDischargeAirTempSp().setValue(newSetpoint);
+        getStatusTrace().setValue("Waiting Td (" + remaining + "s left)... SP=" + round1(newSetpoint));
+        return;
+    }
+    
+    // --- State 4: Waiting for T&R update cadence ---
+    boolean isUpdateCadenceMet = (lastMainLogicRunMs == 0) || ((now - lastMainLogicRunMs) / 1000 >= TSec);
+    if (!isUpdateCadenceMet) {
+        return; // Safe to return, value is already being driven
     }
 
-    if (fanWasOff && fanOn) {
-        fanWasOff = false;
-        fanOnTimestamp = now;
+    // --- State 5: Run Core Trim & Respond Logic ---
+    if (!getTotalRequests().getStatus().isOk()) {
+        getStatusTrace().setValue("Missing totalRequests -> no T&R action this cycle.");
+        return;
     }
+    double R = getTotalRequests().getValue();
 
-    double currentSP = getAhuSATSetpointOut().getStatus().isOk()
-        ? getAhuSATSetpointOut().getValue()
-        : maxSAT;
-
-    double startupSAT = getStartupAhuSATSetpoint().getStatus().isOk()
-        ? getStartupAhuSATSetpoint().getValue()
-        : maxSAT;
-
-    double targetSAT = currentSP;
-
-    if (oat.getStatus().isOk() && oat.getValue() >= (getOutTempConstSatMinStp().getValue() + 1.0)) {
-        targetSAT = minSAT;
-        getStatusTrace().setValue("OA Temp high → lock to minSAT: SP = " + round1(minSAT));
-    } else if (!fanOn) {
-        targetSAT = startupSAT;
-        getStatusTrace().setValue("Fan OFF → waiting for building startup...  SP = " + round1(targetSAT));
-    } else if ((now - fanOnTimestamp) / 1000 < lagSeconds) {
-        targetSAT = startupSAT;
-        getStatusTrace().setValue("Fan ON → startup lag active...  SP = " + round1(targetSAT));
+    String action;
+    if (R <= Ignore) {
+        action = "trim";
+        // ============================ HOT FIX (THE FIX) ============================
+        // The logic now adjusts tMaxState based on its own previous value.
+        // This decouples the trim action from the final setpoint, allowing tMaxState
+        // to reliably climb back to satMax when there are no requests.
+        this.tMaxState = clamp(this.tMaxState + trimVal, minSAT, maxSAT);
+        // =========================================================================
     } else {
-        if (demandMax >= 30.0) {
-            targetSAT = Math.max(currentSP - trimIncrement, minSAT);
-            getStatusTrace().setValue("Trim ↓ Decrease SP → VAV Max = " + round1(demandMax) + "  → SP = " + round1(targetSAT));
-        } else if (demandMax <= 10.0) {
-            targetSAT = Math.min(currentSP + trimIncrement, maxSAT);
-            getStatusTrace().setValue("Trim ↑ Increase SP → VAV Max = " + round1(demandMax) + "  → SP = " + round1(targetSAT));
-        } else {
-            targetSAT = currentSP;
-            getStatusTrace().setValue("Deadband → Hold SP = " + round1(targetSAT));
-        }
+        action = "respond";
+        double respondAmount = Math.max(respVal * (R - Ignore), respMax); // Math.max because responding is negative
+        // ============================ HOT FIX (THE FIX) ============================
+        // This logic is also updated to ensure consistent behavior.
+        this.tMaxState = clamp(this.tMaxState + respondAmount, minSAT, maxSAT);
+        // =========================================================================
     }
+    
+    double newSetpoint = interpolate(oat, minOAT, this.tMaxState, maxOAT, minSAT, minSAT, maxSAT);
+    getDischargeAirTempSp().setValue(newSetpoint);
+    lastMainLogicRunMs = now;
 
-    getAhuSATSetpointOut().setValue(targetSAT);
+    String detail = "R=" + round1(R) + " -> " + action.toUpperCase() + " -> tMax=" + round1(this.tMaxState) + " -> Final SP=" + round1(newSetpoint);
+    getStatusTrace().setValue(detail);
+    getLastActionTs().setValue(new java.util.Date(now).toString());
 }
 
+// ===== onStop =====
 public void onStop() throws Exception {
-    if (ticket != null) ticket.cancel();
+    if (ticket != null) {
+        ticket.cancel();
+    }
 }
 
-public BComponent getProgram() {
-    return (BComponent) getComponent();
-}
-
+// ===== Helper Methods =====
 void updateTimer() {
     if (ticket != null) ticket.cancel();
-    ticket = Clock.schedule(getProgram(), BRelTime.makeSeconds(10), BProgram.execute, null);
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
 }
 
-double round1(double val) {
-    return Math.round(val * 10.0) / 10.0;
+void ensureNumericWiredOrNull(String slotName, BStatusNumeric point) {
+    try {
+        if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
+            point.setValue(0);
+            point.setStatus(BStatus.NULL);
+        }
+    } catch (Exception e) { /* ignore */ }
 }
+
+void ensureBooleanWiredOrNull(String slotName, BStatusBoolean point) {
+    try {
+        if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
+            point.setValue(false);
+            point.setStatus(BStatus.NULL);
+        }
+    } catch (Exception e) { /* ignore */ }
+}
+
+double clamp(double v, double lo, double hi) {
+    return Math.max(lo, Math.min(v, hi));
+}
+
+int minutesToSecondsSafe(BStatusNumeric minsSlot, int defMin) {
+    double m = defMin;
+    if (minsSlot.getStatus().isOk()) m = minsSlot.getValue();
+    m = Math.max(0.0, Math.min(m, 240.0));
+    return (int)Math.round(m * 60.0);
+}
+
+double numericOrDefault(BStatusNumeric slot, double defVal) {
+    return slot.getStatus().isOk() ? slot.getValue() : defVal;
+}
+
+double round1(double v) {
+    return Math.round(v * 10.0) / 10.0;
+}
+
+/**
+ * Linear interpolation function. Calculates a Y value for a given X value
+ * on a line defined by two points (x1, y1) and (x2, y2).
+ * Also clamps the result within finalMin and finalMax.
+ */
+double interpolate(double currentX, double x1, double y1, double x2, double y2, double finalMin, double finalMax) {
+    if (currentX <= x1) return y1;
+    if (currentX >= x2) return y2;
+    
+    // Handle the case where x1 and x2 are the same to avoid division by zero
+    if (Math.abs(x1 - x2) < 0.001) return y1;
+
+    double slope = (y2 - y1) / (x2 - x1);
+    double result = y1 + slope * (currentX - x1);
+    
+    return clamp(result, finalMin, finalMax);
+}
+
 
 
 ```
@@ -1915,111 +1980,6 @@ It continuously tunes heating & cooling rates with an Exponential Moving Average
   <img src="snips/zoneRecoverySnip.png" alt="Recovery Trend Example" width="750">
   <br><em>Recovery trend illustrating learned cool-down rate&nbsp;≈ 0.15 °F /min</em>
 </p>
-
-### Opt Start Activity Diagram
-
-```mermaid
-flowchart TD
-    Start([Start])
-    
-    CheckZoneAtTemp{Zone Within Temp Tolerance?}
-    SetSetpointToZero[[Set minutesToSetpoint = 0.0]]
-    EstimateRecovery[[Estimate Minutes to Setpoint using EMA]]
-
-    GetScheduleData[[Read Next Schedule Event Time & Value]]
-    CheckScheduleState{Is Next Schedule State OCC?}
-    CompareTimeDelta{Is Time to Next OCC < EMA Minutes?}
-
-    StartOptimalStart[[Start Optimal Start Sequence]]
-    IsRunning{Is Optimal Start Running?}
-    MonitorRun[[Monitor Active Warmup/Cooldown]]
-    SetpointMet{Setpoint Reached?}
-    RecordPerformance[[Record Performance]]
-    UpdateEma[[Update EMA Model]]
-    ScheduleChange{Schedule Changed to Occupied?}
-    
-    EnterOffDelay[[Enter Command Off-Delay]]
-    OffDelayActive{Off-Delay Countdown Done?}
-    
-    OutputCommand[[Set Command = true]]
-    NullCommand[[Set Command = NULL]]
-    
-    Wait([Wait 15s])
-    Loop([Loop Back to Start])
-
-    Start --> CheckZoneAtTemp
-
-    %% If at temp, set minutesToSetpoint = 0.0 and exit
-    CheckZoneAtTemp -->|True| SetSetpointToZero --> Wait
-    CheckZoneAtTemp -->|False| EstimateRecovery --> GetScheduleData --> CheckScheduleState
-
-    CheckScheduleState -->|False| Wait
-    CheckScheduleState -->|True| CompareTimeDelta
-    CompareTimeDelta -->|False| Wait
-    CompareTimeDelta -->|True| StartOptimalStart --> IsRunning
-
-    IsRunning -->|Yes| MonitorRun --> SetpointMet
-    SetpointMet -->|Yes| RecordPerformance
-    SetpointMet -->|No| ScheduleChange
-    ScheduleChange -->|True| RecordPerformance --> UpdateEma --> EnterOffDelay
-    ScheduleChange -->|False| MonitorRun
-
-    EnterOffDelay --> OffDelayActive
-    OffDelayActive -->|Yes| NullCommand --> Wait
-    OffDelayActive -->|No| Wait
-
-    IsRunning -->|No| Wait
-
-    Wait --> Loop --> Start
-
-```
-
-### Opt Start Class Diagram
-
-```mermaid
-classDiagram
-    class OptimalStartBlock {
-        - ticket : Clock.Ticket
-        - startTimestamp : long
-        - lastStartTriggerTimestamp : long
-        - isOptimalStartRunning : boolean
-        - setpointWasMetDuringRun : boolean
-        - minutesToReachSetpoint : double
-        - isOffDelayActive : boolean
-        - offDelayStartTime : long
-        - DEFAULT_RATE_DEG_PER_MIN : double
-        - heatHistory : List<PerformanceRecord>
-        - coolHistory : List<PerformanceRecord>
-
-        + onStart()
-        + onExecute()
-        + onStop()
-        - updateModel()
-        - updateIdleEstimate()
-        - updateEquipmentStartCommand()
-        - startOptimalStartSequence()
-        - monitorActiveRun()
-        - stopAndRecordPerformance(actualMinutes: double)
-        - updateZoneAtTempTolerance()
-        - computeEmaForMode(mode: String): double
-        - computeEMA(series: double[]): double
-        - updateTimer()
-        - clearHistory()
-        - pruneHistory()
-        - updateHistoryLog()
-        - updateCurrentHistoryRecordCount()
-    }
-
-    class PerformanceRecord {
-        + timestamp : long
-        + rate : double
-        + mode : String
-        + zoneTempStart : double
-        + outdoorTempStart : double
-    }
-
-    OptimalStartBlock --> PerformanceRecord : uses
-```
 
 ---
 
