@@ -1376,7 +1376,6 @@ double round3(double v) {
 
 </details>
 
----
 
 <details>
 <summary>🌡️ GL36 AHU Supply Air Temperature Reset (Trim & Respond)</summary>
