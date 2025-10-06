@@ -2885,6 +2885,11 @@ double round1(double val) {
 
 This ProgramObject polls **OpenWeatherMap Current Weather** and outputs **Outside Air Temperature (°F)** and **Relative Humidity (%)** on a 20-minute cadence using a simple HTTP GET and lightweight JSON parsing (no extra libs). Lat/Lon, units, language, and cadence are **baked in as defaults**; you only provide your **API key**.
 
+Grab a free API key here (which can take up to a few hours for them to return one to you...):
+* https://openweathermap.org/current
+
+> NOTE: At the present moment (October 2025) it is free for `60 calls/minute (i.e. 1 call every ~1 second) up to a 1,000 calls/day` but I am only doing 1 call for an entire campus of building every 20 minutes or 1200 seconds.
+
 ### ⚙️ Slots
 
 | Slot Name       | Type                 | Writable | Notes                                                 |
@@ -2913,27 +2918,77 @@ Adjust as necessary in the `ProgramObject` property sheet.
 
 ---
 
-### 🌍 Using non-imperial units (metric or Kelvin)
+## 🌡️ `units` Parameter Options
 
-**Quickest option:** edit one word in the URL builder:
+| Value                  | Temperature     | Wind speed | Pressure | Description                                           |
+| ---------------------- | --------------- | ---------- | -------- | ----------------------------------------------------- |
+| `standard` *(default)* | Kelvin (K)      | meter/sec  | hPa      | No `&units` needed; omit it or use `&units=standard`. |
+| `metric`               | Celsius (°C)    | meter/sec  | hPa      | Typical for international / SI users.                 |
+| `imperial`             | Fahrenheit (°F) | miles/hour | hPa      | Default for U.S.-style unit systems.                  |
 
-* For **metric (°C, m/s)** → change `&units=imperial` to `&units=metric`
-* For **standard (Kelvin)** → remove the units param or set `&units=standard`
+🧠 **Notes:**
 
-If you want this configurable at runtime, add a writable `baja:String` slot named `units` and replace the hardcoded `imperial` with `getUnits()` (default it to `imperial` in `onStart()`).
+* If `&units` is **not** specified, it defaults to **Kelvin** (standard).
+* Example conversions from your Niagara block:
+
+  * `&units=imperial` → °F and mph
+  * `&units=metric` → °C and m/s
+  * `&units=standard` → Kelvin and m/s
 
 ---
 
-### ▶️ Run It
+## 🌍 `lang` Parameter Options
 
-1. Create the four slots above with the exact names/types.
-2. Paste the code block into the Program’s **Source** (methods only).
-3. **Compile** in Workbench.
-4. Enter your **API key** in `apiKey`.
-5. Watch `outTempF`, `outHumidity`, and `statusMessage` update.
+The `lang` parameter controls the **language of weather descriptions** (like “clear sky”, “light rain”). It does **not** affect numeric data.
 
-> Any change to defaults (location, units, cadence) requires re-compiling the ProgramObject in Workbench for it to take effect. ✔️
-
+| Code    | Language              | Example                   |
+| ------- | --------------------- | ------------------------- |
+| `af`    | Afrikaans             | “helder lug”              |
+| `al`    | Albanian              | “qiell i kthjellët”       |
+| `ar`    | Arabic                | “سماء صافية”              |
+| `az`    | Azerbaijani           | “açıq hava”               |
+| `bg`    | Bulgarian             | “ясно небе”               |
+| `ca`    | Catalan               | “cel clar”                |
+| `cz`    | Czech                 | “jasná obloha”            |
+| `da`    | Danish                | “klar himmel”             |
+| `de`    | German                | “klarer Himmel”           |
+| `el`    | Greek                 | “καθαρός ουρανός”         |
+| `en`    | English *(default)*   | “clear sky”               |
+| `eu`    | Basque                | “zeru garbi”              |
+| `fa`    | Persian (Farsi)       | “آسمان صاف”               |
+| `fi`    | Finnish               | “selkeä taivas”           |
+| `fr`    | French                | “ciel dégagé”             |
+| `gl`    | Galician              | “céu despexado”           |
+| `he`    | Hebrew                | “שמיים בהירים”            |
+| `hi`    | Hindi                 | “साफ आसमान”               |
+| `hr`    | Croatian              | “vedro nebo”              |
+| `hu`    | Hungarian             | “derült égbolt”           |
+| `id`    | Indonesian            | “langit cerah”            |
+| `it`    | Italian               | “cielo sereno”            |
+| `ja`    | Japanese              | “晴天”                      |
+| `kr`    | Korean                | “맑은 하늘”                   |
+| `la`    | Latvian               | “skaidras debesis”        |
+| `lt`    | Lithuanian            | “giedras dangus”          |
+| `mk`    | Macedonian            | “ведро небо”              |
+| `no`    | Norwegian             | “klar himmel”             |
+| `nl`    | Dutch                 | “heldere lucht”           |
+| `pl`    | Polish                | “bezchmurne niebo”        |
+| `pt`    | Portuguese            | “céu limpo”               |
+| `pt_br` | Portuguese (Brazil)   | “céu limpo”               |
+| `ro`    | Romanian              | “cer senin”               |
+| `ru`    | Russian               | “ясное небо”              |
+| `sv`    | Swedish               | “klar himmel”             |
+| `sk`    | Slovak                | “jasná obloha”            |
+| `sl`    | Slovenian             | “jasno nebo”              |
+| `es`    | Spanish               | “cielo despejado”         |
+| `sr`    | Serbian               | “ведро небо”              |
+| `th`    | Thai                  | “ท้องฟ้าแจ่มใส”           |
+| `tr`    | Turkish               | “açık hava”               |
+| `ua`    | Ukrainian             | “ясне небо”               |
+| `vi`    | Vietnamese            | “bầu trời trong xanh”     |
+| `zh_cn` | Chinese (Simplified)  | “晴朗”                      |
+| `zh_tw` | Chinese (Traditional) | “晴朗”                      |
+| `zu`    | Zulu                  | “isibhakabhaka esicacile” |
 
 ---
 
@@ -2942,6 +2997,18 @@ If you want this configurable at runtime, add a writable `baja:String` slot name
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
 ```java
+/* ===== Program Methods + Helpers (paste into ProgramImpl source) ===== */
+
+////////////////////////////////////////
+// Constants (defaults baked-in)
+////////////////////////////////////////
+private static final double DEFAULT_LAT  = 38.6246;   // Waldorf, MD
+private static final double DEFAULT_LON  = -76.9391;
+private static final String UNITS        = "imperial"; // imperial|metric|standard
+private static final String LANG         = "en";
+private static final int    POLL_SECONDS = 1200;      // 20 minutes
+private static final String OWM_BASE     = "https://api.openweathermap.org/data/2.5/weather";
+
 Clock.Ticket ticket;
 
 public void onStart() throws Exception {
@@ -2961,11 +3028,12 @@ public void onStop() throws Exception {
 
 private void scheduleNext() {
   if (ticket != null) ticket.cancel();
-  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(1200), BProgram.execute, null);
+  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(POLL_SECONDS), BProgram.execute, null);
 }
 
 private void fetchWeatherData() {
   try {
+    // --- Validate key ---
     String key = getApiKey();
     if (key == null || key.trim().isEmpty()) {
       getStatusMessage().setValue("Config: API key missing");
@@ -2973,14 +3041,13 @@ private void fetchWeatherData() {
       return;
     }
 
-    // Fixed defaults (Waldorf MD, imperial, en)
-    String base = "https://api.openweathermap.org/data/2.5/weather";
-    String urlStr = base
-        + "?lat=38.6246"
-        + "&lon=-76.9391"
-        + "&appid=" + java.net.URLEncoder.encode(key, "UTF-8")
-        + "&units=imperial"
-        + "&lang=en";
+    // --- Build URL from defaults ---
+    String urlStr = OWM_BASE
+      + "?lat="   + DEFAULT_LAT
+      + "&lon="   + DEFAULT_LON
+      + "&appid=" + java.net.URLEncoder.encode(key, "UTF-8")
+      + "&units=" + UNITS
+      + "&lang="  + LANG;
 
     URL url = new URL(urlStr);
     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -2997,8 +3064,10 @@ private void fetchWeatherData() {
       in.close();
 
       String json = sb.toString();
-      double tempF   = extractValue(json, "\"temp\":");       // main.temp
-      double humidPc = extractValue(json, "\"humidity\":");   // main.humidity
+
+      // --- Numeric outputs you already expose ---
+      double tempF   = extractNumber(json, "\"temp\":");       // main.temp
+      double humidPc = extractNumber(json, "\"humidity\":");   // main.humidity
 
       if (!Double.isNaN(tempF))   { getOutTempF().setValue(tempF);   getOutTempF().setStatus(BStatus.ok); }
       else                        { getOutTempF().setValue(0);       getOutTempF().setStatus(BStatus.NULL); }
@@ -3006,26 +3075,74 @@ private void fetchWeatherData() {
       if (!Double.isNaN(humidPc)) { getOutHumidity().setValue(humidPc); getOutHumidity().setStatus(BStatus.ok); }
       else                        { getOutHumidity().setValue(0);       getOutHumidity().setStatus(BStatus.NULL); }
 
-      getStatusMessage().setValue("OK " + new java.util.Date().toString());
-    } else {
-      getStatusMessage().setValue("HTTP Error: " + code);
+      // --- Nice status string: location + feels + wind + clouds + vis + pressure + time ---
+      // Optional fields (OK if missing)
+      double feelsF   = extractNumber(json, "\"feels_like\":");   // main.feels_like
+      double windMph  = extractNumber(json, "\"speed\":");        // wind.speed  (mph in imperial)
+      double gustMph  = extractNumber(json, "\"gust\":");         // wind.gust
+      double windDeg  = extractNumber(json, "\"deg\":");          // wind.deg
+      double clouds   = extractNumber(json, "\"all\":");          // clouds.all (%)
+      double pressure = extractNumber(json, "\"pressure\":");     // main.pressure (hPa)
+      double visM     = extractNumber(json, "\"visibility\":");   // meters
+      String desc     = extractString(json, "\"description\":\"");// weather[0].description
+      String city     = extractString(json, "\"name\":\"");       // city name
+      double rlat     = extractNumber(json, "\"lat\":");          // coord.lat
+      double rlon     = extractNumber(json, "\"lon\":");          // coord.lon
+
+      // Location sanity vs our default pin
+      double milesOff = haversineMiles(DEFAULT_LAT, DEFAULT_LON, rlat, rlon);
+      String locNote  = (Double.isNaN(milesOff) || milesOff < 2.0)
+                          ? city
+                          : city + String.format(" (%.1f mi off)", milesOff);
+
+      StringBuilder nice = new StringBuilder();
+      if (!isEmpty(locNote)) nice.append(locNote).append(" • ");
+      if (!isEmpty(desc))    nice.append(cap(desc)).append(" • ");
+
+      if (!Double.isNaN(feelsF)) nice.append(String.format("feels %.1f°F • ", feelsF));
+
+      if (!Double.isNaN(windMph)) {
+        String dir = windDir(windDeg);
+        nice.append("wind ");
+        if (!isEmpty(dir)) nice.append(dir).append(" ");
+        nice.append(String.format("%.0f mph", windMph));
+        if (!Double.isNaN(gustMph)) nice.append(String.format(" (gust %.0f)", gustMph));
+        nice.append(" • ");
+      }
+
+      if (!Double.isNaN(clouds))   nice.append(String.format("clouds %.0f%% • ", clouds));
+      if (!Double.isNaN(visM))     nice.append(String.format("vis %.1f mi • ", visM / 1609.34));
+      if (!Double.isNaN(pressure)) nice.append(String.format("%.0f hPa • ", pressure));
+      nice.append(new java.util.Date().toString());
+
+      getStatusMessage().setValue(nice.toString());
+    }
+    else {
+      getStatusMessage().setValue("HTTP Error: " + code);  // 401 bad key, 429 rate limit, etc.
       nullOutputs();
     }
-  } catch (Exception e) {
+  }
+  catch (Exception e) {
     getStatusMessage().setValue("Error: " + e.getMessage());
     nullOutputs();
   }
 }
 
-// tiny numeric extractor: finds key then parses until non-number
-private double extractValue(String json, String key) {
+////////////////////////////////////////
+// Helpers
+////////////////////////////////////////
+
+// crude numeric extractor: finds key then parses consecutive number chars
+private double extractNumber(String json, String key) {
   try {
     int i = json.indexOf(key);
     if (i < 0) return Double.NaN;
-    int s = i + key.length(), e = s;
+    int s = i + key.length();
+    int e = s;
     while (e < json.length()) {
       char c = json.charAt(e);
-      if ((c >= '0' && c <= '9') || c == '.' || c == '-') e++; else break;
+      if ((c >= '0' && c <= '9') || c == '.' || c == '-') e++;
+      else break;
     }
     String raw = json.substring(s, e).replaceAll("[^0-9.\\-]", "");
     if (raw.length() == 0) return Double.NaN;
@@ -3035,10 +3152,54 @@ private double extractValue(String json, String key) {
   }
 }
 
+// tiny string extractor: looks for a prefix like "\"name\":\"" and returns until next quote
+private String extractString(String json, String keyPrefix) {
+  try {
+    int i = json.indexOf(keyPrefix);
+    if (i < 0) return "";
+    int s = i + keyPrefix.length();
+    int e = json.indexOf("\"", s);
+    if (e < 0) return "";
+    return json.substring(s, e);
+  } catch (Exception ex) {
+    return "";
+  }
+}
+
+private String cap(String s) {
+  if (s == null || s.isEmpty()) return "";
+  return s.substring(0,1).toUpperCase() + s.substring(1);
+}
+
+private boolean isEmpty(String s) { return s == null || s.length() == 0; }
+
+// wind cardinal from degrees
+private String windDir(double deg) {
+  if (Double.isNaN(deg)) return "";
+  String[] dirs = {"N","NNE","NE","ENE","E","ESE","SE","SSE",
+                   "S","SSW","SW","WSW","W","WNW","NW","NNW"};
+  int idx = (int)Math.floor(((deg % 360) / 22.5) + 0.5) % 16;
+  return dirs[idx];
+}
+
+// distance between (lat1,lon1) and (lat2,lon2) in miles (haversine)
+private double haversineMiles(double lat1, double lon1, double lat2, double lon2) {
+  if (Double.isNaN(lat2) || Double.isNaN(lon2)) return Double.NaN;
+  double R = 3958.8; // miles
+  double dLat = Math.toRadians(lat2 - lat1);
+  double dLon = Math.toRadians(lon2 - lon1);
+  double a = Math.sin(dLat/2)*Math.sin(dLat/2) +
+             Math.cos(Math.toRadians(lat1))*Math.cos(Math.toRadians(lat2))*
+             Math.sin(dLon/2)*Math.sin(dLon/2);
+  double c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  return R * c;
+}
+
 private void nullOutputs() {
   try { getOutTempF().setValue(0); getOutTempF().setStatus(BStatus.NULL); } catch (Exception ignore) {}
   try { getOutHumidity().setValue(0); getOutHumidity().setStatus(BStatus.NULL); } catch (Exception ignore) {}
 }
+
 ```
 
 ---
