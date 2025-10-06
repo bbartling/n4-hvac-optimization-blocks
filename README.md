@@ -2913,7 +2913,31 @@ Adjust as necessary in the `ProgramObject` property sheet.
 
 ---
 
-### 💻 Java – paste **method bodies only**
+### 🌍 Using non-imperial units (metric or Kelvin)
+
+**Quickest option:** edit one word in the URL builder:
+
+* For **metric (°C, m/s)** → change `&units=imperial` to `&units=metric`
+* For **standard (Kelvin)** → remove the units param or set `&units=standard`
+
+If you want this configurable at runtime, add a writable `baja:String` slot named `units` and replace the hardcoded `imperial` with `getUnits()` (default it to `imperial` in `onStart()`).
+
+---
+
+### ▶️ Run It
+
+1. Create the four slots above with the exact names/types.
+2. Paste the code block into the Program’s **Source** (methods only).
+3. **Compile** in Workbench.
+4. Enter your **API key** in `apiKey`.
+5. Watch `outTempF`, `outHumidity`, and `statusMessage` update.
+
+> Any change to defaults (location, units, cadence) requires re-compiling the ProgramObject in Workbench for it to take effect. ✔️
+
+
+---
+
+### 💻 Java Code
 
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
@@ -3019,34 +3043,9 @@ private void nullOutputs() {
 
 ---
 
-### 🌍 Using non-imperial units (metric or Kelvin)
+#### 🧠 Java Imports Note
 
-**Quickest option:** edit one word in the URL builder:
-
-* For **metric (°C, m/s)** → change `&units=imperial` to `&units=metric`
-* For **standard (Kelvin)** → remove the units param or set `&units=standard`
-
-If you want this configurable at runtime, add a writable `baja:String` slot named `units` and replace the hardcoded `imperial` with `getUnits()` (default it to `imperial` in `onStart()`).
-
----
-
-### ▶️ Run It
-
-1. Create the four slots above with the exact names/types.
-2. Paste the code block into the Program’s **Source** (methods only).
-3. **Compile** in Workbench.
-4. Enter your **API key** in `apiKey`.
-5. Watch `outTempF`, `outHumidity`, and `statusMessage` update.
-
-> Any change to defaults (location, units, cadence) requires re-compiling the ProgramObject in Workbench for it to take effect. ✔️
-
-Here’s how you can expand your **README** with a new section for the **OpenWeatherMapAPI Program Object**, matching your existing format and tone. It includes a brief code reference, default behavior explanation, and a mini-guide on adding the required `java.net` and `java.io` imports in the **Niagara Workbench IMPORTS tab**.
-
----
-
-#### 🧠 Java Imports Required for HTTP Requests
-
-> NOTE: This `ProgramObject` has two imports to make web requests, you must import two Java packages under the **IMPORTS** tab in Workbench:
+> NOTE: The block is available in the `bog_files` sub directory furnished as necessary, but due note this `ProgramObject` has two imports to make web requests. If you are creating a custom web request block you must import two Java packages under the **IMPORTS** tab in Workbench:
 
 | Module | Package    | Type         |
 | ------ | ---------- | ------------ |
