@@ -2875,9 +2875,6 @@ double round1(double val) {
 
 ---
 
-
-
-
 <details>
 <summary>🌤️ OpenWeatherMap API — diy Web Weather OAT & RH </summary>
 
@@ -2888,9 +2885,6 @@ double round1(double val) {
 
 This ProgramObject polls **OpenWeatherMap Current Weather** and outputs **Outside Air Temperature (°F)** and **Relative Humidity (%)** on a 20-minute cadence using a simple HTTP GET and lightweight JSON parsing (no extra libs). Lat/Lon, units, language, and cadence are **baked in as defaults**; you only provide your **API key**.
 
-> NOTE: Any change to defaults (location, units, cadence) requires **re-compiling the ProgramObject in Workbench** for it to take effect. ✔️
-
-
 ### ⚙️ Slots
 
 | Slot Name       | Type                 | Writable | Notes                                                 |
@@ -2900,8 +2894,6 @@ This ProgramObject polls **OpenWeatherMap Current Weather** and outputs **Outsid
 | `outHumidity`   | `baja:StatusNumeric` | No       | Outside air humidity (%RH).                           |
 | `statusMessage` | `baja:StatusString`  | No       | Status or HTTP code for quick debugging.              |
 
-> Imports (Workbench → **Imports** tab): add `java.net` and `java.io` (module: `java`).
-
 ---
 
 ### 🧠 Defaults
@@ -2910,6 +2902,14 @@ This ProgramObject polls **OpenWeatherMap Current Weather** and outputs **Outsid
 * Units: **imperial** (°F)
 * Language: **en**
 * Poll interval: **1200 s** (20 minutes)
+
+Adjust as necessary in the `ProgramObject` property sheet.
+
+<p align="center">
+  <img src="snips/openWeatherMapAPIPropSheet.png" alt="OpenWeatherMap API Niagara ProgramObject Snip" width="900">
+</p>
+
+> NOTE: Any change to defaults (location, units, cadence) requires **re-compiling the ProgramObject in Workbench** for it to take effect. ✔️
 
 ---
 
@@ -3039,6 +3039,35 @@ If you want this configurable at runtime, add a writable `baja:String` slot name
 5. Watch `outTempF`, `outHumidity`, and `statusMessage` update.
 
 > Any change to defaults (location, units, cadence) requires re-compiling the ProgramObject in Workbench for it to take effect. ✔️
+
+Here’s how you can expand your **README** with a new section for the **OpenWeatherMapAPI Program Object**, matching your existing format and tone. It includes a brief code reference, default behavior explanation, and a mini-guide on adding the required `java.net` and `java.io` imports in the **Niagara Workbench IMPORTS tab**.
+
+---
+
+#### 🧠 Java Imports Required for HTTP Requests
+
+> NOTE: This `ProgramObject` has two imports to make web requests, you must import two Java packages under the **IMPORTS** tab in Workbench:
+
+| Module | Package    | Type         |
+| ------ | ---------- | ------------ |
+| `java` | `java.net` | User Defined |
+| `java` | `java.io`  | User Defined |
+
+To add:
+
+1. Open the **Program Object → Imports** tab.
+2. Click **Import Package**.
+3. Enter:
+
+   * **Module:** `java`
+   * **Package:** `java.net`
+     *(Repeat for `java.io`)*
+4. Press **OK**, then **Compile** the program.
+
+<p align="center">
+  <img src="snips/openWeatherMapAPIReqImports.png" alt="Niagara Workbench Imports Example" width="650">
+</p>
+
 
 </details>
 
