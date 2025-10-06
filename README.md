@@ -2879,6 +2879,171 @@ double round1(double val) {
 
 
 <details>
+<summary>🌤️ OpenWeatherMap API — diy Web Weather OAT & RH </summary>
+
+
+<p align="center">
+  <img src="snips/openWeatherMapAPI.png" alt="OpenWeatherMap API Niagara ProgramObject Snip" width="900">
+</p>
+
+This ProgramObject polls **OpenWeatherMap Current Weather** and outputs **Outside Air Temperature (°F)** and **Relative Humidity (%)** on a 20-minute cadence using a simple HTTP GET and lightweight JSON parsing (no extra libs). Lat/Lon, units, language, and cadence are **baked in as defaults**; you only provide your **API key**.
+
+> NOTE: Any change to defaults (location, units, cadence) requires **re-compiling the ProgramObject in Workbench** for it to take effect. ✔️
+
+
+### ⚙️ Slots
+
+| Slot Name       | Type                 | Writable | Notes                                                 |
+| --------------- | -------------------- | -------- | ----------------------------------------------------- |
+| `apiKey`        | `baja:String`        | Yes      | Your OWM API key (the **only** thing you must enter). |
+| `outTempF`      | `baja:StatusNumeric` | No       | Outside air temperature (°F).                         |
+| `outHumidity`   | `baja:StatusNumeric` | No       | Outside air humidity (%RH).                           |
+| `statusMessage` | `baja:StatusString`  | No       | Status or HTTP code for quick debugging.              |
+
+> Imports (Workbench → **Imports** tab): add `java.net` and `java.io` (module: `java`).
+
+---
+
+### 🧠 Defaults
+
+* Location: **Waldorf, MD** (`lat=38.6246`, `lon=-76.9391`)
+* Units: **imperial** (°F)
+* Language: **en**
+* Poll interval: **1200 s** (20 minutes)
+
+---
+
+### 💻 Java – paste **method bodies only**
+
+> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
+
+```java
+Clock.Ticket ticket;
+
+public void onStart() throws Exception {
+  fetchWeatherData();
+  scheduleNext();
+}
+
+public void onExecute() throws Exception {
+  fetchWeatherData();
+  scheduleNext();
+}
+
+public void onStop() throws Exception {
+  if (ticket != null) ticket.cancel();
+  getStatusMessage().setValue("Stopped.");
+}
+
+private void scheduleNext() {
+  if (ticket != null) ticket.cancel();
+  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(1200), BProgram.execute, null);
+}
+
+private void fetchWeatherData() {
+  try {
+    String key = getApiKey();
+    if (key == null || key.trim().isEmpty()) {
+      getStatusMessage().setValue("Config: API key missing");
+      nullOutputs();
+      return;
+    }
+
+    // Fixed defaults (Waldorf MD, imperial, en)
+    String base = "https://api.openweathermap.org/data/2.5/weather";
+    String urlStr = base
+        + "?lat=38.6246"
+        + "&lon=-76.9391"
+        + "&appid=" + java.net.URLEncoder.encode(key, "UTF-8")
+        + "&units=imperial"
+        + "&lang=en";
+
+    URL url = new URL(urlStr);
+    HttpURLConnection conn = (HttpURLConnection) url.openConnection();
+    conn.setRequestMethod("GET");
+    conn.setConnectTimeout(10000);
+    conn.setReadTimeout(10000);
+    conn.setRequestProperty("User-Agent", "Niagara-OpenWeather/1.0");
+
+    int code = conn.getResponseCode();
+    if (code == HttpURLConnection.HTTP_OK) {
+      BufferedReader in = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+      StringBuilder sb = new StringBuilder();
+      String line; while ((line = in.readLine()) != null) sb.append(line);
+      in.close();
+
+      String json = sb.toString();
+      double tempF   = extractValue(json, "\"temp\":");       // main.temp
+      double humidPc = extractValue(json, "\"humidity\":");   // main.humidity
+
+      if (!Double.isNaN(tempF))   { getOutTempF().setValue(tempF);   getOutTempF().setStatus(BStatus.ok); }
+      else                        { getOutTempF().setValue(0);       getOutTempF().setStatus(BStatus.NULL); }
+
+      if (!Double.isNaN(humidPc)) { getOutHumidity().setValue(humidPc); getOutHumidity().setStatus(BStatus.ok); }
+      else                        { getOutHumidity().setValue(0);       getOutHumidity().setStatus(BStatus.NULL); }
+
+      getStatusMessage().setValue("OK " + new java.util.Date().toString());
+    } else {
+      getStatusMessage().setValue("HTTP Error: " + code);
+      nullOutputs();
+    }
+  } catch (Exception e) {
+    getStatusMessage().setValue("Error: " + e.getMessage());
+    nullOutputs();
+  }
+}
+
+// tiny numeric extractor: finds key then parses until non-number
+private double extractValue(String json, String key) {
+  try {
+    int i = json.indexOf(key);
+    if (i < 0) return Double.NaN;
+    int s = i + key.length(), e = s;
+    while (e < json.length()) {
+      char c = json.charAt(e);
+      if ((c >= '0' && c <= '9') || c == '.' || c == '-') e++; else break;
+    }
+    String raw = json.substring(s, e).replaceAll("[^0-9.\\-]", "");
+    if (raw.length() == 0) return Double.NaN;
+    return Double.parseDouble(raw);
+  } catch (Exception ex) {
+    return Double.NaN;
+  }
+}
+
+private void nullOutputs() {
+  try { getOutTempF().setValue(0); getOutTempF().setStatus(BStatus.NULL); } catch (Exception ignore) {}
+  try { getOutHumidity().setValue(0); getOutHumidity().setStatus(BStatus.NULL); } catch (Exception ignore) {}
+}
+```
+
+---
+
+### 🌍 Using non-imperial units (metric or Kelvin)
+
+**Quickest option:** edit one word in the URL builder:
+
+* For **metric (°C, m/s)** → change `&units=imperial` to `&units=metric`
+* For **standard (Kelvin)** → remove the units param or set `&units=standard`
+
+If you want this configurable at runtime, add a writable `baja:String` slot named `units` and replace the hardcoded `imperial` with `getUnits()` (default it to `imperial` in `onStart()`).
+
+---
+
+### ▶️ Run It
+
+1. Create the four slots above with the exact names/types.
+2. Paste the code block into the Program’s **Source** (methods only).
+3. **Compile** in Workbench.
+4. Enter your **API key** in `apiKey`.
+5. Watch `outTempF`, `outHumidity`, and `statusMessage` update.
+
+> Any change to defaults (location, units, cadence) requires re-compiling the ProgramObject in Workbench for it to take effect. ✔️
+
+</details>
+
+
+<details>
 <summary>📊 JACE Resource Management – Best Practices</summary>
 
 To avoid Niagara runtime issues, monitor JACE system health:
