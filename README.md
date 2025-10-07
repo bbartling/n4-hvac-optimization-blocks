@@ -3000,40 +3000,52 @@ The `lang` parameter controls the **language of weather descriptions** (like “
 /* ===== Program Methods + Helpers (paste into ProgramImpl source) ===== */
 
 ////////////////////////////////////////
-// Constants (defaults baked-in)
+// Defaults (used if slots are blank/NULL)
 ////////////////////////////////////////
-private static final double DEFAULT_LAT  = 38.6246;   // Waldorf, MD
+private static final double DEFAULT_LAT  = 38.6246;    // Waldorf, MD
 private static final double DEFAULT_LON  = -76.9391;
-private static final String UNITS        = "imperial"; // imperial|metric|standard
-private static final String LANG         = "en";
-private static final int    POLL_SECONDS = 1200;      // 20 minutes
-private static final String OWM_BASE     = "https://api.openweathermap.org/data/2.5/weather";
+private static final String DEFAULT_UNITS = "imperial"; // imperial|metric|standard
+private static final String DEFAULT_LANG  = "en";
+private static final int    DEFAULT_POLL  = 1200;       // 20 minutes
+private static final String OWM_BASE      = "https://api.openweathermap.org/data/2.5/weather";
 
 Clock.Ticket ticket;
 
 public void onStart() throws Exception {
+  log("onStart");
   fetchWeatherData();
   scheduleNext();
 }
 
 public void onExecute() throws Exception {
-  fetchWeatherData();
+  // If user toggled updateNow true, fetch immediately and auto-reset.
+  if (safeBool(getUpdateNow())) {
+    log("Manual trigger via updateNow");
+    fetchWeatherData();
+    try { getUpdateNow().setValue(false); } catch (Exception ignore) {}
+  } else {
+    fetchWeatherData();
+  }
   scheduleNext();
 }
 
 public void onStop() throws Exception {
   if (ticket != null) ticket.cancel();
+  log("onStop");
   getStatusMessage().setValue("Stopped.");
 }
 
 private void scheduleNext() {
   if (ticket != null) ticket.cancel();
-  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(POLL_SECONDS), BProgram.execute, null);
+  int s = safeIntSeconds(getPollSeconds(), DEFAULT_POLL);
+  // Clamp to 60–3600 seconds to avoid hammering the API
+  s = Math.max(60, Math.min(s, 3600));
+  log("Scheduling next fetch in " + s + "s");
+  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(s), BProgram.execute, null);
 }
 
 private void fetchWeatherData() {
   try {
-    // --- Validate key ---
     String key = getApiKey();
     if (key == null || key.trim().isEmpty()) {
       getStatusMessage().setValue("Config: API key missing");
@@ -3041,13 +3053,20 @@ private void fetchWeatherData() {
       return;
     }
 
-    // --- Build URL from defaults ---
+    // Read coordinates / units / lang from slots with fallbacks
+    double lat  = safeNumeric(getLat(),  DEFAULT_LAT);
+    double lon  = safeNumeric(getLon(),  DEFAULT_LON);
+    String units = safeString(getUnits(), DEFAULT_UNITS);
+    String lang  = safeString(getLang(),  DEFAULT_LANG);
+
     String urlStr = OWM_BASE
-      + "?lat="   + DEFAULT_LAT
-      + "&lon="   + DEFAULT_LON
+      + "?lat="   + lat
+      + "&lon="   + lon
       + "&appid=" + java.net.URLEncoder.encode(key, "UTF-8")
-      + "&units=" + UNITS
-      + "&lang="  + LANG;
+      + "&units=" + units
+      + "&lang="  + lang;
+
+    log("GET " + urlStr);
 
     URL url = new URL(urlStr);
     HttpURLConnection conn = (HttpURLConnection) url.openConnection();
@@ -3065,66 +3084,67 @@ private void fetchWeatherData() {
 
       String json = sb.toString();
 
-      // --- Numeric outputs you already expose ---
-      double tempF   = extractNumber(json, "\"temp\":");       // main.temp
+      // Core outputs
+      double temp    = extractNumber(json, "\"temp\":");       // main.temp
       double humidPc = extractNumber(json, "\"humidity\":");   // main.humidity
 
-      if (!Double.isNaN(tempF))   { getOutTempF().setValue(tempF);   getOutTempF().setStatus(BStatus.ok); }
-      else                        { getOutTempF().setValue(0);       getOutTempF().setStatus(BStatus.NULL); }
+      if (!Double.isNaN(temp))    { getOutTempF().setValue(temp);   getOutTempF().setStatus(BStatus.ok); }
+      else                        { getOutTempF().setValue(0);      getOutTempF().setStatus(BStatus.NULL); }
 
       if (!Double.isNaN(humidPc)) { getOutHumidity().setValue(humidPc); getOutHumidity().setStatus(BStatus.ok); }
       else                        { getOutHumidity().setValue(0);       getOutHumidity().setStatus(BStatus.NULL); }
 
-      // --- Nice status string: location + feels + wind + clouds + vis + pressure + time ---
-      // Optional fields (OK if missing)
-      double feelsF   = extractNumber(json, "\"feels_like\":");   // main.feels_like
-      double windMph  = extractNumber(json, "\"speed\":");        // wind.speed  (mph in imperial)
-      double gustMph  = extractNumber(json, "\"gust\":");         // wind.gust
-      double windDeg  = extractNumber(json, "\"deg\":");          // wind.deg
-      double clouds   = extractNumber(json, "\"all\":");          // clouds.all (%)
-      double pressure = extractNumber(json, "\"pressure\":");     // main.pressure (hPa)
-      double visM     = extractNumber(json, "\"visibility\":");   // meters
-      String desc     = extractString(json, "\"description\":\"");// weather[0].description
-      String city     = extractString(json, "\"name\":\"");       // city name
-      double rlat     = extractNumber(json, "\"lat\":");          // coord.lat
-      double rlon     = extractNumber(json, "\"lon\":");          // coord.lon
+      // Enriched status string
+      double feels    = extractNumber(json, "\"feels_like\":");
+      double windSpd  = extractNumber(json, "\"speed\":");      // mph in imperial, m/s otherwise
+      double gustSpd  = extractNumber(json, "\"gust\":");
+      double windDeg  = extractNumber(json, "\"deg\":");
+      double clouds   = extractNumber(json, "\"all\":");        // clouds.all %
+      double pressure = extractNumber(json, "\"pressure\":");   // hPa
+      double visM     = extractNumber(json, "\"visibility\":"); // meters
+      String desc     = extractString(json, "\"description\":\"");
+      String city     = extractString(json, "\"name\":\"");
+      double rlat     = extractNumber(json, "\"lat\":");
+      double rlon     = extractNumber(json, "\"lon\":");
 
-      // Location sanity vs our default pin
-      double milesOff = haversineMiles(DEFAULT_LAT, DEFAULT_LON, rlat, rlon);
+      // Location sanity vs requested
+      double milesOff = haversineMiles(lat, lon, rlat, rlon);
       String locNote  = (Double.isNaN(milesOff) || milesOff < 2.0)
-                          ? city
-                          : city + String.format(" (%.1f mi off)", milesOff);
+                        ? city : city + String.format(" (%.1f mi off)", milesOff);
+
+      // Units labels
+      String tUnit = tempUnit(units);
+      String vUnit = windUnit(units);
 
       StringBuilder nice = new StringBuilder();
       if (!isEmpty(locNote)) nice.append(locNote).append(" • ");
       if (!isEmpty(desc))    nice.append(cap(desc)).append(" • ");
-
-      if (!Double.isNaN(feelsF)) nice.append(String.format("feels %.1f°F • ", feelsF));
-
-      if (!Double.isNaN(windMph)) {
+      if (!Double.isNaN(feels))   nice.append(String.format("feels %.1f%s • ", feels, tUnit));
+      if (!Double.isNaN(windSpd)) {
         String dir = windDir(windDeg);
         nice.append("wind ");
         if (!isEmpty(dir)) nice.append(dir).append(" ");
-        nice.append(String.format("%.0f mph", windMph));
-        if (!Double.isNaN(gustMph)) nice.append(String.format(" (gust %.0f)", gustMph));
+        nice.append(String.format("%.0f %s", windSpd, vUnit));
+        if (!Double.isNaN(gustSpd)) nice.append(String.format(" (gust %.0f)", gustSpd));
         nice.append(" • ");
       }
-
       if (!Double.isNaN(clouds))   nice.append(String.format("clouds %.0f%% • ", clouds));
       if (!Double.isNaN(visM))     nice.append(String.format("vis %.1f mi • ", visM / 1609.34));
       if (!Double.isNaN(pressure)) nice.append(String.format("%.0f hPa • ", pressure));
       nice.append(new java.util.Date().toString());
 
       getStatusMessage().setValue(nice.toString());
-    }
-    else {
-      getStatusMessage().setValue("HTTP Error: " + code);  // 401 bad key, 429 rate limit, etc.
+      log("OK");
+    } else {
+      getStatusMessage().setValue("HTTP Error: " + code);  // 401 bad key, 404 bad coords, 429 rate-limit, etc.
       nullOutputs();
+      log("HTTP Error " + code);
     }
   }
   catch (Exception e) {
     getStatusMessage().setValue("Error: " + e.getMessage());
     nullOutputs();
+    log("Exception: " + e.getMessage());
   }
 }
 
@@ -3132,7 +3152,27 @@ private void fetchWeatherData() {
 // Helpers
 ////////////////////////////////////////
 
-// crude numeric extractor: finds key then parses consecutive number chars
+private double safeNumeric(javax.baja.status.BStatusNumeric s, double def) {
+  try { return (s != null && s.getStatus().isOk()) ? s.getValue() : def; }
+  catch (Exception e) { return def; }
+}
+
+private String safeString(String v, String def) {
+  return (v != null && v.trim().length() > 0) ? v.trim() : def;
+}
+
+private boolean safeBool(javax.baja.status.BStatusBoolean b) {
+  try { return (b != null && b.getStatus().isOk()) && b.getValue(); }
+  catch (Exception e) { return false; }
+}
+
+private int safeIntSeconds(javax.baja.status.BStatusNumeric s, int def) {
+  double v = safeNumeric(s, def);
+  if (Double.isNaN(v)) return def;
+  return (int)Math.round(v);
+}
+
+// crude numeric extractor
 private double extractNumber(String json, String key) {
   try {
     int i = json.indexOf(key);
@@ -3152,7 +3192,7 @@ private double extractNumber(String json, String key) {
   }
 }
 
-// tiny string extractor: looks for a prefix like "\"name\":\"" and returns until next quote
+// tiny string extractor: prefix like "\"name\":\""
 private String extractString(String json, String keyPrefix) {
   try {
     int i = json.indexOf(keyPrefix);
@@ -3164,6 +3204,18 @@ private String extractString(String json, String keyPrefix) {
   } catch (Exception ex) {
     return "";
   }
+}
+
+private String tempUnit(String units) {
+  String u = (units == null) ? "" : units.toLowerCase();
+  if ("metric".equals(u)) return "°C";
+  if ("standard".equals(u)) return "K";
+  return "°F"; // imperial or anything else
+}
+
+private String windUnit(String units) {
+  String u = (units == null) ? "" : units.toLowerCase();
+  return "imperial".equals(u) ? "mph" : "m/s";
 }
 
 private String cap(String s) {
@@ -3182,7 +3234,7 @@ private String windDir(double deg) {
   return dirs[idx];
 }
 
-// distance between (lat1,lon1) and (lat2,lon2) in miles (haversine)
+// distance in miles (haversine)
 private double haversineMiles(double lat1, double lon1, double lat2, double lon2) {
   if (Double.isNaN(lat2) || Double.isNaN(lon2)) return Double.NaN;
   double R = 3958.8; // miles
@@ -3200,6 +3252,14 @@ private void nullOutputs() {
   try { getOutHumidity().setValue(0); getOutHumidity().setStatus(BStatus.NULL); } catch (Exception ignore) {}
 }
 
+// Console logger (enable via logToConsole slot)
+private void log(String msg) {
+  try {
+    if (safeBool(getLogToConsole())) {
+      System.out.println("[OpenWeatherMapAPI] " + msg);
+    }
+  } catch (Exception ignore) {}
+}
 ```
 
 ---
