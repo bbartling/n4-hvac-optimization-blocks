@@ -3296,25 +3296,11 @@ To add:
 <details>
 <summary>🤖 AI Power Predictor Block (Niagara ↔ Docker ML Model)</summary>
 
-This block is an example of what “AI engineering” actually looks like in a building automation system.
+This block is an example of what “AI engineering” actually looks like in a building automation system where a ProgramObject hits a Docker container with a machine learning model in it to predict electrical power. See this other repo for more details on running a Docker container and the machine learning app code downloaded from Kaggle which is a data science competition organization.
 
-Instead of doing classic rule logic or Trim & Respond, this Program Object calls a FastAPI model server (`chiller-power-model-api`, running in Docker) and asks it:
+* https://github.com/bbartling?tab=repositories
 
-> “Given current weather and plant telemetry, how many kW do you think the building will be pulling?”
-
-You get:
-
-* a live **predictedBuildingKW** number you can trend, alarm on, or feed into MPC load shedding logic
-* a **statusTrace** string so ops staff can debug without opening code
-* zero cloud dependency, all local / air-gapped friendly
-
-This is the bridge between BAS and model-predictive control (MPC). Niagara keeps running the plant, but it can now *ask a model* “what will this cost me in kW if I keep doing what I’m doing?”
-
----
-
-### 📦 How it’s wired
-
-You run the model in a local container (your `chiller-power-model-api` repo). That container exposes `/predict_power`:
+The ML Docker container can be ran on the same server as the Niagara Server, cloud, or somewhere on the OT LAN. You feed in this data via wire sheet to the ProgramObject: 
 
 Inputs your model expects:
 
@@ -3327,7 +3313,7 @@ Inputs your model expects:
 * Condenser water temp (°C)
 * Timestamp (ms since epoch)
 
-Niagara feeds those in, gets back JSON like:
+And the Docker container returns back JSON like:
 
 ```json
 {
@@ -3337,29 +3323,22 @@ Niagara feeds those in, gets back JSON like:
 }
 ```
 
-Then the ProgramObject writes that 107.76 into a numeric slot `predictedBuildingKW` and updates `statusTrace`.
-
-You can see this live on the wire sheet as a block called `DockerContainerAPI` feeding two writable proxy points:
-
-* `Predicted_Power_kW` (numeric)
-* `Status` (string)
-
-Those proxy points are what the rest of the station / graphics / trends will read.
+Where then some custom controls engineering logic can be applied or whatever is required for the project.
 
 ---
 
 <p align="center">
-<img src="AiEngSnip.png" alt="Niagara AI Power Predictor Wiresheet" width="800">
+<img src="snips/AiEngSnip.png" alt="Niagara AI Power Predictor Wiresheet" width="800">
 <br><em>Niagara ProgramObject calling the local FastAPI model container and writing kW + status back into the station.</em>
 </p>
 
 ---
 
-### 🔌 Slot Sheet (what you build in Workbench)
+### 🔌 Required Slots
 
 | Slot Name             | Type             | Writable | Purpose                                                                                                     |
 | --------------------- | ---------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `updateNow`           | `BStatusBoolean` | Yes      | Trigger to call the model. **Must have Config Flag: Execute On Change.**                                    |
+| `updateNow`           | `BStatusBoolean` | Yes      | Trigger to call the model in docker container. **Must have Config Flag: Execute On Change.**                                    |
 | `modelUrl`            | `BString`        | Yes      | API endpoint, like `http://127.0.0.1:8000/predict_power`. Can be retuned in the field without editing code. |
 | `outsideAirTemp_F`    | `BStatusNumeric` | Yes      | Outside air temp (°F).                                                                                      |
 | `outsideAirRH_Pct`    | `BStatusNumeric` | Yes      | Outside air relative humidity (%).                                                                          |
@@ -3370,24 +3349,11 @@ Those proxy points are what the rest of the station / graphics / trends will rea
 | `statusTrace`         | `BStatusString`  | No       | OUTPUT. Debug text like `OK predicted_kw=107.76`.                                                           |
 | `lastCallTimestampMs` | `BStatusNumeric` | No       | OUTPUT. Milliseconds since epoch when call went out.                                                        |
 
-Why this matters: these inputs are exactly the features the FastAPI model is trained on. No mystery features hiding in Python notebooks. Niagara is feeding real plant telemetry, not guesses.
-
----
-
-### ⏱ Execution model
-
-This block is **event-driven**, not a free-running timer.
-
-* You pulse `updateNow` true (we usually drive it with a 10s OneShot/Interval block).
-* Niagara immediately runs `onExecute()`.
-* Java builds a JSON payload, POSTs it to the Docker app, parses the reply.
-* Then it **resets `updateNow` back to false** so the next pulse will fire again.
 
 ---
 
 ### ✅ Java: ProgramObject logic
 
-Paste the following into the Program Object’s Source view (inside the auto-generated `ProgramImpl` body). Do **not** add your own class header/imports — Niagara generates those. Keep helper methods at class scope (not nested inside `onExecute()`), same style as the other blocks in this repo. 
 
 ```java
 
