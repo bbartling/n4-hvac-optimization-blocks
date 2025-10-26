@@ -3291,6 +3291,273 @@ To add:
 
 </details>
 
+---
+
+<details>
+<summary>🤖 AI Power Predictor Block (Niagara ↔ Docker ML Model)</summary>
+
+This block is an example of what “AI engineering” actually looks like in a building automation system.
+
+Instead of doing classic rule logic or Trim & Respond, this Program Object calls a FastAPI model server (`chiller-power-model-api`, running in Docker) and asks it:
+
+> “Given current weather and plant telemetry, how many kW do you think the building will be pulling?”
+
+You get:
+
+* a live **predictedBuildingKW** number you can trend, alarm on, or feed into MPC load shedding logic
+* a **statusTrace** string so ops staff can debug without opening code
+* zero cloud dependency, all local / air-gapped friendly
+
+This is the bridge between BAS and model-predictive control (MPC). Niagara keeps running the plant, but it can now *ask a model* “what will this cost me in kW if I keep doing what I’m doing?”
+
+---
+
+### 📦 How it’s wired
+
+You run the model in a local container (your `chiller-power-model-api` repo). That container exposes `/predict_power`:
+
+Inputs your model expects:
+
+* Outside air temp (°F)
+* Outside air RH (%)
+* Hour of day
+* Day of week
+* Building cooling load (RT)
+* Chilled water flow (L/s)
+* Condenser water temp (°C)
+* Timestamp (ms since epoch)
+
+Niagara feeds those in, gets back JSON like:
+
+```json
+{
+  "predicted_kw": 107.76,
+  "model_version": "v0.1",
+  "ok": true
+}
+```
+
+Then the ProgramObject writes that 107.76 into a numeric slot `predictedBuildingKW` and updates `statusTrace`.
+
+You can see this live on the wire sheet as a block called `DockerContainerAPI` feeding two writable proxy points:
+
+* `Predicted_Power_kW` (numeric)
+* `Status` (string)
+
+Those proxy points are what the rest of the station / graphics / trends will read.
+
+---
+
+<p align="center">
+<img src="AiEngSnip.png" alt="Niagara AI Power Predictor Wiresheet" width="800">
+<br><em>Niagara ProgramObject calling the local FastAPI model container and writing kW + status back into the station.</em>
+</p>
+
+---
+
+### 🔌 Slot Sheet (what you build in Workbench)
+
+| Slot Name             | Type             | Writable | Purpose                                                                                                     |
+| --------------------- | ---------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `updateNow`           | `BStatusBoolean` | Yes      | Trigger to call the model. **Must have Config Flag: Execute On Change.**                                    |
+| `modelUrl`            | `BString`        | Yes      | API endpoint, like `http://127.0.0.1:8000/predict_power`. Can be retuned in the field without editing code. |
+| `outsideAirTemp_F`    | `BStatusNumeric` | Yes      | Outside air temp (°F).                                                                                      |
+| `outsideAirRH_Pct`    | `BStatusNumeric` | Yes      | Outside air relative humidity (%).                                                                          |
+| `buildingLoad_RT`     | `BStatusNumeric` | Yes      | Plant load in refrigeration tons.                                                                           |
+| `chwFlow_LPS`         | `BStatusNumeric` | Yes      | Chilled water flow (L/s).                                                                                   |
+| `cwTemp_C`            | `BStatusNumeric` | Yes      | Condenser water temp (°C).                                                                                  |
+| `predictedBuildingKW` | `BStatusNumeric` | No       | OUTPUT. The model’s predicted electrical power draw in kW.                                                  |
+| `statusTrace`         | `BStatusString`  | No       | OUTPUT. Debug text like `OK predicted_kw=107.76`.                                                           |
+| `lastCallTimestampMs` | `BStatusNumeric` | No       | OUTPUT. Milliseconds since epoch when call went out.                                                        |
+
+Why this matters: these inputs are exactly the features the FastAPI model is trained on. No mystery features hiding in Python notebooks. Niagara is feeding real plant telemetry, not guesses.
+
+---
+
+### ⏱ Execution model
+
+This block is **event-driven**, not a free-running timer.
+
+* You pulse `updateNow` true (we usually drive it with a 10s OneShot/Interval block).
+* Niagara immediately runs `onExecute()`.
+* Java builds a JSON payload, POSTs it to the Docker app, parses the reply.
+* Then it **resets `updateNow` back to false** so the next pulse will fire again.
+
+---
+
+### ✅ Java: ProgramObject logic
+
+Paste the following into the Program Object’s Source view (inside the auto-generated `ProgramImpl` body). Do **not** add your own class header/imports — Niagara generates those. Keep helper methods at class scope (not nested inside `onExecute()`), same style as the other blocks in this repo. 
+
+```java
+
+public void onStart() throws Exception
+{
+    // nothing on start; this block is event-driven
+    getStatusTrace().setValue("PowerPredictorFromModel ready.");
+}
+
+public void onExecute() throws Exception
+{
+    // only run logic if updateNow is true
+    if (!getUpdateNow().getValue()) {
+        return;
+    }
+
+    // --- Read inputs safely with defaults ---
+    double oatF = getOutsideAirTemp_F().getStatus().isOk() ? getOutsideAirTemp_F().getValue() : 70.0;
+    double rhPct = getOutsideAirRH_Pct().getStatus().isOk() ? getOutsideAirRH_Pct().getValue() : 50.0;
+    
+    // --- ADDED: Read new required plant inputs ---
+    double loadRT = getBuildingLoad_RT().getStatus().isOk() ? getBuildingLoad_RT().getValue() : 100.0;
+    double flowLPS = getChwFlow_LPS().getStatus().isOk() ? getChwFlow_LPS().getValue() : 20.0;
+    double cwTempC = getCwTemp_C().getStatus().isOk() ? getCwTemp_C().getValue() : 28.0;
+
+    String url = getModelUrl().getValue();
+    if (url == null || url.trim().length() == 0) {
+        url = "http://127.0.0.1:8000/predict_power"; // localhost Docker default fallback
+    }
+
+    // --- ADDED: Derive time features ---
+    long nowMs = System.currentTimeMillis();
+    java.util.Calendar cal = java.util.Calendar.getInstance();
+    cal.setTimeInMillis(nowMs);
+    int hourOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY);
+    
+    // Map Java's Calendar (SUNDAY=1) to Python's (MONDAY=0)
+    int javaDow = cal.get(java.util.Calendar.DAY_OF_WEEK);
+    int modelDow = (javaDow == 1) ? 6 : (javaDow - 2); // (Java SUNDAY=1 -> Model SUNDAY=6), (Java MONDAY=2 -> Model MONDAY=0)
+
+    getLastCallTimestampMs().setValue((double) nowMs);
+
+    try {
+        // --- ENHANCED: Build JSON body to match the model ---
+        String jsonBody =
+            "{"
+            + "\"oat_f\":" + oatF + ","
+            + "\"rh_pct\":" + rhPct + ","
+            + "\"hour_of_day\":" + hourOfDay + ","
+            + "\"day_of_week\":" + modelDow + ","
+            + "\"building_load_rt\":" + loadRT + ","
+            + "\"chw_flow_lps\":" + flowLPS + ","
+            + "\"cw_temp_c\":" + cwTempC + ","
+            + "\"timestamp_ms\":" + nowMs
+            + "}";
+
+        String resp = httpPostJson(url, jsonBody);
+
+        // Parse "predicted_kw": <number>
+        double kwVal = extractPredictedKw(resp);
+
+        getPredictedBuildingKW().setValue(kwVal);
+        getPredictedBuildingKW().setStatus(BStatus.ok);
+        getStatusTrace().setValue("OK predicted_kw=" + kwVal);
+
+    } catch (Exception e) {
+        getPredictedBuildingKW().setValue(0.0);
+        getPredictedBuildingKW().setStatus(BStatus.NULL);
+        getStatusTrace().setValue("ERR calling model: " + e.getMessage());
+    }
+
+    // VERY IMPORTANT: reset trigger for next time
+    setUpdateNow(new BStatusBoolean(false));
+}
+
+public void onStop() throws Exception
+{
+    // nothing to clean up
+}
+
+/**
+ * Minimal HTTP POST helper.
+ */
+String httpPostJson(String urlStr, String body) throws Exception
+{
+    java.net.URL url = new java.net.URL(urlStr);
+    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+    conn.setRequestMethod("POST");
+    conn.setConnectTimeout(5000);
+    conn.setReadTimeout(5000);
+    conn.setDoOutput(true);
+    conn.setRequestProperty("Content-Type", "application/json");
+
+    // write body
+    java.io.OutputStream os = conn.getOutputStream();
+    os.write(body.getBytes("UTF-8"));
+    os.flush();
+    os.close();
+
+    int code = conn.getResponseCode();
+    java.io.InputStream is;
+    if (code >= 200 && code < 300) {
+        is = conn.getInputStream();
+    } else {
+        is = conn.getErrorStream();
+        if (is == null) {
+            throw new Exception("Model HTTP " + code + " no body");
+        }
+    }
+
+    java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, "UTF-8"));
+    StringBuilder sb = new StringBuilder();
+    String line;
+    while ((line = br.readLine()) != null) {
+        sb.append(line);
+    }
+    br.close();
+    conn.disconnect();
+
+    if (code < 200 || code >= 300) {
+        throw new Exception("Model HTTP " + code + " resp=" + sb.toString());
+    }
+
+    return sb.toString();
+}
+
+/**
+ * Extracts "predicted_kw": <number> from the JSON string.
+ */
+double extractPredictedKw(String resp) throws Exception
+{
+    String key = "\"predicted_kw\":";
+    int idx = resp.indexOf(key);
+    if (idx < 0) {
+        throw new Exception("No predicted_kw in response: " + resp);
+    }
+
+    int startNum = idx + key.length();
+    int endNum = startNum;
+    while (endNum < resp.length()) {
+        char c = resp.charAt(endNum);
+        // Stop at the first non-numeric/decimal character
+        if ((c < '0' || c > '9') && c != '.' && c != '-') {
+            break;
+        }
+        endNum++;
+    }
+
+    String numStr = resp.substring(startNum, endNum).trim();
+    return Double.parseDouble(numStr);
+}
+
+```
+
+---
+
+### 📚 Niagara Import Packages You MUST Add
+
+In Workbench → Program Object → Imports tab, add:
+
+* `java.net`
+* `java.io`
+* `java.util`
+
+Those match what this block uses: `HttpURLConnection`, streams, and `Calendar`.
+
+
+</details>
+
+---
 
 <details>
 <summary>📊 JACE Resource Management – Best Practices</summary>
