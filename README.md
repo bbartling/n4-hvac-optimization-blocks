@@ -3298,7 +3298,7 @@ To add:
 
 This block is an example of what “AI engineering” actually looks like in a building automation system where a ProgramObject hits a Docker container with a machine learning model in it to predict electrical power. See this other repo for more details on running a Docker container and the machine learning app code downloaded from Kaggle which is a data science competition organization.
 
-* https://github.com/bbartling?tab=repositories
+* https://github.com/bbartling/chiller-power-model-api
 
 The ML Docker container can be ran on the same server as the Niagara Server, cloud, or somewhere on the OT LAN. You feed in this data via wire sheet to the ProgramObject: 
 
