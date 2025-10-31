@@ -1,142 +1,128 @@
-import time
+import math
+import numpy as np
+from sklearn.linear_model import LinearRegression
+from collections import deque
 
+# --- 1. Storing Raw Performance Data ---
+# We store actual results: time taken (duration), temperature change (delta_t),
+# and the outdoor temperature at the start (outdoor_temp_start).
 class PerformanceRecord:
-    """A class to hold the calculated parameters from a single day's run."""
-    def __init__(self, day, alpha_3a, alpha_3b, alpha_3d):
-        self.day = day
-        self.alpha_3a = alpha_3a # The calculated rate for that day
-        self.alpha_3b = alpha_3b # The calculated weather factor for that day
-        self.alpha_3d = alpha_3d # The calculated offset for that day
+    def __init__(self, duration_minutes, delta_t, zone_temp_start, outdoor_temp_start):
+        self.duration_minutes = duration_minutes # What we want to predict (y)
+        self.delta_t = delta_t                 # Basis for feature x1
+        self.zone_temp_start = zone_temp_start # Context
+        self.outdoor_temp_start = outdoor_temp_start # Basis for feature x2
 
     def __repr__(self):
-        # return a clean string
-        return (f"Day {self.day:2}: (α3a={self.alpha_3a:.2f}, "
-                f"α3b={self.alpha_3b:.3f}, α3d={self.alpha_3d:.1f})")
+        oat_str = f"{self.outdoor_temp_start:.1f}" if not math.isnan(self.outdoor_temp_start) else "N/A"
+        return f"Run(t={self.duration_minutes:.1f}min, dT={self.delta_t:.1f}F, OAT={oat_str}F)"
 
-class Model3_OptimalStart_With_History:
-    """
-    An expanded class for Model 3 that demonstrates how parameters are tuned
-    over time using a history of performance data.
-    """
+class Model3_OptimalStart_Sklearn_Tutorial:
+    """Focuses on tuning Model 3 (t = a*dT + b*dT*WF + d) with sklearn."""
+
+    ALPHA_C = 60.0 # Constant weather factor divisor
 
     def __init__(self):
-        # --- Current Day's Conditions (Inputs) ---
-        self.zone_temp_initial = 78.0  # (T_z,0) Initial zone temperature in °F
-        self.zone_setpoint = 72.0      # (T_sp) Desired occupied temperature in °F
-        self.outdoor_temp = 90.0       # (T_o) Outdoor air temperature in °F
+        # Sample history - built over time in a real app
+        self.history = deque([
+            PerformanceRecord(duration_minutes=17.3, delta_t=6.0, zone_temp_start=78.0, outdoor_temp_start=88.2),
+            PerformanceRecord(duration_minutes=16.6, delta_t=5.5, zone_temp_start=77.5, outdoor_temp_start=87.6),
+            PerformanceRecord(duration_minutes=18.3, delta_t=6.5, zone_temp_start=78.5, outdoor_temp_start=91.1),
+            PerformanceRecord(duration_minutes=19.9, delta_t=6.7, zone_temp_start=78.7, outdoor_temp_start=92.2),
+            PerformanceRecord(duration_minutes=18.5, delta_t=6.2, zone_temp_start=78.2, outdoor_temp_start=90.3),
+        ], maxlen=10) # Keep last 10 runs
 
-        # --- Historical Data Cache ---
-        self.performance_history = []
-        self.ema_weighting_factor = 2.0 # Standard EMA weighting factor
+        # Parameters to be learned by sklearn
+        self.alpha_a = 2.5 # Default coefficient for dT
+        self.alpha_b = 0.1 # Default coefficient for dT*WF
+        self.alpha_d = 2.0 # Default offset (intercept)
 
-        # --- Tuned Parameters (will be updated from history) ---
-        self.alpha_3a = 0.0
-        self.alpha_3b = 0.0
-        self.alpha_3c = 60.0 # This is a constant and not tuned
-        self.alpha_3d = 0.0
+        # Today's conditions for prediction
+        self.zone_temp_initial = 78.0
+        self.zone_setpoint = 72.0
+        self.outdoor_temp = 90.0
 
-    def generate_sample_data(self, num_days=10):
-        """
-        Populates the performance_history list with 10 days of sample data.
-        This simulates the daily results that would be cached.
-        """
-        print(f"--- Generating {num_days} days of sample performance data... ---")
-        # Tuples of (alpha_3a, alpha_3b, alpha_3d) for each day
-        sample_params = [
-            (2.8, 0.110, -2.0), # Day 1
-            (2.7, 0.105, -1.0), # Day 2
-            (2.6, 0.100, 0.0),  # Day 3
-            (2.5, 0.095, 1.0),  # Day 4
-            (2.5, 0.090, 1.5),  # Day 5
-            (2.4, 0.092, 2.0),  # Day 6
-            (2.4, 0.098, 3.0),  # Day 7
-            (2.3, 0.100, 4.0),  # Day 8
-            (2.2, 0.102, 4.5),  # Day 9 - System getting more efficient
-            (2.2, 0.105, 5.0)   # Day 10 - Most recent day
-        ]
-        for i, params in enumerate(sample_params):
-            day_num = i + 1
-            record = PerformanceRecord(day=day_num, alpha_3a=params[0], alpha_3b=params[1], alpha_3d=params[2])
-            self.performance_history.append(record)
-        
-        print("Sample data generated successfully.\n")
-        for record in self.performance_history:
-            print(record)
+    # --- 2. The Core Learning Logic ---
+    def tune_parameters_with_sklearn(self):
+        """Uses LinearRegression to find a, b, d from history."""
+        print("\n--- Tuning Parameters with Scikit-learn ---")
 
-    def _compute_ema(self, series: list) -> float:
-        """Calculates the Exponential Moving Average for a list of numbers."""
-        if not series: return 0.0
-        # The smoothing factor 'k' gives more weight to recent values
-        k = self.ema_weighting_factor / (len(series) + 1)
-        ema = series[0]
-        for i in range(1, len(series)):
-            ema = (series[i] * k) + (ema * (1 - k))
-        return ema
-
-    def tune_parameters_from_history(self):
-        """
-        Calculates the EMA for each parameter from the history and updates
-        the model's current working parameters.
-        """
-        print("\n--- Tuning Parameters using EMA from 10-Day History ---")
-        if not self.performance_history:
-            print("No history available. Cannot tune parameters.")
+        valid_records = [r for r in self.history if not math.isnan(r.outdoor_temp_start)]
+        if len(valid_records) < 3:
+            print("Not enough valid history data (need >= 3 with OAT). Using defaults.")
             return
 
-        # Create a time-series list for each parameter
-        alpha_3a_series = [rec.alpha_3a for rec in self.performance_history]
-        alpha_3b_series = [rec.alpha_3b for rec in self.performance_history]
-        alpha_3d_series = [rec.alpha_3d for rec in self.performance_history]
+        # --- 2a. Prepare Data for Regression ---
+        # Target variable 'y': the actual time taken (duration)
+        y = np.array([rec.duration_minutes for rec in valid_records])
 
-        # Calculate the EMA for each and update the instance variables
-        self.alpha_3a = self._compute_ema(alpha_3a_series)
-        self.alpha_3b = self._compute_ema(alpha_3b_series)
-        self.alpha_3d = self._compute_ema(alpha_3d_series)
+        # --- MAGIC PART 1: Feature Engineering ---
+        # Create the input features (X matrix) based on the Model 3 equation:
+        # Feature x1 = delta_t
+        # Feature x2 = abs(delta_t * WeatherFactor_at_start)
+        X_list = []
+        for rec in valid_records:
+            # Calculate the WeatherFactor specific to the conditions *during that run*
+            weather_factor_start = (self.zone_setpoint - rec.outdoor_temp_start) / self.ALPHA_C
+            feature_x1 = rec.delta_t
+            feature_x2 = abs(rec.delta_t * weather_factor_start) # Feature incorporating OAT
+            X_list.append([feature_x1, feature_x2])
+        X = np.array(X_list)
+        # --- End of Feature Engineering ---
 
-        print(f"Tuned α3a (Rate): {self.alpha_3a:.3f} min/°F")
-        print(f"Tuned α3b (Weather): {self.alpha_3b:.3f} min/°F")
-        print(f"Tuned α3d (Offset): {self.alpha_3d:.2f} minutes")
+        # --- MAGIC PART 2: Scikit-learn Linear Regression ---
+        # This is where sklearn does the heavy lifting. It finds the best 'a', 'b', and 'd'
+        # to fit the equation: y ≈ a*x1 + b*x2 + d
+        model = LinearRegression(fit_intercept=True) # Tell it to find 'd' (the intercept)
+        model.fit(X, y)                       # Train the model on historical data
+        # --- End of Scikit-learn Magic ---
+
+        # --- MAGIC PART 3: Extract Learned Parameters ---
+        # Sklearn stores the results in model.coef_ and model.intercept_
+        self.alpha_a = max(0.0, model.coef_[0])     # Coefficient for x1 (delta_t)
+        self.alpha_b = max(0.0, model.coef_[1])     # Coefficient for x2 (dT*WF)
+        self.alpha_d = max(0.0, model.intercept_) # The intercept 'd'
+
+        print(f"Input Features (X) shape: {X.shape}") # (num_runs, 2 features)
+        print(f"Target Variable (y) shape: {y.shape}") # (num_runs,)
+        print(f"Learned α_a (Coef for dT):    {self.alpha_a:.3f}")
+        print(f"Learned α_b (Coef for dT*WF): {self.alpha_b:.3f}")
+        print(f"Learned α_d (Intercept):    {self.alpha_d:.2f} minutes")
 
 
+    # --- 3. Using the Learned Parameters for Prediction ---
     def calculate_optimal_start_time(self):
-        """
-        Calculates the optimal start time using the EMA-tuned parameters.
-        """
-        print("\n--- Calculating Today's Optimal Start Time with Tuned Parameters ---")
-        
-        # Part 1: Base Runtime
-        temp_delta = self.zone_setpoint - self.zone_temp_initial
-        base_runtime = self.alpha_3a * abs(temp_delta)
-        
-        # Part 2: Weather Compensation
-        weather_factor = (self.zone_setpoint - self.outdoor_temp) / self.alpha_3c
-        weather_compensation = self.alpha_3b * abs(temp_delta) * weather_factor
-        weather_compensation = abs(weather_compensation)
+        """Calculates today's start time using the learned a, b, d."""
+        print("\n--- Calculating Today's Optimal Start Time ---")
 
-        # Part 3: Learned Offset
-        learned_offset = self.alpha_3d
-        
-        # Final Calculation
-        total_optimal_start_time = base_runtime + weather_compensation + learned_offset
+        delta_t_today = abs(self.zone_setpoint - self.zone_temp_initial)
+        weather_factor_today = (self.zone_setpoint - self.outdoor_temp) / self.ALPHA_C
 
-        print("\n--- Final Result ---")
-        print(f"Base Runtime:           {base_runtime:5.1f} minutes (using tuned α3a)")
-        print(f"Weather Compensation:   + {weather_compensation:5.1f} minutes (using tuned α3b)")
-        print(f"Learned Offset:         + {learned_offset:5.1f} minutes (using tuned α3d)")
-        print("---------------------------------")
-        print(f"Total Estimated Start Time: {total_optimal_start_time:5.1f} minutes")
-        
+        # --- MAGIC PART 4: Apply Model 3 Formula ---
+        # Use the parameters learned by sklearn to predict today's time
+        term1 = self.alpha_a * delta_t_today
+        term2 = self.alpha_b * abs(delta_t_today * weather_factor_today)
+        term3 = self.alpha_d
+
+        total_optimal_start_time = max(0.0, term1 + term2 + term3) # Ensure non-negative
+
+        print(f"Term 1 (Base):   {term1:.1f} (using learned a={self.alpha_a:.2f})")
+        print(f"Term 2 (Weather):{term2:.1f} (using learned b={self.alpha_b:.2f})")
+        print(f"Term 3 (Offset): {term3:.1f} (using learned d={self.alpha_d:.1f})")
+        print(f"--> Estimated Start Time: {total_optimal_start_time:.1f} minutes")
         return total_optimal_start_time
 
 # --- Main Execution ---
 if __name__ == "__main__":
-    model3_sim = Model3_OptimalStart_With_History()
-    
-    # 1. Generate 10 days of historical performance data
-    model3_sim.generate_sample_data()
-    
-    # 2. Tune the model's parameters using an EMA of that history
-    model3_sim.tune_parameters_from_history()
-    
-    # 3. Calculate today's optimal start time using the newly tuned parameters
-    model3_sim.calculate_optimal_start_time()
+    model3_tut = Model3_OptimalStart_Sklearn_Tutorial()
+
+    print("--- Sample Performance History ---")
+    for record in model3_tut.history:
+        print(record)
+
+    # The "Magic" happens here: Learn parameters from history
+    model3_tut.tune_parameters_with_sklearn()
+
+    # Predict today's time using the learned parameters
+    model3_tut.calculate_optimal_start_time()
+
