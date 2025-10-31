@@ -3262,8 +3262,6 @@ private void log(String msg) {
 }
 ```
 
----
-
 #### 🧠 Java Imports Note
 
 > NOTE: The block is available in the `bog_files` sub directory furnished as necessary, but due note this `ProgramObject` has two imports to make web requests. If you are creating a custom web request block you must import two Java packages under the **IMPORTS** tab in Workbench:
@@ -3288,13 +3286,362 @@ To add:
   <img src="snips/openWeatherMapAPIReqImports.png" alt="Niagara Workbench Imports Example" width="650">
 </p>
 
-
 </details>
 
 ---
 
+#### 🗓️ Hoiday Checker
+
+* NOT DONE!
+
 <details>
-<summary>🤖 AI Power Predictor Block (Niagara ↔ Docker ML Model)</summary>
+
+```java
+
+// ===============================================================
+// Holiday API Program Object (Program)
+// - Polls Nager.Date for Public Holidays (this year + next year)
+// - Evaluates "today is holiday" on heartbeat
+// - Immediate fetch on startup and on "updateNow" toggle
+// - Minimal StatusTrace: "OK" on success; "ERROR: ..." with traceback on failures
+// - Normalizes & writes back writable slots so defaults show up in UI
+// - Optional console logging to Platform Admin (logToConsole)
+// Slots to create:
+//
+// Writable:
+//   executePeriodSeconds : BStatusNumeric   // default 300 (clamped 60..3600)
+//   countryCode          : BStatusString    // default "US"  (maps "UK" → "GB", "USA" → "US", etc.)
+//   refreshIntervalSeconds : BStatusNumeric // default 86400 (clamped 3600..2592000 i.e., 1h..30d)
+//   updateNow            : BStatusBoolean   // toggle true to force an immediate refresh (auto-resets to false)
+//   logToConsole         : BStatusBoolean   // when true, writes logs to Platform console
+//
+// ReadOnly:
+//   holidayToday         : BStatusBoolean
+//   holidayName          : BStatusString
+//   lastFetchTs          : BStatusString
+//   nextHoliday          : BStatusString
+//   statusTrace          : BStatusString
+// ===============================================================
+
+// ---- Runtime fields (NOT slots) ----
+Clock.Ticket ticket;
+
+long   lastFetchMs   = 0L;
+int    cacheYearA    = -1;
+int    cacheYearB    = -1;
+String cacheCountry  = null;
+
+// date → name map (e.g., "2025-12-25" -> "Christmas Day")
+java.util.HashMap<String,String> holidayByDate = new java.util.HashMap<>();
+
+// ===============================================================
+// Lifecycle
+// ===============================================================
+public void onStart() throws Exception {
+  normalizeWritableConfig(true);   // write defaults if null and clamp/write-back so slots show values
+  try {
+    pollOnce(true /*forceFetch*/); // immediate API fetch so outputs populate right away
+    setOkStatus();
+  } catch (Exception e) {
+    setErrorStatus(e, "startup fetch");
+  }
+  scheduleNext();
+}
+
+public void onExecute() throws Exception {
+  // Manual trigger path
+  try {
+    if (safeBool(getUpdateNow())) {
+      log("updateNow=TRUE → forcing immediate refresh");
+      pollOnce(true /*forceFetch*/);
+      try { getUpdateNow().setValue(false); } catch (Exception ignore) {}
+      setOkStatus();
+    } else {
+      // Normal cadence
+      pollOnce(false /*forceFetch*/);
+      setOkStatusIfNoError();
+    }
+  } catch (Exception e) {
+    setErrorStatus(e, "periodic fetch");
+  }
+  scheduleNext();
+}
+
+public void onStop() throws Exception {
+  if (ticket != null) { ticket.cancel(); ticket = null; }
+  log("onStop");
+}
+
+// ===============================================================
+// Scheduling
+// ===============================================================
+void scheduleNext() {
+  if (ticket != null) ticket.cancel();
+
+  int period = 300;
+  if (getExecutePeriodSeconds().getStatus().isOk())
+    period = clampInt((int)getExecutePeriodSeconds().getValue(), 60, 3600);
+  setExecutePeriodSeconds(new BStatusNumeric(period)); // write back normalized
+
+  log("Scheduling next execute in " + period + "s");
+  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(period), BProgram.execute, null);
+}
+
+// ===============================================================
+// Core logic
+// ===============================================================
+void pollOnce(boolean forceFetch) throws Exception {
+  normalizeWritableConfig(false); // keep clamped values persisted
+
+  // Country code (normalized + written back in normalizeWritableConfig)
+  String cc = getCountryCode().getStatus().isOk() ? getCountryCode().getValue() : "US";
+  int refreshSec = (int)getRefreshIntervalSeconds().getValue();
+
+  long nowMs = System.currentTimeMillis();
+  java.time.LocalDate today = java.time.LocalDate.now();
+  int y1 = today.getYear();
+  int y2 = y1 + 1;
+
+  boolean needRefresh =
+      forceFetch ||
+      holidayByDate.isEmpty() ||
+      (nowMs - lastFetchMs) > (refreshSec * 1000L) ||
+      cacheYearA != y1 || cacheYearB != y2 ||
+      cacheCountry == null || !cacheCountry.equalsIgnoreCase(cc);
+
+  if (needRefresh) {
+    log("Refreshing Nager cache for " + cc + " (" + y1 + "," + y2 + ")");
+    java.util.HashMap<String,String> mapOut = new java.util.HashMap<>();
+    fetchYearInto(cc, y1, mapOut);
+    fetchYearInto(cc, y2, mapOut);
+
+    holidayByDate = mapOut;
+    cacheYearA    = y1;
+    cacheYearB    = y2;
+    cacheCountry  = cc;
+    lastFetchMs   = nowMs;
+
+    String ts = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new java.util.Date());
+    getLastFetchTs().setValue(ts);
+    log("Fetched " + mapOut.size() + " holidays for " + cc + " (" + y1 + "," + y2 + ")");
+  }
+
+  // Evaluate TODAY
+  String todayIso = today.toString(); // yyyy-MM-dd
+  String label = holidayByDate.get(todayIso);
+  if (label != null && !label.isEmpty()) {
+    setHolidayToday(new BStatusBoolean(true));
+    getHolidayName().setValue(label);
+  } else {
+    setHolidayToday(new BStatusBoolean(false));
+    getHolidayName().setValue("");
+  }
+
+  // Compute next holiday string
+  String nextStr = computeNextHolidayString(today);
+  getNextHoliday().setValue(nextStr != null ? nextStr : "N/A");
+}
+
+// "YYYY-MM-DD (Name; in N days)" or null if none
+String computeNextHolidayString(java.time.LocalDate fromDate) {
+  if (holidayByDate.isEmpty()) return null;
+  java.util.ArrayList<String> dates = new java.util.ArrayList<>(holidayByDate.keySet());
+  java.util.Collections.sort(dates);
+  String fromIso = fromDate.toString();
+
+  for (String d : dates) {
+    if (d.compareTo(fromIso) >= 0) {
+      java.time.LocalDate target = java.time.LocalDate.parse(d);
+      long days = java.time.temporal.ChronoUnit.DAYS.between(fromDate, target);
+      String nm = holidayByDate.get(d);
+      return d + " (" + nm + "; in " + days + " days)";
+    }
+  }
+  return null;
+}
+
+// ===============================================================
+// HTTP + ultra-light JSON scan (no external libs)
+// ===============================================================
+void fetchYearInto(String cc, int year, java.util.HashMap<String,String> out) throws Exception {
+  String url = "https://date.nager.at/api/v3/PublicHolidays/" + year + "/" + cc;
+  String json = httpGet(url);
+
+  // Scan occurrences of "date":"YYYY-MM-DD" and nearby localName/name
+  int i = 0;
+  while (true) {
+    int dIdx = json.indexOf("\"date\":\"", i);
+    if (dIdx < 0) break;
+    int dStart = dIdx + 8;
+    int dEnd   = json.indexOf('"', dStart);
+    if (dEnd < 0) break;
+    String date = json.substring(dStart, dEnd);
+
+    String local = extractJsonString(json, "\"localName\":\"", dEnd);
+    String name  = extractJsonString(json, "\"name\":\"",      dEnd);
+    String label = (local != null && !local.isEmpty()) ? local : (name != null ? name : "");
+
+    if (date != null && !date.isEmpty() && label != null && !label.isEmpty()) {
+      if (out.containsKey(date) && !out.get(date).equals(label)) {
+        out.put(date, out.get(date) + " / " + label);
+      } else {
+        out.put(date, label);
+      }
+    }
+    i = dEnd + 1;
+  }
+}
+
+String httpGet(String urlStr) throws Exception {
+  java.net.URL url = new java.net.URL(urlStr);
+  java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+  conn.setRequestMethod("GET");
+  conn.setConnectTimeout(10000);
+  conn.setReadTimeout(10000);
+  conn.setRequestProperty("Accept", "application/json");
+  conn.setRequestProperty("User-Agent", "niagara-holiday-checker/1.0");
+
+  int code = conn.getResponseCode();
+  java.io.InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
+  java.io.BufferedReader br = new java.io.BufferedReader(
+      new java.io.InputStreamReader(is, java.nio.charset.StandardCharsets.UTF_8)
+  );
+  StringBuilder sb = new StringBuilder();
+  String line;
+  while ((line = br.readLine()) != null) sb.append(line);
+  br.close();
+  conn.disconnect();
+
+  if (code < 200 || code >= 300) throw new Exception("HTTP " + code + " " + urlStr);
+  return sb.toString();
+}
+
+// Extract value for a JSON string field that appears after fromIdx.
+// Looks for key like "\"localName\":\""
+String extractJsonString(String json, String key, int fromIdx) {
+  int k = json.indexOf(key, fromIdx);
+  if (k < 0) return null;
+  int s = k + key.length();
+  StringBuilder sb = new StringBuilder();
+  boolean esc = false;
+  for (int i = s; i < json.length(); i++) {
+    char c = json.charAt(i);
+    if (esc) { esc = false; continue; }   // swallow escapes conservatively
+    if (c == '\\') { esc = true; continue; }
+    if (c == '"') break;
+    sb.append(c);
+  }
+  return sb.toString();
+}
+
+// ===============================================================
+// Config normalization, logging, utilities
+// ===============================================================
+void normalizeWritableConfig(boolean writeDefaultsIfNull) {
+  // executePeriodSeconds
+  if (writeDefaultsIfNull && getExecutePeriodSeconds().isNull())
+    setExecutePeriodSeconds(new BStatusNumeric(300));
+  int period = 300;
+  if (getExecutePeriodSeconds().getStatus().isOk())
+    period = clampInt((int)getExecutePeriodSeconds().getValue(), 60, 3600);
+  setExecutePeriodSeconds(new BStatusNumeric(period)); // write back normalized
+
+  // countryCode (map common aliases to correct ISO-2)
+  if (writeDefaultsIfNull && getCountryCode().isNull())
+    setCountryCode(new BStatusString("US"));
+  String cc = "US";
+  if (getCountryCode().getStatus().isOk()) {
+    String v = getCountryCode().getValue();
+    if (v != null && !v.trim().isEmpty()) cc = v.trim().toUpperCase();
+  }
+  cc = normalizeIso2(cc); // e.g., UK → GB
+  setCountryCode(new BStatusString(cc)); // write back normalized & mapped
+
+  // refreshIntervalSeconds
+  if (writeDefaultsIfNull && getRefreshIntervalSeconds().isNull())
+    setRefreshIntervalSeconds(new BStatusNumeric(24*3600));
+  int refresh = 24*3600;
+  if (getRefreshIntervalSeconds().getStatus().isOk())
+    refresh = clampInt((int)getRefreshIntervalSeconds().getValue(), 3600, 30*24*3600);
+  setRefreshIntervalSeconds(new BStatusNumeric(refresh)); // write back
+
+  // updateNow default false (never NULL)
+  if (writeDefaultsIfNull && (getUpdateNow().isNull() || !getUpdateNow().getStatus().isOk()))
+    setUpdateNow(new BStatusBoolean(false));
+
+  // logToConsole default false (never NULL)
+  if (writeDefaultsIfNull && (getLogToConsole().isNull() || !getLogToConsole().getStatus().isOk()))
+    setLogToConsole(new BStatusBoolean(false));
+}
+
+// maps common user inputs to canonical ISO-2
+String normalizeIso2(String raw) {
+  if (raw == null) return "US";
+  String r = raw.trim().toUpperCase();
+  if (r.equals("UK"))  return "GB";   // Nager expects GB
+  if (r.equals("USA")) return "US";
+  if (r.equals("UAE")) return "AE";
+  if (r.equals("KOREA")) return "KR";
+  if (r.equals("RUSSIA")) return "RU";
+  // pass through otherwise (assume valid ISO-2)
+  return r;
+}
+
+int clampInt(int v, int lo, int hi) {
+  return Math.max(lo, Math.min(hi, v));
+}
+
+boolean safeBool(javax.baja.status.BStatusBoolean b) {
+  try { return (b != null && b.getStatus().isOk()) && b.getValue(); }
+  catch (Exception e) { return false; }
+}
+
+void setOkStatus() {
+  // keep operators' StatusTrace clean and generic
+  getStatusTrace().setValue("OK");
+}
+
+void setOkStatusIfNoError() {
+  String cur = getStatusTrace().getStatus().isOk() ? getStatusTrace().getValue() : "";
+  if (cur == null || !cur.startsWith("ERROR")) getStatusTrace().setValue("OK");
+}
+
+void setErrorStatus(Exception e, String context) {
+  String msg = "ERROR: " + ((context != null) ? context + " - " : "") + e.getMessage();
+  getStatusTrace().setValue(msg + "\n" + stackTraceOf(e));
+  log(msg);
+}
+
+String stackTraceOf(Exception e) {
+  java.io.StringWriter sw = new java.io.StringWriter();
+  java.io.PrintWriter  pw = new java.io.PrintWriter(sw);
+  e.printStackTrace(pw);
+  pw.flush();
+  return sw.toString();
+}
+
+// Console logger (enable via logToConsole slot)
+void log(String msg) {
+  try {
+    if (safeBool(getLogToConsole())) {
+      System.out.println("[HolidayChecker] " + msg);
+    }
+  } catch (Exception ignore) {}
+}
+
+```
+
+</details>
+
+
+
+
+
+
+---
+
+<details>
+<summary>🤖 AI Engineer Example (Niagara ↔ Docker ML Model)</summary>
 
 This block is an example of what “AI engineering” actually looks like in a building automation system where a ProgramObject hits a Docker container with a machine learning model in it to predict electrical power. See this other repo for more details on running a Docker container and the machine learning app code downloaded from Kaggle which is a data science competition organization.
 
