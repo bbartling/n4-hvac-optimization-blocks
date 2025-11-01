@@ -3884,7 +3884,7 @@ Fetches **public holidays** from the free Nager.Date API and auto-drives a **Cal
 
 **Quick setup**
 1. Drop the Program Object and wire an **Interval** trigger (or use its internal timer).
-2. Set `countryCode` (e.g., `US`, `GB`, `CA`).  
+2. Set `countryCode` (e.g., `US`, `GB`, `CA`) on the ProgramObject Property Sheet.  
 3. (Optional) Toggle `updateNow` to force an immediate refresh.
 4. Wire the **CalendarSchedule** `Out` to any Boolean Schedule inputs you want to override on holidays.
 
@@ -3907,6 +3907,11 @@ If you create a `CalendarSchedule` inside the Program’s *Imports* tab, add the
 - Safe defaults + internal caching reduce API chatter.
 - Use `logToConsole = true` for quick debugging in Application Director.
 - Reference Country Codes here: https://date.nager.at/Country
+- Ensure Holidays are populating on the equipment level schedules as shown below in the snip with proper referencing of the Calender Schedule on the Special Event Tab. 
+
+<p align="center">
+  <img src="snips\nagerApiSnipSchedule.png" alt="Note" width="720">
+</p>
 
 ### 💻 Java Code
 
@@ -3978,7 +3983,6 @@ private String cleanName(String raw, int y, int m0, int d) {
     if (w.length() > 1) sb.append(w.substring(1).toLowerCase());
   }
   if (sb.length() == 0) sb.append("Holiday");
-  sb.append("_").append(String.format("%04d%02d%02d", y, m0 + 1, d)); // unique per day
   return sb.toString();
 }
 
@@ -4307,11 +4311,20 @@ private javax.baja.schedule.BCalendarSchedule resolveCalendar() {
   }
   return null;
 }
-
 ```
 
 </details>
 
+---
+
+<details>
+<summary>🗓️ Hoiday Checker UK Gov Bank Holidays</summary>
+
+
+* https://www.gov.uk/bank-holidays.json
+
+
+</details>
 
 
 ---
