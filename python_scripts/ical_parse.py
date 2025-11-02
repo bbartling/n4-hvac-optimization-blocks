@@ -1,346 +1,268 @@
-# ical_program.py
-import datetime as dt
-import threading
+# ical_parse.py
+# Pure synchronous iCal parser → simple schedule dict → exit.
+# - Works with either a URL (https/ical/webcal) or a local .ics file path.
+# - Keeps only FUTURE events (relative to local tz).
+# - Prints concise logs and exits with code 0 on success, 1 on failure.
+
+from __future__ import annotations
+
+import sys
+import os
+import re
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import List, Dict, Tuple, Optional
+
+# stdlib tz (Python 3.9+)
+try:
+    from zoneinfo import ZoneInfo  # type: ignore
+except Exception:
+    ZoneInfo = None  # pragma: no cover
+
+# Optional: requests for URL fetch (falls back to urllib if missing)
+try:
+    import requests  # type: ignore
+except Exception:
+    requests = None  # pragma: no cover
+
 import urllib.request
-from typing import Dict, List, Optional
 
 
-class InMemoryCalendarSchedule:
-    """
-    Tiny stand-in for Niagara BCalendarSchedule:
-    stores one 'event per day' as name strings keyed by YYYY-MM-DD.
-    """
-    def __init__(self):
-        self._days: Dict[str, str] = {}
+# -------- Config (tweak as you like) --------
+LOCAL_TZ_NAME = "America/Chicago"  # matches your environment
+EVENT_NAME_PREFIX = "ICal_"
+KEEP_MAX_EVENTS = 100
 
-    def clear_all(self) -> None:
-        self._days.clear()
 
-    def add_day(self, y: int, m: int, d: int, label: str) -> None:
-        key = f"{y:04d}-{m:02d}-{d:02d}"
-        # If multiple events fall on same day, append
-        if key in self._days and self._days[key] != label:
-            self._days[key] = f"{self._days[key]} / {label}"
+@dataclass
+class ICalEvent:
+    summary: str
+    start: datetime
+    location: Optional[str] = None
+    description: Optional[str] = None
+
+
+def load_ics(source: str) -> str:
+    """Load ICS text from URL (http/https/webcal) or local file path."""
+    if re.match(r"^(https?|webcal)://", source, re.IGNORECASE):
+        url = source.replace("webcal://", "https://")
+        if requests:
+            resp = requests.get(url, timeout=30)
+            resp.raise_for_status()
+            return resp.text
+        # fallback to urllib
+        with urllib.request.urlopen(url, timeout=30) as fh:  # nosec B310
+            return fh.read().decode("utf-8", errors="replace")
+    # Local file
+    with open(source, "r", encoding="utf-8", errors="replace") as f:
+        return f.read()
+
+
+def unfold_ical_lines(text: str) -> List[str]:
+    """Handle iCal line folding (continuations start with a single space or tab)."""
+    raw_lines = text.splitlines()
+    lines: List[str] = []
+    for line in raw_lines:
+        if (line.startswith(" ") or line.startswith("\t")) and lines:
+            lines[-1] += line[1:]
         else:
-            self._days[key] = label
-
-    def keys_sorted(self) -> List[str]:
-        return sorted(self._days.keys())
-
-    def get(self, k: str) -> Optional[str]:
-        return self._days.get(k)
-
-    def as_dict(self) -> Dict[str, str]:
-        return dict(self._days)
+            lines.append(line)
+    return lines
 
 
-class IcalProgram:
+def get_local_tz() -> timezone:
+    if ZoneInfo is None:
+        return datetime.now().astimezone().tzinfo or timezone.utc
+    try:
+        return ZoneInfo(LOCAL_TZ_NAME)
+    except Exception:
+        return datetime.now().astimezone().tzinfo or timezone.utc
+
+
+def _normalize_ical_dt(v: str) -> str:
     """
-    ProgramObject-like Python class with explicit getters/setters,
-    heartbeat scheduling, statusTrace/apiResponse, and ICS ingest.
+    Normalize common iCal date-time forms to ISO-8601 so fromisoformat() can parse:
+      - 20251105T234500Z        -> 2025-11-05T23:45:00+00:00
+      - 20251105T234500         -> 2025-11-05T23:45:00
+      - 20251105                -> 2025-11-05
     """
+    v = v.strip()
+    # DATE-TIME with Z
+    m = re.fullmatch(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})Z", v)
+    if m:
+        y, M, d, h, mnt, s = m.groups()
+        return f"{y}-{M}-{d}T{h}:{mnt}:{s}+00:00"
+    # DATE-TIME local
+    m = re.fullmatch(r"(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})", v)
+    if m:
+        y, M, d, h, mnt, s = m.groups()
+        return f"{y}-{M}-{d}T{h}:{mnt}:{s}"
+    # DATE only
+    m = re.fullmatch(r"(\d{4})(\d{2})(\d{2})", v)
+    if m:
+        y, M, d = m.groups()
+        return f"{y}-{M}-{d}"
+    return v  # last resort; may fail later, that’s okay
 
-    def __init__(self):
-        # "Slots"
-        self._calendar = InMemoryCalendarSchedule()
-        self._updateNow: bool = False
-        self._apiResponse: str = ""
-        self._executePeriodSeconds: int = 0         # 0 = no heartbeat
-        self._logToConsole: bool = True
-        self._lastFetchTs: str = ""
-        self._statusTrace: str = "OK"
-        self._icsUrl: str = ""                      # set this via set_icsUrl()
-        self._eventsAdded: int = 0
-        self._nextEvent: str = ""
-        self._maxEvents: int = 0                    # 0 = no cap
-        self._namePrefix: str = "Event"
 
-        # runtime state
-        self._ticket: Optional[threading.Timer] = None
-        self._lastIcsHash: Optional[str] = None
+def parse_ical_datetime(value: str, params: Dict[str, str], local_tz: timezone) -> Optional[datetime]:
+    """
+    Parse DTSTART / DTEND values with minimal param handling.
+    Supports:
+      - Zulu UTC timestamps
+      - local floating timestamps → localized to local_tz
+      - DATE (all-day) → start-of-day in local_tz
+      - DTSTART;TZID=America/New_York:20251101T13000000  (basic TZID support)
+    """
+    # Extract TZID if present
+    tzid = params.get("TZID")
+    iso = _normalize_ical_dt(value)
 
-    # -------------------------
-    # Getters / Setters (Niagara-style names)
-    # -------------------------
-    def getCalendar(self) -> InMemoryCalendarSchedule: return self._calendar
-    def getUpdateNow(self) -> bool: return self._updateNow
-    def setUpdateNow(self, v: bool) -> None: self._updateNow = bool(v)
+    try:
+        dt = datetime.fromisoformat(iso)
+    except Exception:
+        return None
 
-    def getApiResponse(self) -> str: return self._apiResponse
-    def setApiResponse(self, v: str) -> None: self._apiResponse = str(v)
+    # If date only → make it local midnight
+    if dt.tzinfo is None and len(iso) == 10:
+        return datetime(dt.year, dt.month, dt.day, 0, 0, 0, tzinfo=local_tz)
 
-    def getExecutePeriodSeconds(self) -> int: return self._executePeriodSeconds
-    def setExecutePeriodSeconds(self, v: int) -> None:
-        self._executePeriodSeconds = max(0, min(int(v), 3600))
-
-    def getLogToConsole(self) -> bool: return self._logToConsole
-    def setLogToConsole(self, v: bool) -> None: self._logToConsole = bool(v)
-
-    def getLastFetchTs(self) -> str: return self._lastFetchTs
-    def setLastFetchTs(self, v: str) -> None: self._lastFetchTs = str(v)
-
-    def getStatusTrace(self) -> str: return self._statusTrace
-    def setStatusTrace(self, v: str) -> None: self._statusTrace = str(v)
-
-    def getIcsUrl(self) -> str: return self._icsUrl
-    def setIcsUrl(self, v: str) -> None: self._icsUrl = str(v).strip()
-
-    def getEventsAdded(self) -> int: return self._eventsAdded
-    def setEventsAdded(self, v: int) -> None: self._eventsAdded = int(v)
-
-    def getNextEvent(self) -> str: return self._nextEvent
-    def setNextEvent(self, v: str) -> None: self._nextEvent = str(v)
-
-    def getMaxEvents(self) -> int: return self._maxEvents
-    def setMaxEvents(self, v: int) -> None: self._maxEvents = max(0, int(v))
-
-    def getNamePrefix(self) -> str: return self._namePrefix
-    def setNamePrefix(self, v: str) -> None: self._namePrefix = str(v).strip() or "Event"
-
-    # -------------------------
-    # Lifecycle
-    # -------------------------
-    def onStart(self) -> None:
-        self._normalize_defaults()
-        ok = self._refresh_from_ics(force=True)
-        if not ok:
-            self._safe_status("ERROR: startup - initial fetch failed")
-        self._schedule_next()
-        self._log("Started.")
-
-    def onExecute(self) -> None:
-        try:
-            if self.getUpdateNow():
-                self._log("updateNow=TRUE → forcing refresh")
-                self._refresh_from_ics(force=True)
-                self.setUpdateNow(False)
-                self._schedule_next()
-                return
-        except Exception:
-            pass
-
-        self._refresh_from_ics(force=False)
-        self._schedule_next()
-
-    def onStop(self) -> None:
-        if self._ticket:
-            self._ticket.cancel()
-            self._ticket = None
-        self._log("Stopped.")
-
-    # -------------------------
-    # Scheduling
-    # -------------------------
-    def _schedule_next(self) -> None:
-        if self._ticket:
-            self._ticket.cancel()
-            self._ticket = None
-
-        period = self.getExecutePeriodSeconds()
-        if period <= 0:
-            self._log("Heartbeat disabled (executePeriodSeconds <= 0).")
-            return
-
-        def _tick():
+    # If TZ given and dt is naive, attach that tz; else if naive, assume local
+    if dt.tzinfo is None:
+        if tzid and ZoneInfo is not None:
             try:
-                self.onExecute()
-            except Exception as e:
-                self._fail("timer", str(e))
+                tz = ZoneInfo(tzid)
+                return dt.replace(tzinfo=tz).astimezone(local_tz)
+            except Exception:
+                return dt.replace(tzinfo=local_tz)
+        return dt.replace(tzinfo=local_tz)
 
-        self._ticket = threading.Timer(period, _tick)
-        self._ticket.daemon = True
-        self._ticket.start()
-        self._log(f"Next execute in {period}s")
+    # If already aware, convert to local tz
+    return dt.astimezone(local_tz)
 
-    # -------------------------
-    # Core
-    # -------------------------
-    def _refresh_from_ics(self, force: bool) -> bool:
-        url = self.getIcsUrl()
-        if not url:
-            self._fail("refreshFromIcs", "icsUrl is empty")
-            return False
 
-        try:
-            ics_text = self._http_get(url)
-        except Exception as e:
-            self._fail("httpGet", str(e))
-            return False
-
-        # Skip rewrite if unchanged (unless forced)
-        cur_hash = str(hash(ics_text))
-        changed = (self._lastIcsHash != cur_hash)
-        if not force and not changed:
-            self._ok(f"ICS unchanged; using cached calendar (len={len(ics_text)})")
-            self._trace_ok()
-            self._update_next_event()
-            return True
-
-        # Parse VEVENTs into day->label
-        day_map: Dict[str, str] = {}
-        self._parse_ics_into(ics_text, day_map)
-
-        # Optional maxEvents cap (keep earliest N)
-        if self.getMaxEvents() > 0:
-            keys = sorted(day_map.keys())[: self.getMaxEvents()]
-            day_map = {k: day_map[k] for k in keys}
-
-        # Rewrite calendar
-        self._calendar.clear_all()
-        made = 0
-        for k in sorted(day_map.keys()):
-            y, m, d = map(int, k.split("-"))
-            self._calendar.add_day(y, m, d, f"{self.getNamePrefix()}:{day_map[k]}")
-            made += 1
-
-        self.setEventsAdded(made)
-        self._lastIcsHash = cur_hash
-        self.setLastFetchTs(dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-        self._ok(f"ICS parsed days={len(day_map)}; created/updated={made}")
-        self._trace_ok()
-        self._update_next_event()
-        return True
-
-    # -------------------------
-    # Helpers
-    # -------------------------
-    def _update_next_event(self) -> None:
-        today = dt.date.today().isoformat()
-        keys = self._calendar.keys_sorted()
-        next_key = None
-        for k in keys:
-            if k >= today:
-                next_key = k
-                break
-        if next_key:
-            label = self._calendar.get(next_key) or ""
-            days = (dt.date.fromisoformat(next_key) - dt.date.today()).days
-            self.setNextEvent(f"{next_key} ({label}; in {days} days)")
+def split_prop(line: str) -> Tuple[str, Dict[str, str], str]:
+    """
+    Split a VCALENDAR property line into (name, params, value).
+    Example: 'DTSTART;TZID=America/Chicago:20251101T123000' ->
+      ('DTSTART', {'TZID':'America/Chicago'}, '20251101T123000')
+    """
+    if ":" not in line:
+        return line, {}, ""
+    head, value = line.split(":", 1)
+    parts = head.split(";")
+    name = parts[0].strip().upper()
+    params: Dict[str, str] = {}
+    for p in parts[1:]:
+        if "=" in p:
+            k, v = p.split("=", 1)
+            params[k.strip().upper()] = v.strip()
         else:
-            self.setNextEvent("N/A")
+            params[p.strip().upper()] = ""
+    return name, params, value.strip()
 
-    def _parse_ics_into(self, ics: str, out: Dict[str, str]) -> None:
-        """
-        Minimal VEVENT parser supporting:
-          DTSTART[:|;VALUE=DATE]YYYYMMDD[THHMMSSZ]
-          DTEND[:|;VALUE=DATE]YYYYMMDD[THHMMSSZ]   (exclusive)
-          SUMMARY: text
-        """
-        in_event = False
-        dt_start = None
-        dt_end = None
-        summary = None
 
-        for raw in ics.splitlines():
-            line = raw.strip()
-            if line.upper() == "BEGIN:VEVENT":
-                in_event = True
-                dt_start = dt_end = None
-                summary = None
-                continue
-            if line.upper() == "END:VEVENT":
-                if in_event and dt_start:
-                    s = self._parse_ics_date(dt_start)
-                    e = self._parse_ics_date(dt_end) if dt_end else (s + dt.timedelta(days=1))
-                    if s and e:
-                        d = s
-                        while d < e and d < s + dt.timedelta(days=366 * 3):
-                            key = d.strftime("%Y-%m-%d")
-                            label = (summary or "Event").strip()
-                            if key in out and out[key] != label:
-                                out[key] = f"{out[key]} / {label}"
-                            else:
-                                out[key] = label
-                            d += dt.timedelta(days=1)
-                in_event = False
-                continue
-            if not in_event:
-                continue
+def parse_ics(text: str, local_tz: timezone) -> List[ICalEvent]:
+    """
+    Super-light iCal VEVENT parser: grabs SUMMARY, DTSTART, LOCATION, DESCRIPTION.
+    Ignores canceled/past events.
+    """
+    lines = unfold_ical_lines(text)
+    events: List[ICalEvent] = []
 
-            if line.startswith("DTSTART"):
-                dt_start = line.split(":", 1)[1]
-            elif line.startswith("DTEND"):
-                dt_end = line.split(":", 1)[1]
-            elif line.startswith("SUMMARY:"):
-                summary = line[len("SUMMARY:"):]
+    in_event = False
+    cur: Dict[str, Tuple[Dict[str, str], str]] = {}
 
-    @staticmethod
-    def _parse_ics_date(token: Optional[str]) -> Optional[dt.date]:
-        if not token:
-            return None
-        if "T" in token:
-            token = token.split("T", 1)[0]
-        if len(token) != 8 or not token.isdigit():
-            return None
-        y, m, d = int(token[:4]), int(token[4:6]), int(token[6:8])
-        try:
-            return dt.date(y, m, d)
-        except ValueError:
-            return None
+    print("Done 1")  # keep from your logs
 
-    def _http_get(self, url: str) -> str:
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "python-ical-program/1.0", "Accept": "text/calendar,*/*"},
-        )
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = resp.read()
-        self._ok(f"HTTP {getattr(resp, 'status', 200)} bytes={len(data)}")
-        return data.decode("utf-8", errors="replace")
+    for line in lines:
+        if line.strip().upper() == "BEGIN:VEVENT":
+            in_event = True
+            cur = {}
+            print("[IcalProgram] ... found BEGIN:VEVENT")
+            continue
+        if line.strip().upper() == "END:VEVENT":
+            if in_event:
+                # build event
+                summary_val = cur.get("SUMMARY", ({}, ""))[1].strip()
+                dt_params, dt_val = cur.get("DTSTART", ({}, ""))
+                start_dt = parse_ical_datetime(dt_val, dt_params, local_tz) if dt_val else None
 
-    # ---- status/log helpers ----
-    def _ok(self, msg: str) -> None: self.setApiResponse(msg)
-    def _fail(self, where: str, msg: str) -> None:
-        self.setApiResponse(f"ERROR: {where} - {msg}")
-        self.setStatusTrace(f"ERROR: {where} - {msg}")
-        self._log(f"[ERROR] {where}: {msg}")
+                if summary_val:
+                    print(f"[IcalProgram]        SUMMARY: {summary_val}")
+                if "LOCATION" in cur:
+                    print(f"[IcalProgram]       LOCATION: {cur['LOCATION'][1]}")
+                if "DESCRIPTION" in cur:
+                    print(f"[IcalProgram]    DESCRIPTION: {cur['DESCRIPTION'][1]}")
 
-    def _trace_ok(self) -> None:
-        # Clear stale error if present
-        cur = self.getStatusTrace() or ""
-        if not cur.startswith("ERROR"):
-            self.setStatusTrace("OK")
+                if summary_val and start_dt and start_dt >= datetime.now(local_tz):
+                    ev = ICalEvent(
+                        summary=summary_val,
+                        start=start_dt,
+                        location=cur.get("LOCATION", ({}, ""))[1] or None,
+                        description=cur.get("DESCRIPTION", ({}, ""))[1] or None,
+                    )
+                    print(f"[IcalProgram] ... adding event: {ev.summary} @ {ev.start.isoformat()}")
+                    events.append(ev)
+                else:
+                    print("[IcalProgram] ... skipping event (missing summary/start, or is in the past)")
+            in_event = False
+            cur = {}
+            continue
+
+        if in_event and line and ":" in line:
+            name, params, value = split_prop(line)
+            if name in ("SUMMARY", "DTSTART", "LOCATION", "DESCRIPTION"):
+                cur[name] = (params, value)
+
+    return events
+
+
+def build_schedule(events: List[ICalEvent]) -> Dict[str, List[str]]:
+    """
+    Create a simple schedule: { 'YYYY-MM-DD': ['ICal_<Event1>', 'ICal_<Event2>', ...], ... }
+    """
+    schedule: Dict[str, List[str]] = {}
+    for ev in events[:KEEP_MAX_EVENTS]:
+        key = ev.start.date().isoformat()
+        nm = f"{EVENT_NAME_PREFIX}{ev.summary}"
+        schedule.setdefault(key, []).append(nm)
+    return schedule
+
+
+def main(argv: List[str]) -> int:
+    if len(argv) < 2:
+        print("Usage: python ical_parse.py <ics_url_or_path>")
+        return 1
+
+    source = argv[1]
+    try:
+        local_tz = get_local_tz()
+        text = load_ics(source)
+        events = parse_ics(text, local_tz=local_tz)
+
+        print(f"[IcalProgram] parsed future events: {len(events)}")
+        print(f"[IcalProgram] Preparing to add events: parsed={len(events)}, max={KEEP_MAX_EVENTS}, prefix='{EVENT_NAME_PREFIX}'")
+
+        schedule = build_schedule(events)
+
+        # Print a tiny summary (you can remove this if you prefer silent success)
+        if schedule:
+            print("\n=== Built Schedule (date → event names) ===")
+            for day, names in sorted(schedule.items()):
+                print(f"{day}:")
+                for n in names:
+                    print(f"  - {n}")
         else:
-            self.setStatusTrace("OK")
+            print("\n(No future events found)")
 
-    def _safe_status(self, s: str) -> None:
-        self.setStatusTrace(s)
+        print("Done 2")  # your sentinel showing we reached the end
+        return 0
 
-    def _log(self, msg: str) -> None:
-        if self.getLogToConsole():
-            print(f"[IcalProgram] {msg}")
-
-    def _normalize_defaults(self) -> None:
-        if not self.getIcsUrl():
-            # default to NextSpaceFlight public GCal ICS (you can override)
-            self.setIcsUrl(
-                "https://calendar.google.com/calendar/ical/"
-                "nextspaceflight.com_l328q9n2alm03mdukb05504c44%40group.calendar.google.com/public/basic.ics"
-            )
-        if self.getNamePrefix() == "":
-            self.setNamePrefix("Event")
-        # default: no heartbeat; run once unless you set a period
-        if self.getExecutePeriodSeconds() < 0:
-            self.setExecutePeriodSeconds(0)
+    except Exception as e:
+        print(f"[IcalProgram] ERROR: {e}")
+        return 1
 
 
-# -------------------------
-# Example usage
-# -------------------------
 if __name__ == "__main__":
-    prog = IcalProgram()
-    prog.setLogToConsole(True)
-    prog.setExecutePeriodSeconds(0)  # set e.g. 3600 to poll hourly
-    prog.setNamePrefix("Launch")
-    # prog.setIcsUrl("https://…/basic.ics")  # optional override
-    prog.onStart()  # runs one fetch
-
-    # Show results
-    print("\n== apiResponse:", prog.getApiResponse())
-    print("== statusTrace:", prog.getStatusTrace())
-    print("== lastFetchTs:", prog.getLastFetchTs())
-    print("== eventsAdded:", prog.getEventsAdded())
-    print("== nextEvent  :", prog.getNextEvent())
-    print("\n== Calendar days (first 10) ==")
-    for k in list(prog.getCalendar().keys_sorted())[:10]:
-        print(k, "->", prog.getCalendar().get(k))
+    sys.exit(main(sys.argv))

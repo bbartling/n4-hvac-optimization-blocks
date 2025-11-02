@@ -3920,11 +3920,243 @@ To add:
 ---
 
 <details>
+<summary>🤖 AI Engineer Example (Niagara ↔ Docker ML Model)</summary>
+
+This block is an example of what “AI engineering” actually looks like in a building automation system where a ProgramObject hits a Docker container with a machine learning model in it to predict electrical power. See this other repo for more details on running a Docker container and the machine learning app code downloaded from Kaggle which is a data science competition organization.
+
+* https://github.com/bbartling/chiller-power-model-api
+
+The ML Docker container can be ran on the same server as the Niagara Server, cloud, or somewhere on the OT LAN. You feed in this data via wire sheet to the ProgramObject: 
+
+Inputs your model expects:
+
+* Outside air temp (°F)
+* Outside air RH (%)
+* Hour of day
+* Day of week
+* Building cooling load (RT)
+* Chilled water flow (L/s)
+* Condenser water temp (°C)
+* Timestamp (ms since epoch)
+
+And the Docker container returns back JSON like:
+
+```json
+{
+  "predicted_kw": 107.76,
+  "model_version": "v0.1",
+  "ok": true
+}
+```
+
+Where then some custom controls engineering logic can be applied or whatever is required for the project.
+
+---
+
+<p align="center">
+<img src="snips/AiEngSnip.png" alt="Niagara AI Power Predictor Wiresheet" width="800">
+<br><em>Niagara ProgramObject calling the local FastAPI model container and writing kW + status back into the station.</em>
+</p>
+
+---
+
+### 🔌 Required Slots
+
+| Slot Name             | Type             | Writable | Purpose                                                                                                     |
+| --------------------- | ---------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `updateNow`           | `BStatusBoolean` | Yes      | Trigger to call the model in docker container. **Must have Config Flag: Execute On Change.**                                    |
+| `modelUrl`            | `BString`        | Yes      | API endpoint, like `http://127.0.0.1:8000/predict_power`. Can be retuned in the field without editing code. |
+| `outsideAirTemp_F`    | `BStatusNumeric` | Yes      | Outside air temp (°F).                                                                                      |
+| `outsideAirRH_Pct`    | `BStatusNumeric` | Yes      | Outside air relative humidity (%).                                                                          |
+| `buildingLoad_RT`     | `BStatusNumeric` | Yes      | Plant load in refrigeration tons.                                                                           |
+| `chwFlow_LPS`         | `BStatusNumeric` | Yes      | Chilled water flow (L/s).                                                                                   |
+| `cwTemp_C`            | `BStatusNumeric` | Yes      | Condenser water temp (°C).                                                                                  |
+| `predictedBuildingKW` | `BStatusNumeric` | No       | OUTPUT. The model’s predicted electrical power draw in kW.                                                  |
+| `statusTrace`         | `BStatusString`  | No       | OUTPUT. Debug text like `OK predicted_kw=107.76`.                                                           |
+| `lastCallTimestampMs` | `BStatusNumeric` | No       | OUTPUT. Milliseconds since epoch when call went out.                                                        |
+
+
+---
+
+### ✅ Java: ProgramObject logic
+
+
+```java
+
+public void onStart() throws Exception
+{
+    // nothing on start; this block is event-driven
+    getStatusTrace().setValue("PowerPredictorFromModel ready.");
+}
+
+public void onExecute() throws Exception
+{
+    // only run logic if updateNow is true
+    if (!getUpdateNow().getValue()) {
+        return;
+    }
+
+    // --- Read inputs safely with defaults ---
+    double oatF = getOutsideAirTemp_F().getStatus().isOk() ? getOutsideAirTemp_F().getValue() : 70.0;
+    double rhPct = getOutsideAirRH_Pct().getStatus().isOk() ? getOutsideAirRH_Pct().getValue() : 50.0;
+    
+    // --- ADDED: Read new required plant inputs ---
+    double loadRT = getBuildingLoad_RT().getStatus().isOk() ? getBuildingLoad_RT().getValue() : 100.0;
+    double flowLPS = getChwFlow_LPS().getStatus().isOk() ? getChwFlow_LPS().getValue() : 20.0;
+    double cwTempC = getCwTemp_C().getStatus().isOk() ? getCwTemp_C().getValue() : 28.0;
+
+    String url = getModelUrl().getValue();
+    if (url == null || url.trim().length() == 0) {
+        url = "http://127.0.0.1:8000/predict_power"; // localhost Docker default fallback
+    }
+
+    // --- ADDED: Derive time features ---
+    long nowMs = System.currentTimeMillis();
+    java.util.Calendar cal = java.util.Calendar.getInstance();
+    cal.setTimeInMillis(nowMs);
+    int hourOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY);
+    
+    // Map Java's Calendar (SUNDAY=1) to Python's (MONDAY=0)
+    int javaDow = cal.get(java.util.Calendar.DAY_OF_WEEK);
+    int modelDow = (javaDow == 1) ? 6 : (javaDow - 2); // (Java SUNDAY=1 -> Model SUNDAY=6), (Java MONDAY=2 -> Model MONDAY=0)
+
+    getLastCallTimestampMs().setValue((double) nowMs);
+
+    try {
+        // --- ENHANCED: Build JSON body to match the model ---
+        String jsonBody =
+            "{"
+            + "\"oat_f\":" + oatF + ","
+            + "\"rh_pct\":" + rhPct + ","
+            + "\"hour_of_day\":" + hourOfDay + ","
+            + "\"day_of_week\":" + modelDow + ","
+            + "\"building_load_rt\":" + loadRT + ","
+            + "\"chw_flow_lps\":" + flowLPS + ","
+            + "\"cw_temp_c\":" + cwTempC + ","
+            + "\"timestamp_ms\":" + nowMs
+            + "}";
+
+        String resp = httpPostJson(url, jsonBody);
+
+        // Parse "predicted_kw": <number>
+        double kwVal = extractPredictedKw(resp);
+
+        getPredictedBuildingKW().setValue(kwVal);
+        getPredictedBuildingKW().setStatus(BStatus.ok);
+        getStatusTrace().setValue("OK predicted_kw=" + kwVal);
+
+    } catch (Exception e) {
+        getPredictedBuildingKW().setValue(0.0);
+        getPredictedBuildingKW().setStatus(BStatus.NULL);
+        getStatusTrace().setValue("ERR calling model: " + e.getMessage());
+    }
+
+    // VERY IMPORTANT: reset trigger for next time
+    setUpdateNow(new BStatusBoolean(false));
+}
+
+public void onStop() throws Exception
+{
+    // nothing to clean up
+}
+
+/**
+ * Minimal HTTP POST helper.
+ */
+String httpPostJson(String urlStr, String body) throws Exception
+{
+    java.net.URL url = new java.net.URL(urlStr);
+    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
+    conn.setRequestMethod("POST");
+    conn.setConnectTimeout(5000);
+    conn.setReadTimeout(5000);
+    conn.setDoOutput(true);
+    conn.setRequestProperty("Content-Type", "application/json");
+
+    // write body
+    java.io.OutputStream os = conn.getOutputStream();
+    os.write(body.getBytes("UTF-8"));
+    os.flush();
+    os.close();
+
+    int code = conn.getResponseCode();
+    java.io.InputStream is;
+    if (code >= 200 && code < 300) {
+        is = conn.getInputStream();
+    } else {
+        is = conn.getErrorStream();
+        if (is == null) {
+            throw new Exception("Model HTTP " + code + " no body");
+        }
+    }
+
+    java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, "UTF-8"));
+    StringBuilder sb = new StringBuilder();
+    String line;
+    while ((line = br.readLine()) != null) {
+        sb.append(line);
+    }
+    br.close();
+    conn.disconnect();
+
+    if (code < 200 || code >= 300) {
+        throw new Exception("Model HTTP " + code + " resp=" + sb.toString());
+    }
+
+    return sb.toString();
+}
+
+/**
+ * Extracts "predicted_kw": <number> from the JSON string.
+ */
+double extractPredictedKw(String resp) throws Exception
+{
+    String key = "\"predicted_kw\":";
+    int idx = resp.indexOf(key);
+    if (idx < 0) {
+        throw new Exception("No predicted_kw in response: " + resp);
+    }
+
+    int startNum = idx + key.length();
+    int endNum = startNum;
+    while (endNum < resp.length()) {
+        char c = resp.charAt(endNum);
+        // Stop at the first non-numeric/decimal character
+        if ((c < '0' || c > '9') && c != '.' && c != '-') {
+            break;
+        }
+        endNum++;
+    }
+
+    String numStr = resp.substring(startNum, endNum).trim();
+    return Double.parseDouble(numStr);
+}
+
+```
+
+---
+
+### 📚 Niagara Import Packages You MUST Add
+
+In Workbench → Program Object → Imports tab, add:
+
+* `java.net`
+* `java.io`
+* `java.util`
+
+Those match what this block uses: `HttpURLConnection`, streams, and `Calendar`.
+
+
+</details>
+
+---
+
+<details>
 <summary>🗓️ Hoiday Checker Nager API</summary>
 
+Fetches **public holidays** from the free Nager.Date API and auto-drives a **CalendarSchedule** so your logic can treat holidays as “unoccupied”. 
 
-
-Fetches **public holidays** from the free Nager.Date API and auto-drives a **CalendarSchedule** so your logic can treat holidays as “unoccupied”.
+The Nager API program makes an HTTP GET request to the Nager web service, building a URL with the specified country code and year to retrieve a list of public holidays in the JSON format. It processes this JSON text by scanning for specific keys to extract the "date" string (e.g., "2025-12-25") and the "localName" for each holiday, storing them in a HashMap. This program also uses its calendarOrd to find the target BCalendarSchedule component, where it then adds a new BDateSchedule child for each holiday, setting the required Year, Month, and Day properties by parsing the date string.
 
 <p align="center">
   <img src="snips/nagerApiSnip.png" alt="Nager API Holiday Checker wiresheet" width="820">
@@ -4383,298 +4615,118 @@ private javax.baja.schedule.BCalendarSchedule resolveCalendar() {
 ---
 
 <details>
-<summary>🤖 AI Engineer Example (Niagara ↔ Docker ML Model)</summary>
+<summary>🗓️ iCal Integration</summary>
 
-This block is an example of what “AI engineering” actually looks like in a building automation system where a ProgramObject hits a Docker container with a machine learning model in it to predict electrical power. See this other repo for more details on running a Docker container and the machine learning app code downloaded from Kaggle which is a data science competition organization.
+Use this block to **subscribe** to an online iCalendar (`.ics`) feed (e.g., shared Google/Outlook/Apple calendar URLs) and expose “next event” details inside Niagara for schedule logic (holiday/vacation shutdowns, special events, etc.). This is designed for a **Program Object**—the Java is already done; this section just documents how to set it up.
 
-* https://github.com/bbartling/chiller-power-model-api
-
-The ML Docker container can be ran on the same server as the Niagara Server, cloud, or somewhere on the OT LAN. You feed in this data via wire sheet to the ProgramObject: 
-
-Inputs your model expects:
-
-* Outside air temp (°F)
-* Outside air RH (%)
-* Hour of day
-* Day of week
-* Building cooling load (RT)
-* Chilled water flow (L/s)
-* Condenser water temp (°C)
-* Timestamp (ms since epoch)
-
-And the Docker container returns back JSON like:
-
-```json
-{
-  "predicted_kw": 107.76,
-  "model_version": "v0.1",
-  "ok": true
-}
-```
-
-Where then some custom controls engineering logic can be applied or whatever is required for the project.
+The iCal program makes an HTTP GET request to a URL specified in its icsUrl slot, fetching a raw text file in the iCalendar (.ics) format. It then processes this text by looping through each VEVENT block, parsing the SUMMARY, LOCATION, DESCRIPTION, and DTSTART tags to create a list of EventInfo Java objects. Finally, it accesses the target BCalendarSchedule component via its calendarOrd slot, locks it, and dynamically adds new BDateSchedule children, each populated with the specific Year, Month, and Day derived from the event's start time.
 
 ---
 
 <p align="center">
-<img src="snips/AiEngSnip.png" alt="Niagara AI Power Predictor Wiresheet" width="800">
-<br><em>Niagara ProgramObject calling the local FastAPI model container and writing kW + status back into the station.</em>
+  <img src="snips/icalAxPropSheetSnip.png" alt="iCal AX / N4 Property Sheet" width="850">
+</p>
+
+<p align="center">
+  <img src="snips/icalSnip.png" alt="iCal Wiresheet Snip" width="850">
 </p>
 
 ---
 
-### 🔌 Required Slots
+### ⚙️ Slot Sheet (suggested)
+| Slot Name               | Type             | Writable | Notes |
+| ---                     | ---              | ---      | --- |
+| `calendarUrl`           | `BStatusString`  | ✅       | Full HTTPS URL to the **.ics** feed (public/share link). |
+| `internalUpdateSeconds` | `BStatusNumeric` | ✅       | How often to refresh, seconds (e.g., `21600` = 6h). |
+| `updateNow`             | `BStatusBoolean` | ✅       | Toggle `true` to force an immediate fetch (auto-resets `false`). |
+| `statusTrace`           | `BStatusString`  | ❌       | Short “OK / ERROR: …” health text. |
+| `lastRefreshTs`         | `BStatusString`  | ❌       | Timestamp of last successful refresh. |
+| `nextEventsJson`        | `BStatusString`  | ❌       | JSON array of upcoming events (already normalized in code). |
+| `etagCache` (optional)  | `BStatusString`  | ❌       | If-None-Match cache to reduce bandwidth (if your code uses it). |
 
-| Slot Name             | Type             | Writable | Purpose                                                                                                     |
-| --------------------- | ---------------- | -------- | ----------------------------------------------------------------------------------------------------------- |
-| `updateNow`           | `BStatusBoolean` | Yes      | Trigger to call the model in docker container. **Must have Config Flag: Execute On Change.**                                    |
-| `modelUrl`            | `BString`        | Yes      | API endpoint, like `http://127.0.0.1:8000/predict_power`. Can be retuned in the field without editing code. |
-| `outsideAirTemp_F`    | `BStatusNumeric` | Yes      | Outside air temp (°F).                                                                                      |
-| `outsideAirRH_Pct`    | `BStatusNumeric` | Yes      | Outside air relative humidity (%).                                                                          |
-| `buildingLoad_RT`     | `BStatusNumeric` | Yes      | Plant load in refrigeration tons.                                                                           |
-| `chwFlow_LPS`         | `BStatusNumeric` | Yes      | Chilled water flow (L/s).                                                                                   |
-| `cwTemp_C`            | `BStatusNumeric` | Yes      | Condenser water temp (°C).                                                                                  |
-| `predictedBuildingKW` | `BStatusNumeric` | No       | OUTPUT. The model’s predicted electrical power draw in kW.                                                  |
-| `statusTrace`         | `BStatusString`  | No       | OUTPUT. Debug text like `OK predicted_kw=107.76`.                                                           |
-| `lastCallTimestampMs` | `BStatusNumeric` | No       | OUTPUT. Milliseconds since epoch when call went out.                                                        |
-
+> **Tip:** The slot formerly called `pollSeconds` was renamed to `internalUpdateSeconds` for clarity.
 
 ---
 
-### ✅ Java: ProgramObject logic
+### ✅ How to use
+1. **Set `calendarUrl`** to a public/subscribable `.ics` link (not a file import).  
+   - Google Calendar: “**Settings → Integrate calendar → Secret address in iCal format**”.  
+   - Outlook/Apple: share/publish the calendar and copy the iCal URL.
+2. **(Optional) Enable trigger:** Check **Execute On Change** for `updateNow` so a **true** write runs the fetch immediately.
+3. **Refresh cadence:** The program’s internal timer uses `internalUpdateSeconds` to re-pull the feed on a fixed schedule.
+4. **Consume results:** Read `nextEventsJson` (stringified JSON) for your logic—e.g., “if any event today tagged Public/Bank Holiday → disable schedules”.
+
+---
+
+### 🔎 Practical notes
+- **Subscribe vs. Import:** Use a **URL subscription** so clients stay in sync; avoid one-time calendar file imports.  
+- **Throttling:** Most calendar hosts update **every few hours**. Avoid setting `internalUpdateSeconds` too low.  
+- **Null-safety:** If URL is empty or fetch fails, `statusTrace` shows the error and outputs remain unchanged.
+- **Filtering:** Your Program Object’s Java already normalizes and filters events; this doc just standardizes the slots/UI.
+
+---
+
+### 💻 Java Code
+
+> Testing on next space flight ical: https://nextspaceflight.com/calendar/
 
 
 ```java
+////////////////////////////////////////////////////////////////
+// Program Source — ICS Subscriber (v3 - Concurrency Fix)
+////////////////////////////////////////////////////////////////
 
-public void onStart() throws Exception
-{
-    // nothing on start; this block is event-driven
-    getStatusTrace().setValue("PowerPredictorFromModel ready.");
-}
-
-public void onExecute() throws Exception
-{
-    // only run logic if updateNow is true
-    if (!getUpdateNow().getValue()) {
-        return;
-    }
-
-    // --- Read inputs safely with defaults ---
-    double oatF = getOutsideAirTemp_F().getStatus().isOk() ? getOutsideAirTemp_F().getValue() : 70.0;
-    double rhPct = getOutsideAirRH_Pct().getStatus().isOk() ? getOutsideAirRH_Pct().getValue() : 50.0;
-    
-    // --- ADDED: Read new required plant inputs ---
-    double loadRT = getBuildingLoad_RT().getStatus().isOk() ? getBuildingLoad_RT().getValue() : 100.0;
-    double flowLPS = getChwFlow_LPS().getStatus().isOk() ? getChwFlow_LPS().getValue() : 20.0;
-    double cwTempC = getCwTemp_C().getStatus().isOk() ? getCwTemp_C().getValue() : 28.0;
-
-    String url = getModelUrl().getValue();
-    if (url == null || url.trim().length() == 0) {
-        url = "http://127.0.0.1:8000/predict_power"; // localhost Docker default fallback
-    }
-
-    // --- ADDED: Derive time features ---
-    long nowMs = System.currentTimeMillis();
-    java.util.Calendar cal = java.util.Calendar.getInstance();
-    cal.setTimeInMillis(nowMs);
-    int hourOfDay = cal.get(java.util.Calendar.HOUR_OF_DAY);
-    
-    // Map Java's Calendar (SUNDAY=1) to Python's (MONDAY=0)
-    int javaDow = cal.get(java.util.Calendar.DAY_OF_WEEK);
-    int modelDow = (javaDow == 1) ? 6 : (javaDow - 2); // (Java SUNDAY=1 -> Model SUNDAY=6), (Java MONDAY=2 -> Model MONDAY=0)
-
-    getLastCallTimestampMs().setValue((double) nowMs);
-
-    try {
-        // --- ENHANCED: Build JSON body to match the model ---
-        String jsonBody =
-            "{"
-            + "\"oat_f\":" + oatF + ","
-            + "\"rh_pct\":" + rhPct + ","
-            + "\"hour_of_day\":" + hourOfDay + ","
-            + "\"day_of_week\":" + modelDow + ","
-            + "\"building_load_rt\":" + loadRT + ","
-            + "\"chw_flow_lps\":" + flowLPS + ","
-            + "\"cw_temp_c\":" + cwTempC + ","
-            + "\"timestamp_ms\":" + nowMs
-            + "}";
-
-        String resp = httpPostJson(url, jsonBody);
-
-        // Parse "predicted_kw": <number>
-        double kwVal = extractPredictedKw(resp);
-
-        getPredictedBuildingKW().setValue(kwVal);
-        getPredictedBuildingKW().setStatus(BStatus.ok);
-        getStatusTrace().setValue("OK predicted_kw=" + kwVal);
-
-    } catch (Exception e) {
-        getPredictedBuildingKW().setValue(0.0);
-        getPredictedBuildingKW().setStatus(BStatus.NULL);
-        getStatusTrace().setValue("ERR calling model: " + e.getMessage());
-    }
-
-    // VERY IMPORTANT: reset trigger for next time
-    setUpdateNow(new BStatusBoolean(false));
-}
-
-public void onStop() throws Exception
-{
-    // nothing to clean up
-}
-
-/**
- * Minimal HTTP POST helper.
- */
-String httpPostJson(String urlStr, String body) throws Exception
-{
-    java.net.URL url = new java.net.URL(urlStr);
-    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
-    conn.setRequestMethod("POST");
-    conn.setConnectTimeout(5000);
-    conn.setReadTimeout(5000);
-    conn.setDoOutput(true);
-    conn.setRequestProperty("Content-Type", "application/json");
-
-    // write body
-    java.io.OutputStream os = conn.getOutputStream();
-    os.write(body.getBytes("UTF-8"));
-    os.flush();
-    os.close();
-
-    int code = conn.getResponseCode();
-    java.io.InputStream is;
-    if (code >= 200 && code < 300) {
-        is = conn.getInputStream();
-    } else {
-        is = conn.getErrorStream();
-        if (is == null) {
-            throw new Exception("Model HTTP " + code + " no body");
-        }
-    }
-
-    java.io.BufferedReader br = new java.io.BufferedReader(new java.io.InputStreamReader(is, "UTF-8"));
-    StringBuilder sb = new StringBuilder();
-    String line;
-    while ((line = br.readLine()) != null) {
-        sb.append(line);
-    }
-    br.close();
-    conn.disconnect();
-
-    if (code < 200 || code >= 300) {
-        throw new Exception("Model HTTP " + code + " resp=" + sb.toString());
-    }
-
-    return sb.toString();
-}
-
-/**
- * Extracts "predicted_kw": <number> from the JSON string.
- */
-double extractPredictedKw(String resp) throws Exception
-{
-    String key = "\"predicted_kw\":";
-    int idx = resp.indexOf(key);
-    if (idx < 0) {
-        throw new Exception("No predicted_kw in response: " + resp);
-    }
-
-    int startNum = idx + key.length();
-    int endNum = startNum;
-    while (endNum < resp.length()) {
-        char c = resp.charAt(endNum);
-        // Stop at the first non-numeric/decimal character
-        if ((c < '0' || c > '9') && c != '.' && c != '-') {
-            break;
-        }
-        endNum++;
-    }
-
-    String numStr = resp.substring(startNum, endNum).trim();
-    return Double.parseDouble(numStr);
-}
-
-```
-
----
-
-### 📚 Niagara Import Packages You MUST Add
-
-In Workbench → Program Object → Imports tab, add:
-
-* `java.net`
-* `java.io`
-* `java.util`
-
-Those match what this block uses: `HttpURLConnection`, streams, and `Calendar`.
-
-
-</details>
-
----
-
-<details>
-<summary>🗓️ iCal Integration</summary>
-
-Testing on next space flight ical.
-* https://nextspaceflight.com/calendar/
-* NOT DONE YET! Not working Java yet
-
-```java
-/*
- * iCal → Niagara Calendar (no eventWindowMinutes)
- * - Parses .ics and writes BDateSchedule children
- * - Optional internal fetch interval (icsFetchPeriodSeconds) unless useExternalFetch=true
- * - Heartbeat via pollSeconds toggles eventActive based on today's date
- */
-
+// Runtime
 private Clock.Ticket ticket;
 private long lastFetchMs = 0L;
 
+// Small record for parsed events
 class EventInfo implements Comparable<EventInfo> {
-  java.util.Date startTime; String summary;
-  EventInfo(java.util.Date t, String s){ this.startTime=t; this.summary=s; }
-  public int compareTo(EventInfo o){ return this.startTime.compareTo(o.startTime); }
+  java.util.Date startTime;
+  java.util.Date endTime;   
+  String summary;
+  String location;       
+  String description;   
+
+  EventInfo(java.util.Date start, java.util.Date end, String sum, String loc, String desc) {
+    this.startTime = start;
+    this.endTime = end;
+    this.summary = sum;
+    this.location = loc;
+    this.description = desc;
+  }
+
+  // Null-safe comparison
+  public int compareTo(EventInfo o) {
+    if (this.startTime == null && o.startTime == null) return 0;
+    if (this.startTime == null) return -1;
+    if (o.startTime == null) return 1;
+    return this.startTime.compareTo(o.startTime);
+  }
 }
 
-// ===== Lifecycle =====
+// ================= Lifecycle =================
+
 public void onStart() throws Exception {
   log("onStart");
   getStatusTrace().setValue("Program started.");
-
-  // Always do a first fetch so the calendar has content
-  try { fetchAndParseIcs(); } catch (Exception ignore) {}
-
-  scheduleNextTick();   // drive the small heartbeat
+  scheduleHeartbeat();
 }
 
 public void onExecute() throws Exception {
-  // 1) manual trigger?
+  // 1) Manual/External fetch trigger
   try {
     if (getUpdateNow().getStatus().isOk() && getUpdateNow().getValue()) {
-      log("updateNow=TRUE → fetch");
-      fetchAndParseIcs();
+      log("updateNow=TRUE → fetching ICS once");
+      fetchAndParseIcsOnce();
       try { setUpdateNow(new BStatusBoolean(false)); } catch (Exception ignore) {}
     }
   } catch (Exception ignore) {}
 
-  // 2) periodic internal fetch (unless useExternalFetch=true)
-  try {
-    boolean external = getUseExternalFetch().getStatus().isOk() && getUseExternalFetch().getValue();
-    int fetchSecs = 3600;
-    if (getIcsFetchPeriodSeconds().getStatus().isOk())
-      fetchSecs = (int)Math.max(300, Math.min(86400, getIcsFetchPeriodSeconds().getValue()));
-    if (!external && (System.currentTimeMillis() - lastFetchMs) >= fetchSecs * 1000L) {
-      log("internal fetch interval hit → fetch");
-      fetchAndParseIcs();
-    }
-  } catch (Exception ignore) {}
-
-  // 3) heartbeat: compute eventActive
+  // 2) Heartbeat: recompute eventActive (no network)
   try { computeEventActiveToday(); } catch (Exception e) { log("eventActive error: " + e.getMessage()); }
 
-  scheduleNextTick();
+  scheduleHeartbeat();
 }
 
 public void onStop() throws Exception {
@@ -4683,27 +4735,32 @@ public void onStop() throws Exception {
   getStatusTrace().setValue("Program stopped.");
 }
 
-// ===== Heartbeat scheduling (pollSeconds) =====
-private void scheduleNextTick() {
+// ================= Heartbeat (internalUpdateSeconds) =================
+
+private void scheduleHeartbeat() {
   if (ticket != null) { ticket.cancel(); ticket = null; }
-  int period = 10; // default 10s
+  int secs = 10; // default 10s
   try {
-    if (getPollSeconds().getStatus().isOk())
-      period = (int)Math.max(2, Math.min(600, getPollSeconds().getValue()));
-    setPollSeconds(new BStatusNumeric(period));
+    if (getInternalUpdateSeconds().getStatus().isOk())
+      secs = (int)Math.max(2, Math.min(600, getInternalUpdateSeconds().getValue()));
+    setInternalUpdateSeconds(new BStatusNumeric(secs));
   } catch (Exception ignore) {}
-  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(period), BProgram.execute, null);
-  log("next heartbeat in " + period + "s");
+  // Use a shorter heartbeat (e.g., 60s) if you use the StringWritable
+  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(secs), BProgram.execute, null);
+  log("next heartbeat in " + secs + "s");
 }
 
-// ===== Core: fetch + calendar write =====
-private void fetchAndParseIcs() {
+// ================= Core: one-shot fetch + write =================
+
+private void fetchAndParseIcsOnce() {
   long t0 = System.currentTimeMillis();
 
   String url = "https://calendar.google.com/calendar/ical/nextspaceflight.com_l328q9n2alm03mdukb05504c44%40group.calendar.google.com/public/basic.ics";
   try {
-    if (getIcsUrl().getStatus().isOk() && !getIcsUrl().getValue().isEmpty()) url = getIcsUrl().getValue();
-    else setIcsUrl(new BStatusString(url));
+    if (getIcsUrl().getStatus().isOk() && !getIcsUrl().getValue().isEmpty())
+      url = getIcsUrl().getValue();
+    else
+      setIcsUrl(new BStatusString(url));
   } catch (Exception ignore) {}
 
   BComponent calComp = resolveCalendar();
@@ -4711,6 +4768,8 @@ private void fetchAndParseIcs() {
     getStatusTrace().setValue("ERROR: calendarOrd does not resolve to a Calendar Schedule.");
     log("calendarOrd unresolved");
     return;
+  } else {
+    log("calendarOrd resolved → " + calComp.getType().toString());
   }
 
   java.net.HttpURLConnection conn = null;
@@ -4720,7 +4779,8 @@ private void fetchAndParseIcs() {
     java.net.URL u = new java.net.URL(url);
     conn = (java.net.HttpURLConnection)u.openConnection();
     conn.setRequestMethod("GET");
-    conn.setConnectTimeout(10000); conn.setReadTimeout(10000);
+    conn.setConnectTimeout(10000);
+    conn.setReadTimeout(10000);
 
     int code = conn.getResponseCode();
     java.io.InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
@@ -4728,6 +4788,7 @@ private void fetchAndParseIcs() {
 
     events = parseIcsStream(r);
     r.close();
+
     if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
 
     log("parsed future events: " + events.size());
@@ -4740,18 +4801,38 @@ private void fetchAndParseIcs() {
   }
 
   try {
-    int added = updateCalendarChildren(calComp, events);
+    int added = updateCalendarChildren(calComp, events); // This is now thread-safe
     lastFetchMs = System.currentTimeMillis();
 
     getLastFetchTs().setValue(new java.util.Date(t0).toString());
     getEventsAdded().setValue(added);
 
+    StringBuilder sb = new StringBuilder();
     if (!events.isEmpty()) {
       EventInfo next = events.get(0);
-      getNextEvent().setValue(next.summary + " @ " + next.startTime.toString());
+      String nextEventStr = next.summary + " @ " + next.startTime.toString();
+      if (next.location != null && !next.location.isEmpty()) {
+        nextEventStr += " (Loc: " + next.location + ")";
+      }
+      getNextEvent().setValue(nextEventStr);
+      
+      // Populate the string writable for ALL events
+      for(EventInfo ev : events) {
+        if(ev == null || ev.summary == null || ev.startTime == null) continue;
+        sb.append("EVENT: ").append(ev.summary).append("\n");
+        sb.append("  START: ").append(ev.startTime).append("\n");
+        if(ev.endTime != null) sb.append("  END: ").append(ev.endTime).append("\n");
+        if(ev.location != null) sb.append("  LOC: ").append(ev.location).append("\n");
+        if(ev.description != null) sb.append("  DESC: ").append(ev.description).append("\n");
+        sb.append("\n");
+      }
+
     } else {
       getNextEvent().setValue("No upcoming events");
     }
+    
+    // Assuming you have a BStatusString slot named 'stringWritable'
+    // getStringWritable().setValue(sb.toString());
 
     getStatusTrace().setValue("OK: Fetched " + events.size() + ", added " + added);
     log("update complete; added " + added);
@@ -4761,32 +4842,112 @@ private void fetchAndParseIcs() {
   }
 }
 
-// ICS parse (DTSTART:yyyyMMdd'T'HHmmss'Z' only; all-day entries ignored)
+// ================= ICS parse (Handles UTC DTSTART AND All-Day VALUE=DATE) =================
 private java.util.List<EventInfo> parseIcsStream(java.io.BufferedReader reader) throws Exception {
   java.util.List<EventInfo> out = new java.util.ArrayList<>();
-  java.text.SimpleDateFormat utc = new java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'");
-  utc.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+  
+  java.text.SimpleDateFormat utcFormat = new java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'");
+  utcFormat.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+  
+  java.text.SimpleDateFormat allDayFormat = new java.text.SimpleDateFormat("yyyyMMdd");
+  allDayFormat.setTimeZone(java.util.Calendar.getInstance().getTimeZone()); // Use JACE's local timezone
+  
   long now = System.currentTimeMillis();
+  String line; 
+  boolean inVEvent=false; 
+  
+  String sum = null;
+  java.util.Date start = null;
+  java.util.Date end = null;
+  String loc = null;
+  String desc = null;
 
-  String line; boolean in=false; String sum=null; java.util.Date start=null;
   while ((line = reader.readLine()) != null) {
-    if ("BEGIN:VEVENT".equals(line)) { in=true; sum=null; start=null; continue; }
-    if ("END:VEVENT".equals(line))   { 
-      if (in && sum!=null && start!=null && start.getTime() > now) out.add(new EventInfo(start, sum));
-      in=false; continue;
+    if ("BEGIN:VEVENT".equals(line)) { 
+      inVEvent=true; 
+      sum = null; start = null; end = null; loc = null; desc = null; // Reset for new event
+      log("... found BEGIN:VEVENT");
+      continue; 
     }
-    if (!in) continue;
-    if (line.startsWith("SUMMARY:"))  sum = line.substring(8);
+    
+    if ("END:VEVENT".equals(line))   {
+      if (inVEvent && sum != null && start != null && start.getTime() > now) {
+        log("... adding event: " + sum + " @ " + start.toString());
+        out.add(new EventInfo(start, end, sum, loc, desc)); 
+      } else if (inVEvent) {
+        log("... skipping event (missing summary/start, or is in the past)");
+      }
+      inVEvent=false; 
+      continue;
+    }
+    
+    if (!inVEvent) continue;
+    
+    if (line.startsWith("SUMMARY:")) {
+      sum = line.substring(8);
+      log("       SUMMARY: " + sum);
+    }
+    else if (line.startsWith("LOCATION:")) {
+      loc = line.substring(9);
+      log("      LOCATION: " + loc);
+    }
+    else if (line.startsWith("DESCRIPTION:")) {
+      desc = line.substring(12); // Does not handle multi-line descriptions
+      log("   DESCRIPTION: " + desc);
+    }
+    
+    // --- DTSTART Parsers ---
+    else if (line.startsWith("DTSTART;VALUE=DATE:")) {
+      try {
+        String dateStr = line.substring(line.indexOf(':') + 1).trim();
+        if (dateStr.length() > 8) dateStr = dateStr.substring(0, 8); // Clean extra chars
+        start = allDayFormat.parse(dateStr); 
+        log("       DTSTART (All-Day): " + start.toString());
+      } catch (java.text.ParseException pe) { 
+        log("Failed to parse all-day date: " + line);
+        start = null; 
+      }
+    }
     else if (line.startsWith("DTSTART:")) {
-      try { start = utc.parse(line.substring(8)); }
-      catch (java.text.ParseException pe) { /* ignore all-day */ }
+      try { 
+        String timeStr = line.substring(line.indexOf(':') + 1).trim();
+        start = utcFormat.parse(timeStr); 
+        log("       DTSTART (UTC): " + start.toString());
+      } catch (java.text.ParseException pe) { 
+        log("Skipping non-UTC time format: " + line);
+        start = null; 
+      }
+    }
+    
+    // --- DTEND Parsers ---
+    else if (line.startsWith("DTEND;VALUE=DATE:")) {
+      try {
+        String dateStr = line.substring(line.indexOf(':') + 1).trim();
+        if (dateStr.length() > 8) dateStr = dateStr.substring(0, 8);
+        end = allDayFormat.parse(dateStr); 
+        log("         DTEND (All-Day): " + end.toString());
+      } catch (java.text.ParseException pe) { 
+        log("Failed to parse all-day end date: " + line);
+        end = null; 
+      }
+    }
+    else if (line.startsWith("DTEND:")) {
+      try { 
+        String timeStr = line.substring(line.indexOf(':') + 1).trim();
+        end = utcFormat.parse(timeStr); 
+        log("         DTEND (UTC): " + end.toString());
+      } catch (java.text.ParseException pe) { 
+        log("Skipping non-UTC end time format: " + line);
+        end = null; 
+      }
     }
   }
   java.util.Collections.sort(out);
   return out;
 }
 
-// Write BDateSchedule children (all-day)
+// ================= Write BDateSchedule children (all-day markers) =================
+
 private int updateCalendarChildren(BComponent parentCal, java.util.List<EventInfo> events) {
   String prefix = "";
   if (getNamePrefix().getStatus().isOk()) prefix = getNamePrefix().getValue();
@@ -4794,67 +4955,103 @@ private int updateCalendarChildren(BComponent parentCal, java.util.List<EventInf
   int max = 10;
   if (getMaxEvents().getStatus().isOk()) max = (int)getMaxEvents().getValue();
 
-  // clear old children we own
-  BComponent[] kids = parentCal.getChildComponents();
-  for (BComponent k : kids) {
-    if (prefix.isEmpty() || k.getName().startsWith(prefix)) parentCal.remove(k.getName());
-  }
+  log("Preparing to add events: parsed=" + events.size() + ", max=" + max + ", prefix='" + prefix + "'");
 
+  int removed = 0;
   int added = 0;
-  java.util.Calendar cal = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC"));
 
-  for (int i=0; i<events.size() && i<max; i++) {
-    EventInfo ev = events.get(i);
-    String nm = (prefix + ev.summary).replaceAll("[^a-zA-Z0-9_]", "_");
-    if (nm.length()>60) nm = nm.substring(0,60);
-    nm = nm + "_" + (i+1);
-
-    try {
-      cal.setTime(ev.startTime);
-
-      BDateSchedule ds = new BDateSchedule();
-      ds.setYear(cal.get(java.util.Calendar.YEAR));
-      ds.setMonth(BMonth.make(cal.get(java.util.Calendar.MONTH)));
-      ds.setDay(cal.get(java.util.Calendar.DAY_OF_MONTH));
-
-      parentCal.add(nm, ds);
-      added++;
-    } catch (Exception e) {
-      log("add '" + nm + "' failed: " + e.getMessage());
+  // Lock the calendar component to prevent race-condition crashes
+  synchronized (parentCal) {
+  
+    // --- 1. Remove our prior children ---
+    BComponent[] kids = parentCal.getChildComponents(); // Get a snapshot of children
+    for (BComponent k : kids) {
+      if (prefix.isEmpty() || k.getName().startsWith(prefix)) {
+        try { 
+          parentCal.remove(k.getName()); 
+          removed++; 
+        } catch (Exception ignore) {}
+      }
     }
-  }
+    log("Removed prior children with prefix: " + removed);
+
+    // --- 2. Add new children ---
+    java.util.Calendar cal = java.util.Calendar.getInstance(); // Use JACE's local timezone
+
+    for (int i=0; i<events.size() && i<max; i++) {
+      EventInfo ev = events.get(i);
+
+      // --- Start of new/modified name logic ---
+      
+      // 1. Sanitize the summary (replace bad chars with _)
+      String cleanSummary = ev.summary.replaceAll("[^a-zA-Z0-9_]", "_");
+      
+      // 2. Collapse multiple underscores (e.g., "___") into one
+      cleanSummary = cleanSummary.replaceAll("__+", "_"); 
+      
+      // 3. Truncate the summary part to a shorter length
+      int maxSummaryLength = 30; // <-- YOU CAN CHANGE THIS VALUE
+      if (cleanSummary.length() > maxSummaryLength) {
+        cleanSummary = cleanSummary.substring(0, maxSummaryLength);
+      }
+      
+      // 4. Add the prefix (if any) and the unique index
+      String nm = prefix + cleanSummary + "_" + (i+1);
+      // --- End of new/modified name logic ---
+
+      try {
+        cal.setTime(ev.startTime); // Set calendar to the event's start time
+
+        BDateSchedule ds = new BDateSchedule();
+        ds.setYear(cal.get(java.util.Calendar.YEAR));
+        ds.setMonth(BMonth.make(cal.get(java.util.Calendar.MONTH)));   // 0..11
+        ds.setDay(cal.get(java.util.Calendar.DAY_OF_MONTH));
+
+        parentCal.add(nm, ds);
+        added++;
+      } catch (Exception e) {
+        log("add '" + nm + "' failed: " + e.getMessage());
+      }
+    }
+    log("Added new children: " + added);
+    
+  } // --- End of synchronized block ---
+
   return added;
 }
 
-// ===== eventActive (today == any BDateSchedule child?) =====
+// ================= eventActive (today matches any BDateSchedule) =================
+
 private void computeEventActiveToday() {
   BComponent cal = resolveCalendar();
   if (cal == null) return;
 
-  java.util.Calendar now = java.util.Calendar.getInstance();
+  java.util.Calendar now = java.util.Calendar.getInstance(); // Uses JACE's local timezone
   final int y = now.get(java.util.Calendar.YEAR);
   final int m = now.get(java.util.Calendar.MONTH);         // 0..11
   final int d = now.get(java.util.Calendar.DAY_OF_MONTH);  // 1..31
 
   boolean active = false;
-  for (BComponent c : cal.getChildComponents()) {
-    try {
-      if (c instanceof BDateSchedule) {
-        BDateSchedule ds = (BDateSchedule) c;
-        // getMonth() returns an int (0..11). Don't call .getOrdinal() here.
-        if (ds.getYear() == y && ds.getMonth() == m && ds.getDay() == d) {
-          active = true;
-          break;
+  // We must also lock here when reading, to be fully thread-safe
+  synchronized (cal) {
+    for (BComponent c : cal.getChildComponents()) {
+      try {
+        if (c instanceof BDateSchedule) {
+          BDateSchedule ds = (BDateSchedule) c;
+          if (ds.getYear() == y && ds.getMonth() == m && ds.getDay() == d) {
+            active = true; break;
+          }
         }
-      }
-    } catch (Exception ignore) {}
-  }
+      } catch (Exception ignore) {}
+    }
+  } // --- End of synchronized block ---
 
   try { setEventActive(new BStatusBoolean(active)); } catch (Exception ignore) {}
   if (active) try { getStatusTrace().setValue("OK: eventActive=true (today)"); } catch (Exception ignore) {}
 }
 
-// ===== Helpers =====
+// ================= Helpers =================
+
 private BComponent resolveCalendar() {
   try {
     if (getCalendarOrd().isNull()) return null;
