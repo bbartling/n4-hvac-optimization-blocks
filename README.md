@@ -4275,9 +4275,11 @@ Those match what this block uses: `HttpURLConnection`, streams, and `Calendar`.
 ---
 
 <details>
-<summary>🗓️ Hoiday Checker Nager API</summary>
+<summary>🗓️ Web Based Holiday Checker with the Nager API</summary>
 
 Fetches **public holidays** from the free Nager.Date API and auto-drives a **CalendarSchedule** so your logic can treat holidays as “unoccupied”. 
+
+* https://date.nager.at/API
 
 The Nager API program makes an HTTP GET request to the Nager web service, building a URL with the specified country code and year to retrieve a list of public holidays in the JSON format. It processes this JSON text by scanning for specific keys to extract the "date" string (e.g., "2025-12-25") and the "localName" for each holiday, storing them in a HashMap. This program also uses its calendarOrd to find the target BCalendarSchedule component, where it then adds a new BDateSchedule child for each holiday, setting the required Year, Month, and Day properties by parsing the date string.
 
