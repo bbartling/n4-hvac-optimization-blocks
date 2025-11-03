@@ -19,7 +19,7 @@ This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `Pro
 5. Paste the resulting Java code into **Workbench’s Program Editor**, make your slots for your block, and compile in the `ProgramObject` editor view.
 6. **Screenshot any compile errors** using the Windows Snipping Tool and send them back into the LLM chat for review.
 7. **Repeat as needed.**  ♻️ If the LLM starts generating bogus code (Gemini sometimes forgets that **Program Objects auto-handle imports**), just remind it that Workbench generates those automatically and to reference the `README.md` file again!
-8. **Simulate and test** ♻️ the logic thoroughly in your **desktop office type enivornment**.  When your `ProgramObject` behaves as expected, export the `.bog` file. ⚠️ **Important:** Monitor the **Application Director** in Workbench for any errors.
+8. **Simulate and test** ♻️ the logic thoroughly in your **desktop office type enivornment**.  When your `ProgramObject` behaves as expected, export the `.bog` file. ⚠️ **Important** ⚠️ Monitor the **Application Director** in Workbench for any errors.
 9. **Import the tested Wiresheet** as the .bog containing the `ProgramObject` into the **JACE** for live field deployment.
 10. Finally, **monitor JACE resources**. See the section **📊 JACE Resource Management – Best Practices** for guidance on ensuring the JACE has sufficient free heap memory and acceptable CPU usage.
 
@@ -2066,7 +2066,12 @@ public void onStop() throws Exception {
 This block implements a **self-learning Optimal Start/Stop algorithm** for zone recovery in Niagara 4.  
 It continuously tunes heating & cooling rates with an Exponential Moving Average (EMA) so the zone reaches setpoint **just-in-time**—saving energy without sacrificing comfort.
 
-* See sub directory for `pdf` of the PNNL white paper.
+The Optimal Start logic draws on the latest PNNL research for **Model 1**, which is detailed in the *Quadratic Regression Optimal Start Self-Tuning Block* section of this README. The linear model is a slightly simpler version.
+
+See the included white paper:
+
+- **Optimal Start Control for ACs and HPs (PNNL)** — `pdf/Optimal Start Control for ACs and HPs.pdf`  
+  👉 https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf
 
 <p align="center">
   <img src="snips/optimalStartSnip.png"  alt="Optimal Start Program Object" width="550">
@@ -2610,6 +2615,11 @@ Both Linear and Quadratic Regression Optimal Start Self-Tuning Block implement a
 They share the **exact same slot names and wiring**, so you can compile and drop either version into Niagara Workbench with zero rewiring.
 Under the hood, only the math model differs.
 
+This Optimal Start logic draws on the latest PNNL research for `Model 1` Quadratic Regression Optimal Start Self-Tuning Block. See the included white paper:
+
+- **Optimal Start Control for ACs and HPs (PNNL)** — `pdf/Optimal Start Control for ACs and HPs.pdf`  
+  👉 https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf
+
 ---
 
 ### 🧩 Slot & Naming Compatibility
@@ -2620,7 +2630,7 @@ The **Linear** and **Quadratic** blocks use the same I/O interface:
 | :----------------------- | :--------------- | :--------------------------------- |
 | `zoneTemp`               | `BStatusNumeric` | Current zone temperature           |
 | `targetZoneTempSetpoint` | `BStatusNumeric` | Desired occupied setpoint          |
-| `outdoorAirTemp`         | `BStatusNumeric` | Optional, used for model tuning    |
+| `outdoorAirTemp`         | `BStatusNumeric` | Optional, reference only           |   |
 | `scheduleNextValue`      | `BStatusBoolean` | Next event occupancy flag          |
 | `scheduleNextEventTime`  | `BStatusNumeric` | Timestamp of next schedule event   |
 | `maxMinutesAllowed`      | `BStatusNumeric` | Safety cap on start time           |
@@ -2638,16 +2648,15 @@ Because the slots are identical, **technicians can swap Linear ↔ Quadratic cod
 The **Linear** model assumes a direct relationship between how far the zone is from setpoint and how long recovery will take.
 
 $$
-\text{RunTime} = (A \times \text{TempDiff}) + (B \times \text{OAT}) + C
+\text{RunTime} = (A \times \text{TempDiff}^2) + (B \times \text{TempDiff}) + C
 $$
 
+where:  
+- **TempDiff** = TargetSetpoint − ZoneTemp  
+- **A** and **B** = learned coefficients for curve shape  
+- **C** = baseline offset  
 
-* **TempDiff = TargetSetpoint − ZoneTemp**
-* **A** = rate (°F per minute)
-* **B** = outdoor air effect
-* **C** = baseline offset
-
-> *See the “Linear Degree-Per-Minute” section above for full slot details and tuning behavior.*
+> Note - Outside air temperature is included but for reference only at the moment until more advanced models are attemped like PNNL Model 3 from the White Paper.
 
 * The block tracks both **heating and cooling recovery rates** over multiple days (N-day rolling history).
 * Each recovery event records how quickly the zone temperature changes (°F per minute).
@@ -2663,14 +2672,14 @@ In short: *it’s always learning, but it trusts recent days the most.*
 The **Quadratic** version is a smarter, drop-in upgrade that adds curvature for more realistic recovery behavior.
 
 $$
-\text{RunTime} = (A \times \text{TempDiff}^2) + (B \times \text{TempDiff}) + (C \times \text{OAT}) + D
+\text{RunTime} = (A \times \text{TempDiff}^2) + (B \times \text{TempDiff}) + C
 $$
 
+This captures how systems heat or cool quickly at first but slow down as they approach setpoint (diminishing returns).
 
-This captures the fact that systems heat or cool quickly at first but slow down as they approach setpoint (diminishing returns).
-
-* **A** adds the curve — recovery slows as setpoint nears.
-* **B**, **C**, and **D** mirror the same roles as the Linear version.
+* **A** adds the curve — recovery slows as setpoint nears.  
+* **B** adjusts the slope — the overall rate per degree of difference.  
+* **C** is the baseline offset.  
 * The **Quadratic block also maintains a similar N-day history** and uses those same stored records for self-tuning, just with a more complex regression model behind the scenes.
 
 ---
