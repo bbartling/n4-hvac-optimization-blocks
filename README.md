@@ -15,13 +15,13 @@ This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `Pro
 
    > Example in LLM Chat: “See this README — I want a ProgramObject that automates my chiller plant with rocket science. 🚀🤭”
 
-4. Once the LLM confirms it understands the README, have it **generate or edit your Niagara 4 Program Object code.**
-5. Paste the resulting Java code into **Workbench’s Program Editor**, make your slots for your block, and compile in the `ProgramObject` editor view.
+4. Once the LLM confirms it understands the README, have it generate or edit your Niagara 4 `ProgramObject` code.
+5. Paste the resulting Java code into Workbench’s Program Editor, make your slots for your block, and compile in the `ProgramObject` editor view.
 6. **Screenshot any compile errors** using the Windows Snipping Tool and send them back into the LLM chat for review.
-7. **Repeat as needed.**  ♻️ If the LLM starts generating bogus code (Gemini sometimes forgets that **Program Objects auto-handle imports**), just remind it that Workbench generates those automatically and to reference the `README.md` file again!
-8. **Simulate and test** ♻️ the logic thoroughly in your **desktop office type enivornment**.  When your `ProgramObject` behaves as expected, export the `.bog` file. ⚠️ **Important** ⚠️ Monitor the **Application Director** in Workbench for any errors.
-9. **Import the tested Wiresheet** as the .bog containing the `ProgramObject` into the **JACE** for live field deployment.
-10. Finally, **monitor JACE resources**. See the section **📊 JACE Resource Management – Best Practices** for guidance on ensuring the JACE has sufficient free heap memory and acceptable CPU usage.
+7. **Repeat as needed.**  ♻️ If the LLM starts generating bogus code (Gemini sometimes forgets that `ProgramObject` auto-handle imports), just remind it that Workbench generates those automatically and to reference the `README.md` file again!
+8. **Simulate and test** ♻️ the logic thoroughly in your desktop office type enivornment.  When your `ProgramObject` behaves as expected, export the `.bog` file. ⚠️ **Important** ⚠️ Monitor the Application Director in Workbench for any errors.
+9. **Import the tested Wiresheet** as the .bog containing the `ProgramObject` into the JACE for live field deployment.
+10. Finally, **monitor JACE resources** ⚠️ **Important** ⚠️ See the section below JACE Resource Management – Best Practices for guidance on ensuring the JACE has sufficient free heap memory and acceptable CPU usage.
 
 ---
 
