@@ -28,18 +28,6 @@ This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `Pro
 
 ---
 
-#### 🧩 Optional: Prebuilt Wiresheets
-
-👉 [**Prebuilt Wiresheet Examples (bog_files)**](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files)
-
-
-#### 🎥 Demo & Walkthroughs Videos
-
-🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
-
-
----
-
 
 <details>
 <summary>🧠 LLM Model Context Full</summary>
@@ -5237,6 +5225,13 @@ To avoid Niagara runtime issues, monitor JACE system health:
 | `resources.category.program` | Avoid frequent `Clock.schedule()` or unbounded loops. |
 
 </details>
+
+---
+
+### Also See
+
+👉 [**Prebuilt Wiresheet Examples (bog_files)**](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files)
+🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
 
 ---
 
