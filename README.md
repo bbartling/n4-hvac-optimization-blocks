@@ -3,13 +3,7 @@
 ![Leave Temp Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/vibecoder.png)
 
 
-This repository provides ready-to-use **Java algorithm blocks for Niagara 4** (as `.bog` files) and this **README** itself, which serves as a *model context file* for Large Language Models (LLMs) such as ChatGPT or Gemini.
-
-This README is meant to be **uploaded directly into your LLM chat** when you want help creating or modifying a Niagara 4 Program Object.
-
-It gives the model all the Niagara-specific context it needs — including how slot getters/setters work, what imports are auto-generated, and how to structure logic inside the `onStart`, `onExecute`, and `onStop` methods.
-
-Think of it as *the instruction manual the LLM reads before it writes code for you.*
+This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `ProgramObjects`** (as `.bog` files) and this **README** itself, which serves as a *model context file* for Large Language Models (LLMs) such as ChatGPT or Gemini. Think of it as *the instruction manual the LLM reads before it writes code for you.*
 
 ---
 
@@ -34,14 +28,15 @@ Think of it as *the instruction manual the LLM reads before it writes code for y
 
 ---
 
-### 🧩 Optional: Prebuilt Wiresheets
+#### 🧩 Optional: Prebuilt Wiresheets
 
-If you just want to test or explore a working example right away, you can also **download prebuilt `.bog` Wiresheets**.  
-Each example already includes a Program Object ready to drag into a running station.
-👉 [Prebuilt Wiresheet Examples (bog_files)](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files)
+👉 [**Prebuilt Wiresheet Examples (bog_files)**](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files)
 
-Some demos have been made here as well on guiding the LLM to make ProgramObjects:
-🎥 [Talk Shop With Ben on YouTube](https://www.youtube.com/@TalkShopWithBen)
+
+#### 🎥 Demo & Walkthroughs Videos
+
+🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
+
 
 ---
 
@@ -5247,16 +5242,11 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 ## 🔄 Future Plans
 
-Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36** and **Optimal Start** — taking everything learned from these example Program Objects and wrapping it into a professional, drop-in module.
+Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36** and **Optimal Start** — taking everything learned from these example Program Objects and wrapping it into a professional, drop-in free Niagara module.
 
-I’m always open to collaboration and new ideas:
-- 💬 **Got a concept or algorithm you want to try?**  
-  DM me on LinkedIn — we can build it together and share it back with the community.
-- 🧠 **Created something cool using this README as model context?**  
-  Send me your finished **Program Object (.bog)**, and I’ll add it to the project repo so everyone can benefit — **free and open for the BAS community**.
+I’m always open to collaboration and new ideas, DM me on LinkedIn — we can build it together and share it back with the community. 
 
-Let’s make Niagara programming more open, fun, free, and creative — one block at a time. 🚀
-
+Built something cool from this project? Send it over! I’ll add it to the repo so others can benefit — and give you a shout-out in a blog post. 🙌
 
 ---
 
