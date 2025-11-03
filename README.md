@@ -26,15 +26,22 @@ Think of it as *the instruction manual the LLM reads before it writes code for y
 
 ### ⚙️ How to Use
 
-1. **Download this README file** directly from GitHub — no Git commands needed.  
-   *(Click the “Raw” button, then save the file as `README.md`.)*
+1. **Download this `README.md` file** directly from GitHub.  
+   *(Click “Raw,” then save it to your computer — no Git required.)*
 2. **Open your LLM chat** (e.g., ChatGPT, Gemini, etc.).
 3. **Upload this README** along with your idea prompt.  
-   Example: “I want a Program Object that resets duct static pressure based on VFD speed.”
-4. Ask the LLM if it *understands this guide first*.  
-   This ensures it follows **Niagara-specific programming rules**.
-5. Once confirmed, have it generate or edit your **Niagara 4 Program Object code**.
-6. Paste the resulting Java code into **Workbench’s Program Editor** and compile.
+
+   > Example: “See this README — I want a Program Object that automates my chiller plant with rocket science. 🚀🤭”
+
+4. Once the LLM confirms it understands the README, have it **generate or edit your Niagara 4 Program Object code.**
+5. Paste the resulting Java code into **Workbench’s Program Editor** and compile.
+6. **Screenshot any compile errors** using the Windows Snipping Tool and send them back into the LLM chat for review.
+7. **Repeat as needed.**  
+   If the LLM starts generating bogus code (Gemini sometimes forgets that **Program Objects auto-handle imports**), just remind it that Workbench generates those automatically.
+8. **Simulate and test** the logic thoroughly in your **desktop environment**.  
+   When it behaves as expected, export the `.bog` file.
+9. **Import the tested Wiresheet** containing the Program Object into the **JACE** for live field deployment.
+
 
 ---
 
@@ -47,29 +54,6 @@ Each example already includes a Program Object ready to drag into a running stat
 
 ---
 
-### 🧰 Technician Notes
-
-- **No Git required.** Just download the README or `.bog` files directly from GitHub.  
-- **All blocks are drop-in ready.** Copy from `.bog` into your running station’s wiresheet.  
-- **Same slot names** between Linear, Quadratic, and other variants — you can swap algorithms without rewiring.  
-- **Best workflow:**  
-  - Upload this README + your idea → have LLM draft the logic.  
-  - Paste into Workbench → compile → review → repeat.
-
----
-
-💡 *Tip:* If your compile fails, just screenshot the error and feed it back to the LLM — it will usually pinpoint the missing slot, import, or variable within seconds.
-
----
-
-**Why this works well:**
-
-* Keeps your original steps intact.
-* Adds consistent heading hierarchy and emoji icons (matching your project style).
-* Uses `👉` for the link (draws visual attention).
-* Clarifies optional steps and emphasizes “Niagara-specific programming rules.”
-
----
 
 <details>
 <summary>🧠 LLM Model Context Full</summary>
@@ -686,8 +670,6 @@ void updateTimer() {
 * Buffers are pruned to protect memory footprint.
 
 </details>
-
----
 
 ---
 
@@ -2684,9 +2666,10 @@ Because the slots are identical, **technicians can swap Linear ↔ Quadratic cod
 
 The **Linear** model assumes a direct relationship between how far the zone is from setpoint and how long recovery will take.
 
-[
+$$
 \text{RunTime} = (A \times \text{TempDiff}) + (B \times \text{OAT}) + C
-]
+$$
+
 
 * **TempDiff = TargetSetpoint − ZoneTemp**
 * **A** = rate (°F per minute)
@@ -2708,9 +2691,10 @@ In short: *it’s always learning, but it trusts recent days the most.*
 
 The **Quadratic** version is a smarter, drop-in upgrade that adds curvature for more realistic recovery behavior.
 
-[
+$$
 \text{RunTime} = (A \times \text{TempDiff}^2) + (B \times \text{TempDiff}) + (C \times \text{OAT}) + D
-]
+$$
+
 
 This captures the fact that systems heat or cool quickly at first but slow down as they approach setpoint (diminishing returns).
 
@@ -5272,14 +5256,24 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 ## 🔄 Future Plans
 
-* Future plans include creating tutorials on AI-driven 'Vibe Coding' best practices. These YouTube videos will cover building chiller plant management logic from scratch and converting it to other codebases like Python, or JavaScript for Node-RED and other frameworks like the Normal Framework. If you have an idea, please create a GitHub Issue or start a Discussion, and I'll consider making it into a YouTube video! Feel free to DM me on linkedin as well!
+Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36** and **Optimal Start** — taking everything learned from these example Program Objects and wrapping it into a professional, drop-in module.
+
+I’m always open to collaboration and new ideas:
+- 💬 **Got a concept or algorithm you want to try?**  
+  DM me on LinkedIn — we can build it together and share it back with the community.
+- 🧠 **Created something cool using this README as model context?**  
+  Send me your finished **Program Object (.bog)**, and I’ll add it to the project repo so everyone can benefit — **free and open for the BAS community**.
+
+Let’s make Niagara programming more open, fun, free, and creative — one block at a time. 🚀
 
 
 ---
 
-
 ## 📜 License
-This repo is released under the **MIT License**, ensuring it remains free and accessible for all.
+
+Everything here is **MIT Licensed** — free, open source, and made for the BAS community.  
+Use it, remix it, or improve it — just share it forward so others can benefit too. 🥰🌍
+
 ---
 
 【MIT License】
