@@ -2,19 +2,8 @@
 
 ![Leave Temp Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/vibecoder.png)
 
-This repo delivers the latest and greatest for those addicted to vibe coding — specifically in Java-based optimization logic for Niagara 4 (N4) control systems. Think of it as a vibe-driven tutorial lab, crafted and tested by Ben. Many of the optimization strategies here take inspiration from ASHRAE Guideline 36, but with practical enhancements to make them deployment-ready for real-world HVAC systems.
-
-[🎥 Talk Shop With Ben on YouTube](https://www.youtube.com/@TalkShopWithBen)
-
----
-
-## Available Optimization Blocks
 
 This repository provides ready-to-use **Java algorithm blocks for Niagara 4** (as `.bog` files) and this **README** itself, which serves as a *model context file* for Large Language Models (LLMs) such as ChatGPT or Gemini.
-
----
-
-### 🧠 Purpose of This README
 
 This README is meant to be **uploaded directly into your LLM chat** when you want help creating or modifying a Niagara 4 Program Object.
 
@@ -49,8 +38,10 @@ Think of it as *the instruction manual the LLM reads before it writes code for y
 
 If you just want to test or explore a working example right away, you can also **download prebuilt `.bog` Wiresheets**.  
 Each example already includes a Program Object ready to drag into a running station.
-
 👉 [Prebuilt Wiresheet Examples (bog_files)](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files)
+
+Some demos have been made here as well on guiding the LLM to make ProgramObjects:
+🎥 [Talk Shop With Ben on YouTube](https://www.youtube.com/@TalkShopWithBen)
 
 ---
 
