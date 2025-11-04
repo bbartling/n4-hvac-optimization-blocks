@@ -5,6 +5,8 @@
 
 This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `ProgramObjects`** (as `.bog` files) and this **README** itself, which serves as a *model context file* for Large Language Models (LLMs) such as ChatGPT or Gemini. Think of it as *the instruction manual the LLM reads before it writes code for you.*
 
+> Ben is actively deploying Guideline 36 algorithms, chiller demand-based start, and Optimal Start blocks built on PNNL’s latest research.
+
 ---
 
 ### ⚙️ How to Use
@@ -5281,7 +5283,7 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 ## 🔄 Future Plans
 
-Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36** and **Optimal Start** — Stay Tuned! 🙌
+Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36 AHU Trim Respond**, **GL36 AHU Fault Detection**, and **Optimal Start** based off of lessons learned from implementation of these `ProgramObejcts` in the field — Stay Tuned! 🙌
 
 
 ## 💛 Support Open-Source BAS Development
