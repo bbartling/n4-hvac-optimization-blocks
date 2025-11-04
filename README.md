@@ -7,6 +7,10 @@ This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `Pro
 
 > Ben is actively deploying and testing these `ProgramObjects` in the field, most notably the Guideline 36 algorithms, chiller demand-based start, and Optimal Start blocks built on PNNL’s latest research for energy-efficiency projects.
 
+
+Also, feel free to skip the tutorials entirely and jump right into the [**Prebuilt Wiresheet Examples (.bog file format)**](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files) for everything shown below.
+
+
 ---
 
 <details>
@@ -5277,24 +5281,16 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 ---
 
-<details>
-<summary>🔄 Future Plans</summary>
+
+## 🔄 Future Plans
 
 Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36 AHU Trim Respond**, **GL36 AHU Fault Detection**, and **Optimal Start** based off of lessons learned from implementation of these `ProgramObejcts` in the field — Stay Tuned! 🙌
 
-</details>
- 
-
-<details>
-<summary>See Also 👀 </summary>
-
-👉 [**Prebuilt Wiresheet Examples (bog_files)**](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files)  
+Stay tuned! 📺
 🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
 
-</details>
 
-
-## 💛 Support Open-Source BAS Development
+## 💛 Support This Work
 
 I’ve personally never donated to open-source software before — but hey, what the heck! If it helped you build something neat, your support would be greatly appreciated (and might even fuel Ben’s Starbucks habit ☕).
 
