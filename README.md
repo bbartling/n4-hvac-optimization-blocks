@@ -9,7 +9,8 @@ This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `Pro
 
 ---
 
-### ⚙️ How to Use
+<details>
+<summary>⚙️ How to Use with AI</summary>
 
 1. **Download this `README.md` file** directly from GitHub.  
 2. **Open your LLM chat** (e.g., ChatGPT, Gemini, etc.).
@@ -25,8 +26,9 @@ This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `Pro
 9. **Import the tested Wiresheet** as the .bog containing the `ProgramObject` into the JACE for live field deployment.
 10. Finally, **monitor JACE resources** ⚠️ **Important** ⚠️ See the section below JACE Resource Management – Best Practices for guidance on ensuring the JACE has sufficient free heap memory and acceptable CPU usage.
 
----
+</details>
 
+---
 
 <details>
 <summary>🧠 LLM Model Context Full</summary>
@@ -5275,15 +5277,21 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 ---
 
-### See Also 👀 
+<details>
+<summary>🔄 Future Plans</summary>
+
+Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36 AHU Trim Respond**, **GL36 AHU Fault Detection**, and **Optimal Start** based off of lessons learned from implementation of these `ProgramObejcts` in the field — Stay Tuned! 🙌
+
+</details>
+ 
+
+<details>
+<summary>See Also 👀 </summary>
 
 👉 [**Prebuilt Wiresheet Examples (bog_files)**](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files)  
 🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
 
-
-## 🔄 Future Plans
-
-Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36 AHU Trim Respond**, **GL36 AHU Fault Detection**, and **Optimal Start** based off of lessons learned from implementation of these `ProgramObejcts` in the field — Stay Tuned! 🙌
+</details>
 
 
 ## 💛 Support Open-Source BAS Development
