@@ -5,7 +5,7 @@
 
 This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `ProgramObjects`** (as `.bog` files) and this **README** itself, which serves as a *model context file* for Large Language Models (LLMs) such as ChatGPT or Gemini. Think of it as *the instruction manual the LLM reads before it writes code for you.*
 
-> Ben is actively deploying Guideline 36 algorithms, chiller demand-based start, and Optimal Start blocks built on PNNL’s latest research.
+> Ben is actively deploying and testing these `ProgramObjects` in the field, most notably the Guideline 36 algorithms, chiller demand-based start, and Optimal Start blocks built on PNNL’s latest research for energy-efficiency projects.
 
 ---
 
