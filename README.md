@@ -889,8 +889,23 @@ void updateTimer() {
 
 
 
----
+--- 
 
+
+
+<details>
+<summary>🔥 kitControl's Tstat but with a True deadband</summary>
+
+* TODO
+
+```java
+```
+
+</details>
+
+
+
+--- 
 <details>
 <summary>⏳ Custom Off Delay Block with Countdown (Trigger-Based Logic)</summary>
 
@@ -1266,6 +1281,15 @@ void updateTimer() {
 ---
 
 <details>
+<summary>🌬️ GL36 VAV Box Zone Level Request Setter (Trim & Respond)</summary>
+
+* TODO
+
+**Purpose:** Required for AHU level algorithm. Each VAV box in the AHU ducting system needs to set requests required for cooling and pressure based on zone demand. AHU level algorithm then totalizes requests from each VAV zone and performs T&R.
+
+</details>
+
+
 <summary>🌀 GL36 AHU Duct Static Pressure Reset (Trim & Respond)</summary>
 
 **Purpose:** Save supply fan energy by resetting duct static pressure based on VAV damper positions.
@@ -5213,6 +5237,17 @@ private void log(String s) {
 ---
 
 <details>
+<summary>🧠 Intelligent Load Shedder</summary>
+
+
+* TODO Inspired from VOLTTRONs ILC Agent made by PNNL to shed loads inside buildings for demand side power management strategies.
+
+
+</details>
+
+---
+
+<details>
 <summary>📊 JACE Resource Management – Best Practices</summary>
 
 To avoid Niagara runtime issues, monitor JACE system health:
@@ -5236,12 +5271,11 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 ---
 
-### 👀 See Also
+### See Also 👀 
 
 👉 [**Prebuilt Wiresheet Examples (bog_files)**](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files)  
 🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
 
----
 
 ## 🔄 Future Plans
 
@@ -5251,14 +5285,25 @@ I’m always open to collaboration and new ideas, DM me on LinkedIn — we can b
 
 Built something cool from this project? Send it over! I’ll add it to the repo so others can benefit — and give you a shout-out in a blog post. 🙌
 
----
 
 ## 📜 License
 
 Everything here is **MIT Licensed** — free, open source, and made for the BAS community.  
 Use it, remix it, or improve it — just share it forward so others can benefit too. 🥰🌍
 
----
+## 💛 Support Open-Source BAS Development
+
+I’ve personally never donated to open-source software before — but hey, what the heck! If it helped you build something neat, your support would be greatly appreciated (and might even fuel Ben’s Starbucks habit ☕).
+
+| 💵 Option           | Link                                                                                                                                                                                                                                              |
+| :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 💖 **$20 fixed**    | [Donate $20](https://www.paypal.com/donate/?business=VBRBPMBZ6ZKM8&amount=20&no_recurring=0&item_name=Thank+you+for+contributing+to+help+fund+open+source+building+automation+system+%28BAS%29+software+development+donation.+&currency_code=USD) |
+| ✨ **Custom amount** | [Choose any amount](https://www.paypal.com/donate/?business=VBRBPMBZ6ZKM8&no_recurring=0&item_name=Thank+you+for+contributing+to+help+fund+open+source+building+automation+system+%28BAS%29+software+development+donation.+&currency_code=USD)    |
+
+
+[![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/donate/?business=VBRBPMBZ6ZKM8&no_recurring=0&item_name=Thank+you+for+contributing+to+help+fund+open+source+building+automation+system+%28BAS%29+software+development+donation.+&currency_code=USD)
+
+
 
 【MIT License】
 
