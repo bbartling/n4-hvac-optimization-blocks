@@ -1289,7 +1289,7 @@ void updateTimer() {
 
 </details>
 
-
+<details>
 <summary>🌀 GL36 AHU Duct Static Pressure Reset (Trim & Respond)</summary>
 
 **Purpose:** Save supply fan energy by resetting duct static pressure based on VAV damper positions.
@@ -4770,6 +4770,8 @@ Use this block to **subscribe** to an online iCalendar (`.ics`) feed (e.g., shar
 
 The iCal program makes an HTTP GET request to a URL specified in its icsUrl slot, fetching a raw text file in the iCalendar (.ics) format. It then processes this text by looping through each VEVENT block, parsing the SUMMARY, LOCATION, DESCRIPTION, and DTSTART tags to create a list of EventInfo Java objects. Finally, it accesses the target BCalendarSchedule component via its calendarOrd slot, locks it, and dynamically adds new BDateSchedule children, each populated with the specific Year, Month, and Day derived from the event's start time.
 
+> Note this is a concept idea that only works with CalenderSchedules. Future TODO will be to overhaul with generic weekly schedules.
+
 ---
 
 <p align="center">
@@ -5241,7 +5243,7 @@ private void log(String s) {
 
 
 * TODO Inspired from VOLTTRONs ILC Agent made by PNNL to shed loads inside buildings for demand side power management strategies.
-
+* https://www.pnnl.gov/intelligent-load-control
 
 </details>
 
@@ -5279,17 +5281,8 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 ## 🔄 Future Plans
 
-Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36** and **Optimal Start** — taking everything learned from these example Program Objects and wrapping it into a professional, drop-in free Niagara module.
+Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36** and **Optimal Start** — Stay Tuned! 🙌
 
-I’m always open to collaboration and new ideas, DM me on LinkedIn — we can build it together and share it back with the community. 
-
-Built something cool from this project? Send it over! I’ll add it to the repo so others can benefit — and give you a shout-out in a blog post. 🙌
-
-
-## 📜 License
-
-Everything here is **MIT Licensed** — free, open source, and made for the BAS community.  
-Use it, remix it, or improve it — just share it forward so others can benefit too. 🥰🌍
 
 ## 💛 Support Open-Source BAS Development
 
@@ -5303,6 +5296,11 @@ I’ve personally never donated to open-source software before — but hey, what
 
 [![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/donate/?business=VBRBPMBZ6ZKM8&no_recurring=0&item_name=Thank+you+for+contributing+to+help+fund+open+source+building+automation+system+%28BAS%29+software+development+donation.+&currency_code=USD)
 
+
+## 📜 License
+
+Everything here is **MIT Licensed** — free, open source, and made for the BAS community.  
+Use it, remix it, or improve it — just share it forward so others can benefit too. 🥰🌍
 
 
 【MIT License】
