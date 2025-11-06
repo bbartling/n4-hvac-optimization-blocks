@@ -1289,7 +1289,7 @@ void updateTimer() {
 ---
 
 <details>
-<summary>🌬️ GL36 VAV Box Zone Level Request Setter (Trim & Respond)</summary>
+<summary>🌬️ GL36 VAV Box Zone Request Generator</summary>
 
 * TODO
 
@@ -5286,7 +5286,7 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36 AHU Trim Respond**, **GL36 AHU Fault Detection**, and **Optimal Start** based off of lessons learned from implementation of these `ProgramObejcts` in the field — Stay Tuned! 🙌
 
-Stay tuned! 📺
+Check for demonstrations on Vibe Coding on 📺
 🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
 
 
