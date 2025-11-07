@@ -918,6 +918,12 @@ This ensures the block continuously adapts to real-time input changes, self-heal
 </p>
 
 
+---
+
+### 💻 Java Code
+
+> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
+
 ```java
 /* ===== Simple Top-N with dynamic dropCount and wire-checking ===== */
 Clock.Ticket ticket;
@@ -1065,11 +1071,229 @@ public void onStop() throws Exception {
 --- 
 
 <details>
-<summary>Ping Pong Algorithm</summary>
+<summary>🏓 Ping-Pong Algorithm</summary>
 
-* TODO
+This block generates a **continuous oscillation** between a defined **lower** and **upper limit**, stepping at each update interval.  
+
+Every cycle (executed automatically **once per second**) performs:
+- A boundary check to ensure values never exceed the defined limits.  
+- A direction reversal (“ping-pong”) once the limit is reached.  
+- A delayed start using `StartupDelaySeconds` before normal operation.  
+- Smooth ramping defined by the adjustable `Step` size and `UpdateIntervalSeconds`.  
+- Continuous enable control — when disabled, the value holds steady.  
+
+This simple, robust pattern is perfect for **testing analog control loops**, **simulated demand profiles**, or **exercise routines** in a BAS environment.
+
+<p align="center">
+  <img src="snips/pingPongAlgorithmSnip.png" width="700">
+</p>
+
+---
+
+### 💻 Java Code
+
+> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
 ```java
+/*
+ * ================================================================
+ * Ping Pong Algorithm for Niagara 4 ProgramObject
+ *
+ * This algorithm generates a "ping pong" (triangle wave) signal.
+ * When Enabled, it waits for a startup delay, then counts from
+ * InitialValue up to UpperLimit, then down to LowerLimit,
+ * and repeats.
+ * ================================================================
+ */
+
+// ========= Class-level state variables =========
+
+// Manages the internal timer
+Clock.Ticket ticket;
+
+// Tracks the current counting direction
+// true = counting up, false = counting down
+boolean isIncreasing = true;
+
+// Stores the end time for the startup delay
+long startupDelayEndTime = 0;
+
+// Flag to track if the startup delay has completed
+boolean isDelayOver = false;
+
+// ========= Lifecycle Methods (onStart, onExecute, onStop) =========
+
+public void onStart() throws Exception
+{
+  // When the program starts, reset to the initial state
+  resetToInitial();
+  
+  // Start the timer
+  updateTimer();
+}
+
+public void onExecute() throws Exception
+{
+  // Always reschedule the timer for the next execution
+  updateTimer();
+
+  // --- 1. Check if Enabled ---
+  // If the 'Enable' slot is not OK or is false,
+  // reset to the initial value and stop further execution.
+  if (!getEnable().getStatus().isOk() || !getEnable().getValue())
+  {
+    resetToInitial();
+    return;
+  }
+
+  // --- 2. Handle Startup Delay ---
+  // This logic only runs if the block is Enabled.
+  if (!isDelayOver)
+  {
+    // If this is the first time running since being enabled,
+    // calculate the end time for the delay.
+    if (startupDelayEndTime == 0)
+    {
+      double delaySec = 1.0; // Default 1 second
+      if (getStartupDelaySeconds().getStatus().isOk())
+      {
+        delaySec = getStartupDelaySeconds().getValue();
+      }
+      startupDelayEndTime = System.currentTimeMillis() + (long)(delaySec * 1000);
+    }
+
+    // If we are still within the delay period, do nothing.
+    // Just hold the initial value and wait.
+    if (System.currentTimeMillis() < startupDelayEndTime)
+    {
+      return;
+    }
+    
+    // The delay period is over.
+    isDelayOver = true;
+  }
+
+  // --- 3. Get Parameters with Safe Defaults ---
+  // Read the current value from our output slot
+  double currentValue = getOutputValue().getValue();
+  
+  // Read parameters, providing defaults if slots are unwired
+  double step = 1.0;
+  if (getStep().getStatus().isOk())
+  {
+    step = getStep().getValue();
+  }
+
+  double lower = 0.0;
+  if (getLowerLimit().getStatus().isOk())
+  {
+    lower = getLowerLimit().getValue();
+  }
+
+  double upper = 100.0;
+  if (getUpperLimit().getStatus().isOk())
+  {
+    upper = getUpperLimit().getValue();
+  }
+  
+  // Ensure upper is always greater than lower
+  if (upper < lower)
+  {
+      double temp = upper;
+      upper = lower;
+      lower = temp;
+  }
+
+
+  // --- 4. Core Ping Pong Logic ---
+  if (isIncreasing)
+  {
+    // We are counting up
+    currentValue += step;
+    
+    // Check if we've hit or passed the upper limit
+    if (currentValue >= upper)
+    {
+      currentValue = upper; // Clamp to the limit
+      isIncreasing = false; // Change direction
+    }
+  }
+  else
+  {
+    // We are counting down
+    currentValue -= step;
+    
+    // Check if we've hit or passed the lower limit
+    if (currentValue <= lower)
+    {
+      currentValue = lower; // Clamp to the limit
+      isIncreasing = true; // Change direction
+    }
+  }
+
+  // --- 5. Set the Output ---
+  getOutputValue().setValue(currentValue);
+}
+
+public void onStop() throws Exception
+{
+  // When the program stops, cancel the timer
+  if (ticket != null)
+  {
+    ticket.cancel();
+  }
+}
+
+// ========= Helper Methods =========
+
+/**
+ * Resets the algorithm to its initial state.
+ * Sets the output to the InitialValue and resets state flags.
+ */
+void resetToInitial()
+{
+  double initialVal = 0.0;
+  if (getInitialValue().getStatus().isOk())
+  {
+    initialVal = getInitialValue().getValue();
+  }
+
+  // Set the output and internal value
+  getOutputValue().setValue(initialVal);
+  
+  // Reset state flags
+  isIncreasing = true;
+  isDelayOver = false;
+  startupDelayEndTime = 0;
+}
+
+/**
+ * Cancels any existing timer and schedules the next execution
+ * based on the 'UpdateIntervalSeconds' slot.
+ */
+void updateTimer()
+{
+  if (ticket != null)
+  {
+    ticket.cancel();
+  }
+
+  double intervalSec = 1.0; // Default 1 second
+  if (getUpdateIntervalSeconds().getStatus().isOk())
+  {
+    intervalSec = getUpdateIntervalSeconds().getValue();
+  }
+
+  // Safety clamp to prevent program from running too fast
+  intervalSec = Math.max(0.2, intervalSec); 
+  
+  // --- THE FIX ---
+  // We must convert the 'intervalSec' double to milliseconds (long)
+  // for the Clock.schedule() method.
+  long intervalMillis = (long)(intervalSec * 1000);
+  
+  ticket = Clock.schedule(getComponent(), BRelTime.make(intervalMillis), BProgram.execute, null);
+}
 ```
 
 </details>
