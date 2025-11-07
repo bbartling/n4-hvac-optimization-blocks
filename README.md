@@ -917,6 +917,29 @@ This ensures the block continuously adapts to real-time input changes, self-heal
   <img src="snips/top5Of15Snip.png" width="700">
 </p>
 
+---
+
+### Top 5 of 15 (Filtered Max)
+**Inputs & Parameters**
+
+| Slot Name | Description                         | Type           | Writable |
+|-----------|-------------------------------------|----------------|----------|
+| in1..in15 | Up to 15 numeric sources to rank    | BStatusNumeric | Yes      |
+| dropCount | Number of top values to ignore (N)  | BStatusNumeric | Yes      |
+
+**Outputs**
+
+| Slot Name    | Description                                                             | Type           |
+|--------------|-------------------------------------------------------------------------|----------------|
+| filteredMax  | Highest value **after** dropping the top `dropCount` items              | BStatusNumeric |
+| rank1        | 1st highest from the filtered list                                      | BStatusNumeric |
+| rank2        | 2nd highest from the filtered list                                      | BStatusNumeric |
+| rank3        | 3rd highest from the filtered list                                      | BStatusNumeric |
+| rank4        | 4th highest from the filtered list                                      | BStatusNumeric |
+| rank5        | 5th highest from the filtered list                                      | BStatusNumeric |
+| usedCount    | Count of inputs used after dropping (and after ignoring any NULL/unwired) | BStatusNumeric |
+| statusTrace  | Debug string with inputs, dropCount, used, filteredMax, and ranks       | BStatusString  |
+
 
 ---
 
@@ -1087,6 +1110,28 @@ This simple, robust pattern is perfect for **testing analog control loops**, **s
 <p align="center">
   <img src="snips/pingPongAlgorithmSnip.png" width="700">
 </p>
+
+---
+
+### Ping-Pong Algorithm
+**Inputs & Parameters**
+
+| Slot Name             | Description                                        | Type             | Writable |
+|-----------------------|----------------------------------------------------|------------------|----------|
+| Enable                | Enable/disable oscillation                         | BStatusBoolean   | Yes      |
+| InitialValue          | Starting value before ramping                      | BStatusNumeric   | Yes      |
+| LowerLimit            | Minimum bound of the oscillation                   | BStatusNumeric   | Yes      |
+| UpperLimit            | Maximum bound of the oscillation                   | BStatusNumeric   | Yes      |
+| StartupDelaySeconds   | Delay before the first update                      | BStatusNumeric   | Yes      |
+| Step                  | Increment/decrement applied each update            | BStatusNumeric   | Yes      |
+| UpdateIntervalSeconds | Update period (s); internal timer uses this value  | BStatusNumeric   | Yes      |
+
+**Outputs**
+
+| Slot Name    | Description                                  | Type           |
+|--------------|----------------------------------------------|----------------|
+| OutputValue  | Current value after ping-pong update          | BStatusNumeric |
+
 
 ---
 
