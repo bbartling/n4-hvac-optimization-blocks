@@ -899,7 +899,182 @@ void updateTimer() {
 
 --- 
 
+<details>
+<summary>🏗️ Top 5 of 15 Algorithm</summary>
 
+This logic block continuously ranks up to **15 numeric inputs**, filters out any **`NULL` or unwired sources**, and publishes the **top 5 highest values** after an optional drop count (e.g., ignore the top N).  
+
+Every execution cycle (running automatically **once per second**) performs the following:
+- Checks each input wire for a valid `OK` status — if a point is `NULL` or not linked, it’s safely ignored.  
+- Sorts all valid inputs in descending order.  
+- Drops the specified number of top values (`dropCount`) and reports the **next highest as `filteredMax`**.  
+- Updates `rank1 → rank5` and `usedCount` for downstream logic.  
+- Clears any outputs when all inputs are `NULL` or invalid.  
+
+This ensures the block continuously adapts to real-time input changes, self-heals when points drop offline, and never outputs stale or invalid data.
+
+<p align="center">
+  <img src="snips/top5Of15Snip.png" width="700">
+</p>
+
+
+```java
+/* ===== Simple Top-N with dynamic dropCount and wire-checking ===== */
+Clock.Ticket ticket;
+
+void scheduleNext() {
+  if (ticket != null) ticket.cancel();
+  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(2), BProgram.execute, null);
+}
+
+void setNull(BStatusNumeric n){ if (n != null) n.setStatus(BStatus.NULL); }
+
+void setOk(BStatusNumeric n, double v){
+  if (n == null) return;
+  n.setValue(v);
+  n.setStatus(BStatus.ok); // Corrected
+}
+
+/**
+ * NEW HELPER: Checks if a slot has an incoming link. If not, sets it to NULL.
+ * This pattern is based on the README.md examples.
+ */
+void checkWireStatus(String slotName, BStatusNumeric point) {
+    try {
+        if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
+            point.setValue(0);
+            point.setStatus(BStatus.NULL);
+        }
+    } catch (Exception e) { /* ignore error if slot not found */ }
+}
+
+/* convenience getters (existing slots) */
+BStatusNumeric in(int i){ return (BStatusNumeric)get("in"+i); }
+BStatusNumeric rank(int i){ return (BStatusNumeric)get("rank"+i); }
+BStatusNumeric filtered(){ return (BStatusNumeric)get("filteredMax"); }
+BStatusNumeric used(){ return (BStatusNumeric)get("usedCount"); }
+BStatusNumeric drop(){ return (BStatusNumeric)get("dropCount"); } 
+BStatusString trace(){
+  try { return (BStatusString)get("statusTrace"); } catch (Exception e){ return null; }
+}
+
+/* ===== Lifecycle ===== */
+public void onStart() throws Exception {
+  // clear outputs on boot
+  setNull(filtered());
+  for (int i=1;i<=5;i++) setNull(rank(i));
+  if (used()!=null) used().setValue(0);
+  if (trace()!=null) trace().setValue("Top5 (dropCount) started.");
+  scheduleNext();
+}
+
+public void onExecute() throws Exception {
+  scheduleNext();
+
+  // ### NEW SECTION: Check for disconnected wires ###
+  // This loop will set any unwired 'in' slot to NULL
+  for (int i=1; i<=15; i++) {
+    checkWireStatus("in" + i, in(i));
+  }
+  // ### END NEW SECTION ###
+
+
+  // 1) collect OK inputs
+  java.util.ArrayList<Double> vals = new java.util.ArrayList<Double>(15);
+  for (int i=1;i<=15;i++){
+    BStatusNumeric s = in(i);
+    // This logic now correctly skips slots that were just set to NULL
+    if (s != null && s.getStatus().isOk()) {
+        vals.add(s.getValue());
+    }
+  }
+  int originalInputCount = vals.size(); // Store for trace
+
+  if (vals.isEmpty()){
+    setNull(filtered());
+    for (int i=1;i<=5;i++) setNull(rank(i));
+    if (used()!=null) used().setValue(0);
+    if (trace()!=null) trace().setValue("No valid inputs; outputs NULL.");
+    return;
+  }
+
+  // 2) sort descending (highest first)
+  java.util.Collections.sort(vals, java.util.Collections.reverseOrder());
+
+  // 3) drop the top N based on the slot value
+  int dropN = 0;
+  try {
+    BStatusNumeric dropSlot = drop();
+    if (dropSlot != null && dropSlot.getStatus().isOk()){
+      dropN = (int)Math.max(0, Math.round(dropSlot.getValue()));
+    }
+  } catch (Exception e) {
+    if (trace()!=null) trace().setValue("ERROR: 'dropCount' slot missing or invalid.");
+    return; 
+  }
+  
+  int actualDropCount = Math.min(dropN, vals.size());
+
+  // remove first 'actualDropCount' items
+  for (int i=0; i < actualDropCount && !vals.isEmpty(); i++) {
+    vals.remove(0);
+  }
+
+  // 4) nothing left after drop?
+  if (vals.isEmpty()){
+    setNull(filtered());
+    for (int i=1;i<=5;i++) setNull(rank(i));
+    if (used()!=null) used().setValue(0);
+    if (trace()!=null) trace().setValue("dropCount(" + actualDropCount + ") removed all " + originalInputCount + " values; outputs NULL.");
+    return;
+  }
+
+  // 5) write filteredMax (force OK)
+  setOk(filtered(), vals.get(0));
+
+  // 6) ranks (Top 5 from remaining list)
+  for (int i=1;i<=5;i++){
+    if (i-1 < vals.size()) setOk(rank(i), vals.get(i-1));
+    else setNull(rank(i));
+  }
+
+  // 7) usedCount + statusTrace
+  if (used()!=null) used().setValue(vals.size());
+  if (trace()!=null){
+    int show = Math.min(5, vals.size());
+    double[] preview = new double[show];
+    for (int i=0;i<show;i++) preview[i] = vals.get(i);
+    
+    trace().setValue(
+      "inputs=" + originalInputCount
+      + ", dropCount=" + actualDropCount
+      + ", used=" + vals.size()
+      + ", filteredMax=" + vals.get(0)
+      + ", ranks=" + java.util.Arrays.toString(preview)
+    );
+  }
+}
+
+public void onStop() throws Exception {
+  if (ticket != null) ticket.cancel();
+}
+```
+
+</details>
+
+--- 
+
+<details>
+<summary>Ping Pong Algorithm</summary>
+
+* TODO
+
+```java
+```
+
+</details>
+
+--- 
 
 <details>
 <summary>🔥 kitControl's Tstat but with a True deadband</summary>
@@ -911,9 +1086,8 @@ void updateTimer() {
 
 </details>
 
-
-
 --- 
+
 <details>
 <summary>⏳ Custom Off Delay Block with Countdown (Trigger-Based Logic)</summary>
 
