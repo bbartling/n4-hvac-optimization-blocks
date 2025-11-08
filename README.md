@@ -919,8 +919,7 @@ This ensures the block continuously adapts to real-time input changes, self-heal
 
 ---
 
-### Top 5 of 15 (Filtered Max)
-**Inputs & Parameters**
+### Slots
 
 | Slot Name | Description                         | Type           | Writable |
 |-----------|-------------------------------------|----------------|----------|
@@ -1113,8 +1112,7 @@ This simple, robust pattern is perfect for **testing analog control loops**, **s
 
 ---
 
-### Ping-Pong Algorithm
-**Inputs & Parameters**
+### Slots
 
 | Slot Name             | Description                                        | Type             | Writable |
 |-----------------------|----------------------------------------------------|------------------|----------|
@@ -2165,6 +2163,23 @@ double interpolate(double currentX, double x1, double y1, double x2, double y2, 
 }
 
 
+
+```
+
+</details>
+
+<details>
+<summary>⏰ GL36 AHU Fault Detection</summary>
+
+* TODO
+
+---
+
+### 💻 Java Code
+
+> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
+
+```java
 
 ```
 
@@ -5701,6 +5716,181 @@ private void log(String s) {
 ---
 
 <details>
+<summary>🕒 Epoch → Niagara Time Converter</summary>
+
+The **Epoch → Niagara Time Converter** translates a Unix epoch timestamp (in milliseconds) into Niagara 4’s `BAbsTime` format. It accepts a numeric `daysOffset` input—positive or negative—to shift the base epoch time before generating multiple formatted outputs, including full timestamp, date-only, and weekday strings. The logic runs on a one-second refresh interval and uses Niagara-specific classes such as `BAbsTime`, `BRelTime`, `Clock`, and `BStatus` to manage timing, slot updates, and null-state handling through `getUnixTime()`, `getDaysOffset()`, `getNiagaraTimeOut()`, and related component accessors.
+
+> Thank you [Andrew McCourt](https://www.linkedin.com/in/andrew-m-309556285/) Field Engineer @ Concord Environmental Prescot, England, United Kingdom for contributing this block.
+
+### Slots
+
+**Inputs & Parameters**
+
+| Slot Name    | Description                                             | Type           | Writable |
+|--------------|---------------------------------------------------------|----------------|----------|
+| unixTime     | Unix epoch time in **milliseconds** (e.g. from API)     | BStatusNumeric | Yes      |
+| daysOffset   | Offset in days to add/subtract from the epoch time      | BStatusNumeric | Yes      |
+
+**Outputs**
+
+| Slot Name        | Description                                                        | Type           |
+|------------------|--------------------------------------------------------------------|----------------|
+| unixTimeOffset   | Epoch time in ms **after** applying `daysOffset`                   | BStatusNumeric |
+| niagaraTimeOut   | Full formatted timestamp (e.g. `dd-MMM-yyyy hh:mm:ss a z`)         | BStatusString  |
+| dateOnlyOut      | Date-only string (format auto-adjusted for timezone / region)      | BStatusString  |
+| weekdayOut       | Weekday + date formatted string (e.g. `Tuesday, 04 March 2025`)    | BStatusString  |
+| statusTrace      | Status/log message for debugging conversion and timezone handling  | BStatusString  |
+
+---
+
+**🕒 Example Inputs & Outputs**
+
+| unixTime (ms)      | daysOffset | niagaraTimeOut (CST)           | dateOnlyOut | weekdayOut                | unixTimeOffset (ms) |
+|--------------------|-------------|--------------------------------|--------------|----------------------------|----------------------|
+| 1736448000000      | 0.0         | 10-Jan-2025 12:00:00 AM CST    | 01-10-2025   | Friday, 10 January 2025    | 1736448000000        |
+| 1736448000000      | -1.0        | 09-Jan-2025 12:00:00 AM CST    | 01-09-2025   | Thursday, 09 January 2025  | 1736361600000        |
+| 1736448000000      | +2.0        | 12-Jan-2025 12:00:00 AM CST    | 01-12-2025   | Sunday, 12 January 2025    | 1736620800000        |
+
+This block updates automatically **every second**, performing null-handling checks on each refresh.  
+If the input wire is not connected or returns a null value, the outputs are cleared and the status trace reports `"Input not wired or NULL."`.
+
+<p align="center">
+  <img src="snips/unixTimeConvertSnip.png" width="700">
+</p>
+
+
+### 💻 Java Code
+
+> Testing on next space flight ical: https://nextspaceflight.com/calendar/
+
+
+```java
+
+Clock.Ticket ticket;
+
+
+public void onStart() throws Exception {
+    getStatusTrace().setValue("Epoch → Niagara time converter started (1 s refresh).");
+    updateTimer();
+}
+
+
+public void onExecute() throws Exception {
+    updateTimer();
+    
+    final long MILLIS_PER_DAY = 24L * 60 * 60 * 1000;
+
+
+    // Check for unwired or NULL primary input slot
+    if (!getUnixTime().getStatus().isOk()) {
+        getNiagaraTimeOut().setValue("");
+        getDateOnlyOut().setValue("");
+        getWeekdayOut().setValue("");
+        // Ensure new output slot is also cleared
+        getUnixTimeOffset().setValue(0.0); 
+        getStatusTrace().setValue("Input not wired or NULL.");
+        return;
+    }
+
+
+    try {
+        // 1. Get the current epoch time from the input slot
+        long baseEpochMillis = (long) getUnixTime().getValue();
+        
+        // 2. Determine the day offset (Read from the new BDouble slot)
+        double daysOffset = 0.0;
+        if (getDaysOffset().getStatus().isOk()) {
+            daysOffset = getDaysOffset().getValue();
+        }
+
+
+        // 3. Calculate the new epoch time with offset
+        long offsetMillis = (long) (daysOffset * MILLIS_PER_DAY);
+        long epochMillis = baseEpochMillis + offsetMillis; 
+        
+        // 4. Set the new raw epoch output slot
+        // Casting long to double for BDouble slot compatibility.
+        getUnixTimeOffset().setValue((double)epochMillis);
+
+
+        // 5. Timezone and Formatting Logic
+        java.util.TimeZone tz = java.util.TimeZone.getDefault();
+
+
+        // ---- Full timestamp format (Original format) ----
+        java.text.SimpleDateFormat fullFmt = new java.text.SimpleDateFormat("dd-MMM-yyyy hh:mm:ss a z");
+        fullFmt.setTimeZone(tz);
+        String fullFormatted = fullFmt.format(new java.util.Date(epochMillis));
+
+
+        // ---- Date-only formatting (Original logic) ----
+        String tzID = tz.getID().toUpperCase();
+        boolean isUS = tzID.contains("AMERICA/");
+        boolean isGMT = tzID.contains("GMT") || tzID.contains("UTC");
+
+
+        String datePattern;
+        if (isUS) {
+            datePattern = "MM-dd-yyyy";
+        } else if (isGMT) {
+            datePattern = "dd-MM-yyyy";
+        } else {
+            datePattern = "dd-MM-yyyy";
+        }
+
+
+        java.text.SimpleDateFormat dateFmt = new java.text.SimpleDateFormat(datePattern);
+        dateFmt.setTimeZone(tz);
+        String dateOnly = dateFmt.format(new java.util.Date(epochMillis));
+
+
+        // ---- Weekday, dd Month yyyy format (Original format) ----
+        java.text.SimpleDateFormat weekdayFmt = new java.text.SimpleDateFormat("EEEE, dd MMMM yyyy");
+        weekdayFmt.setTimeZone(tz);
+        String weekdayOnly = weekdayFmt.format(new java.util.Date(epochMillis));
+
+
+        // ---- Formatted Outputs ----
+        getNiagaraTimeOut().setValue(fullFormatted);
+        getDateOnlyOut().setValue(dateOnly);
+        getWeekdayOut().setValue(weekdayOnly);
+        getStatusTrace().setValue("Updated (" + tz.getID() + ", Offset: " + daysOffset + "d): " + fullFormatted);
+
+
+    } catch (Exception e) {
+        // Handle conversion errors
+        getStatusTrace().setValue("Error converting time: " + e.getMessage());
+        getNiagaraTimeOut().setValue("");
+        getDateOnlyOut().setValue("");
+        getWeekdayOut().setValue("");
+        getUnixTimeOffset().setValue(0.0);
+    }
+}
+
+
+public void onStop() throws Exception {
+    if (ticket != null) {
+        ticket.cancel();
+    }
+    getStatusTrace().setValue("Epoch → Niagara converter stopped.");
+}
+
+
+void updateTimer() {
+    if (ticket != null) {
+        ticket.cancel();
+    }
+    // Run every 1 second (Niagara-safe)
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(1), BProgram.execute, null);
+}
+
+```
+
+</details>
+
+---
+
+<details>
 <summary>📊 JACE Resource Management – Best Practices</summary>
 
 To avoid Niagara runtime issues, monitor JACE system health:
@@ -5735,7 +5925,7 @@ Check for demonstrations on Vibe Coding on 📺
 
 ## 💛 Support This Work
 
-I’ve personally never donated to open-source software before — but hey, what the heck! If it helped you build something neat, your support would be greatly appreciated (and might even fuel Ben’s Starbucks habit ☕).
+I’ve personally never donated to open-source software before — but hey, what the heck! If this project helped you build something neat or saved you at least 10× the man-hours on your Niagara BAS project with the help of AI and model context like this, and AND you’re feeling generous today, your support directly fuels Ben’s bad habits at Starbucks — but there’s absolutely no pressure.
 
 | 💵 Option           | Link                                                                                                                                                                                                                                              |
 | :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
