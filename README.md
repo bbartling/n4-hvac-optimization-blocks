@@ -731,172 +731,6 @@ public void onStop() throws Exception
 
 </details>
 
----
-
-<details>
-<summary>🧊 Chiller Start/Stop Based on AHU Valve Demand (With Anti-Short-Cycle Logic)</summary>
-
-This block is a **chiller enable/disable controller** based on the **maximum AHU cooling valve position**. It avoids short-cycling the chiller by enforcing:
-
-* A **minimum ON time** (30 minutes)
-* A **minimum OFF time** (15 minutes)
-
-The chiller will:
-
-* ✅ Enable if **any AHU cooling valve ≥ 30%** and off-time has passed.
-* ❌ Disable if **all valves drop ≤ 10%** and it has run for the minimum ON time.
-
-This approach helps prevent chiller operation under low load when **economizer (free cooling)** should be prioritized — potentially saving significant **electrical energy**.
-
----
-
-<p align="center">
-  <img src="snips/chillerEnableBlockSnip.png" alt="Chiller Start Logic Snip" width="800"> 
-</p>
-
----
-
-### **Inputs & Parameters**
-
-| Slot Name                       | Description                                  | Type             | Writable |
-| ------------------------------- | -------------------------------------------- | ---------------- | -------- |
-| `ahuMaxClgVlv`                  | Maximum valve % from all AHUs                | `BStatusNumeric` | Yes      |
-| `ahuStartChillerMaxClgVlvThres` | Threshold to **start** chiller (default 30%) | `BStatusNumeric` | No       |
-| `ahuStopChillerMaxClgVlvThres`  | Threshold to **stop** chiller (default 10%)  | `BStatusNumeric` | No       |
-| `minOnTime`                     | Minimum ON duration (default 30 min)         | `BStatusNumeric` | No       |
-| `minOffTime`                    | Minimum OFF duration (default 15 min)        | `BStatusNumeric` | No       |
-
----
-
-### **Outputs**
-
-| Slot Name                       | Description                             | Type             |
-| ------------------------------- | --------------------------------------- | ---------------- |
-| `ChillerEnableCommand`          | Set to `1.0` when chiller should run    | `BStatusNumeric` |
-| `ChillerRunStatus`              | Also `1.0` when running (optional flag) | `BStatusNumeric` |
-| `elapsedChillerOnTimerMinutes`  | Running time tracker                    | `BStatusNumeric` |
-| `elapsedChillerOffTimerMinutes` | Idle time tracker                       | `BStatusNumeric` |
-
----
-
-### **Logic Summary**
-
-| Condition                                   | Action                |
-| ------------------------------------------- | --------------------- |
-| AHU valve ≥ 30% **and** min off time passed | ✅ Enable chiller      |
-| AHU valve ≤ 10% **and** min on time passed  | ❌ Disable chiller     |
-| Invalid or disconnected input               | Chiller OFF and reset |
-
----
-
-### 💻 Java Code
-
-> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
-
-```java
-Clock.Ticket ticket; // Used to manage the current timer
-boolean chillerRunning = false; // Tracks chiller state
-boolean firstRun = true;
-
-int offTimeCounterSeconds = 0;  // Tracks OFF time in seconds
-int onTimeCounterSeconds  = 0;  // Tracks ON time in seconds
-
-// Constants
-final double AHU_START_THRESHOLD = 30.0;  // Chiller starts when valve ≥ 30%
-final double AHU_STOP_THRESHOLD  = 10.0;  // Chiller stops when valve ≤ 10%
-final double MIN_ON_TIME_MIN     = 30.0;  // Minimum ON duration
-final double MIN_OFF_TIME_MIN    = 15.0;  // Minimum OFF duration
-
-public void onStart() throws Exception {
-    updateTimer(); // Schedule recurring execution
-}
-
-public void onExecute() throws Exception {
-    updateTimer(); // Reschedule every 10 seconds
-
-    // Input and output slots
-    BStatusNumeric clgVlv    = getAhuMaxClgVlv();
-    BStatusNumeric onTimer   = getElapsedChillerOnTimerMinutes();
-    BStatusNumeric offTimer  = getElapsedChillerOffTimerMinutes();
-    BStatusNumeric enableOut = getChillerEnableCommand();
-    BStatusNumeric runFlag   = getChillerRunStatus();
-
-    // Update thresholds for viewing in wire sheet
-    getAhuStartChillerMaxClgVlvThres().setValue(AHU_START_THRESHOLD);
-    getAhuStopChillerMaxClgVlvThres().setValue(AHU_STOP_THRESHOLD);
-    getMinOnTime().setValue(MIN_ON_TIME_MIN);
-    getMinOffTime().setValue(MIN_OFF_TIME_MIN);
-
-    if (clgVlv.getStatus().isOk()) {
-        double valve = clgVlv.getValue();
-        int minOnSec  = (int)(MIN_ON_TIME_MIN * 60);
-        int minOffSec = (int)(MIN_OFF_TIME_MIN * 60);
-
-        if (!chillerRunning) {
-            offTimeCounterSeconds += 10;
-            offTimer.setValue(offTimeCounterSeconds / 60.0);
-
-            if ((firstRun || offTimeCounterSeconds >= minOffSec) && valve >= AHU_START_THRESHOLD) {
-                chillerRunning = true;
-                firstRun = false;
-                offTimeCounterSeconds = 0;
-                onTimeCounterSeconds = 0;
-                offTimer.setValue(0.0);
-                System.out.println("Chiller started.");
-            }
-        } else {
-            onTimeCounterSeconds += 10;
-            onTimer.setValue(onTimeCounterSeconds / 60.0);
-
-            if (valve <= AHU_STOP_THRESHOLD && onTimeCounterSeconds >= minOnSec) {
-                chillerRunning = false;
-                onTimeCounterSeconds = 0;
-                onTimer.setValue(0.0);
-                System.out.println("Chiller stopped.");
-            }
-        }
-
-        runFlag.setValue(chillerRunning ? 1.0 : 0.0);
-        enableOut.setValue(chillerRunning ? 1.0 : 0.0);
-    } else {
-        chillerRunning = false;
-        onTimeCounterSeconds = 0;
-        offTimeCounterSeconds = 0;
-        runFlag.setValue(0.0);
-        enableOut.setValue(0.0);
-        onTimer.setValue(0.0);
-        offTimer.setValue(0.0);
-        System.out.println("Invalid cooling valve input.");
-    }
-}
-
-public void onStop() throws Exception {
-    if (ticket != null) ticket.cancel();
-}
-
-public BComponent getProgram() {
-    return (BComponent) getComponent();
-}
-
-void updateTimer() {
-    if (ticket != null) ticket.cancel();
-    ticket = Clock.schedule(getProgram(), BRelTime.makeSeconds(10), BProgram.execute, null);
-}
-```
-
----
-
-### Developer Notes
-
-* The logic evaluates every 10 seconds via `Clock.schedule()`.
-* Outputs `1.0` for *ON*, and `0.0` for *OFF*.
-* You can use this block with any AHU group by wiring in a `Maximum()` block first.
-* Great for systems that switch between **mechanical cooling** and **economizer/free cooling**.
-
-</details>
-
-
-
 --- 
 
 <details>
@@ -1732,37 +1566,50 @@ void updateTimer() {
 <details>
 <summary>🌬️ GL36 VAV Box Zone Request Generator</summary>
 
-**Purpose**  
-Implements Guideline 36 zone request logic for each VAV box.  
-Every zone generates **pressure** and **cooling** requests based on local damper, airflow, and temperature (a.k.a. terminal load). The AHU-level Trim & Respond (T&R) algorithm then totalizes these requests from all VAVs.
+**Purpose:**  
+Implements ASHRAE Guideline 36 zone-level request logic for each VAV box.  
+Each zone generates **Pressure** and **Cooling (SAT)** requests based on its local damper, airflow, and temperature.  
+These individual zone requests are totalized at the AHU level and used by Trim & Respond algorithms for duct static pressure and supply air temperature reset.
 
-![GL36 VAV Box Request Counter](snips/gl36VavBoxReqCounter.png)
+![GL36 Spec Reference](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/GL_VAV_Requests_Counting_Spec.png)
+![GL36 VAV Box Request Counter](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/gl36VavBoxReqCounter.png)
 
-**Key Slots**
+#### Slot Map (Guideline 36 → Niagara ProgramObject)
 
-- **Inputs**
-  - `vavDamperCmd` – Damper command (%)  
-  - `vavFlow` – Measured airflow  
-  - `vavFlowSpt` – Airflow setpoint  
-  - `zoneCoolingSpt` – Zone cooling setpoint (°C/°F)  
-  - `zoneTemp` – Zone temperature (°C/°F)  
-  - `zoneDemand` – Cooling loop demand (%) – sometimes labeled *TerminalLoad*  
+| G36 Variable | Description | Niagara Slot Name |
+|---------------|--------------|-------------------|
+| **ZoneTemp** | Zone temperature | *zoneTemp* |
+| **ZoneCoolingSpt** | Zone cooling setpoint | *zoneCoolingSpt* |
+| **ZoneDemand** | Cooling loop (terminal load %) | *zoneDemand* |
+| **VavFlow** | Measured airflow | *vavFlow* |
+| **VavFlowSpt** | Airflow setpoint | *vavFlowSpt* |
+| **VavDamperCmd** | Damper command (%) | *vavDamperCmd* |
+| **VavCoolRequests** | Cooling requests (0-3) | *vavCoolRequests* |
+| **VavPressureRequests** | Pressure requests (0-3) | *vavPressureRequests* |
+| **TempStatusTrace** | Cooling request debug trace | *tempStatusTrace* |
+| **PressStatusTrace** | Pressure request debug trace | *pressStatusTrace* |
+| **useImperial** | Unit toggle (°F/°C display) | *useImperial* |
 
-- **Outputs**
-  - `vavPressureRequests` – Pressure request (0–3)  
-  - `vavCoolRequests` – Cooling request (0–3)  
-  - `pressStatusTrace` – Debug string for pressure logic  
-  - `tempStatusTrace` – Debug string for temperature logic  
+#### Algorithm 
 
-- **Config**
-  - `useImperial` – Boolean flag; used for display/engineering units (°F vs °C) in traces and tuning.
+**Cooling SAT Requests**  
+- If zone temp ≥ setpoint + 3 °C (5 °F) for 2 min → 3 requests  
+- Else if zone temp ≥ setpoint + 2 °C (3 °F) for 2 min → 2 requests  
+- Else if cooling loop > 95 % → 1 request (until < 85 %)  
+- Else → 0 requests  
 
-**Algorithm (Very High Level)**
+**Static Pressure Requests**  
+- If flow < 50 % of setpoint and damper ≥ 95 % for 1 min → 3 requests  
+- Else if flow < 70 % of setpoint and damper ≥ 95 % for 1 min → 2 requests  
+- Else if damper ≥ 95 % → 1 request (until < 85 %)  
+- Else → 0 requests  
 
-- **Pressure requests** use airflow ratio and damper position with 1-minute persistence and hysteresis.  
-- **Temperature requests** use zone overshoot above cooling setpoint and the cooling loop (terminal load) with a 1-minute suppression, 2-minute persistence, and hysteresis.  
+Timers, hysteresis, and suppression logic follow the official Guideline 36 durations (1-minute persistence for pressure, 2-minute persistence for temperature).  
+Both pressure and temperature loops run independently in the same ProgramObject.
 
-All thresholds and timers are implemented as internal Java constants; temperature and pressure timing are fully independent but executed in the same Program Object.
+### 💻 Java Code
+
+> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
 
 ```java
@@ -2159,18 +2006,34 @@ int computeTemperatureRequest(double highDiff, double medDiff) {
 <details>
 <summary>🌀 GL36 AHU Duct Static Pressure Reset (Trim & Respond)</summary>
 
-**Purpose:** Save supply fan energy by resetting duct static pressure based on VAV damper positions.
+**Purpose:** Resets AHU supply fan duct static pressure based on zone-level damper position requests to minimize fan energy while maintaining comfort.  
 
+![GL36 Spec Reference](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/GL_AHU_Press_Spec.png)
 ![Duct Static Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/ahuDuctStaticResetSnip.png)
 
+#### Slot Map (Guideline 36 → Niagara ProgramObject)
 
-#### Developer Notes:
+| G36 Variable | Description | Niagara Slot Name |
+|---------------|--------------|-------------------|
+| **Device** | Supply Fan | *fanRunCmd* |
+| **SP₀** | Initial Static Pressure Setpoint | *SP0* |
+| **SPmin** | Minimum Duct Static Pressure | *SPmin* |
+| **SPmax** | Maximum Duct Static Pressure | *SPmax* |
+| **Td** | Startup Delay Timer (min) | *StartUpDelayMinutes* |
+| **T** | Update Interval (min) | *UpdateMinutes* |
+| **I** | Number of Ignored Requests | *Ignore* |
+| **R** | VAV Pressure Requests | *totalRequests* |
+| **SPtrim** | Trim Increment | *SPtrim* |
+| **SPres** | Respond Increment | *SPres* |
+| **SPres-max** | Max Respond Limit | *SPResMax* |
 
-* Guideline 36 compliant and tested in field by Ben. Designed to work in conjuction with a VAV box pressure requesting `VAV_GL36_Pressure_Req.bog`. All VAV needs to be totallized in wired into the total requests input as well as fan status and the occupancy command.
+This ProgramObject directly implements ASHRAE Guideline 36 Trim & Respond logic for AHU **duct static pressure reset**.  
+Each variable above corresponds one-to-one with the official specification in *Table 5.1.14.4*.
 
 ### 💻 Java Code
 
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
+
 
 ```java
 /**
@@ -2363,15 +2226,32 @@ double round3(double v) {
 <details>
 <summary>🌡️ GL36 AHU Supply Air Temperature Reset (Trim & Respond)</summary>
 
-![Leave Temp Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/ahuLeaveTempBlockSnip.png)
+![GL36 Spec Reference](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/GL_AHU_Temp_Spec.png)
+![SAT Reset Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/ahuLeaveTempBlockSnip.png)
 
-#### Developer Notes:
+#### Slot Map (Guideline 36 → Niagara ProgramObject)
 
-* Guideline 36 compliant and tested in field by Ben. Designed to work in conjuction with a VAV box pressure requesting `VAV_GL36_Cooling_Req.bog`. All VAV needs to be totallized in wired into the total requests input as well as fan status and the occupancy command.
+| G36 Variable | Description | Niagara Slot Name |
+|---------------|--------------|-------------------|
+| **Device** | Supply Fan | *fanRunCmd* |
+| **SP₀** | Initial Setpoint | *SP0* |
+| **SPmin** | Minimum Cooling SAT | *SPmin* |
+| **SPmax** | Maximum Cooling SAT | *SPmax* |
+| **Td** | Startup Delay Timer (min) | *StartUpDelayMinutes* |
+| **T** | Update Interval (min) | *UpdateMinutes* |
+| **I** | Number of Ignored Requests | *Ignore* |
+| **R** | Zone Cooling Requests | *totalRequests* |
+| **SPtrim** | Trim Increment | *SPtrim* |
+| **SPres** | Respond Increment | *SPres* |
+| **SPres-max** | Max Respond Limit | *SPResMax* |
+
+This ProgramObject directly implements ASHRAE Guideline 36 Trim & Respond logic for AHU Supply Air Temperature reset.  
+Each variable above corresponds one-to-one with the official specification in Table 5.16.2.2.
 
 ### 💻 Java Code
 
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
+
 
 ```java
 /**
@@ -2397,7 +2277,12 @@ public void onStart() throws Exception {
     lastMainLogicRunMs = 0;
     fanOnStableSinceMs = 0;
     lastFanRun = false;
-    this.tMaxState = numericOrDefault(getSatMax(), 70.0);
+
+    // === G36 naming: SP0 / SPmax ===
+    // SP0 is the initial setpoint. If it’s not wired/valid, fall back to SPmax.
+    double sp0 = numericOrDefault(getSP0(),
+                   numericOrDefault(getSPmax(), 70.0));
+    this.tMaxState = sp0;
 
     updateTimer(); // 10s heartbeat
 }
@@ -2412,36 +2297,39 @@ public void onExecute() throws Exception {
     ensureBooleanWiredOrNull("fanRunCmd", getFanRunCmd());
     ensureNumericWiredOrNull("outsideAirTemp", getOutsideAirTemp());
 
-    // ---- Read config with safe defaults ----
-    double minSAT    = numericOrDefault(getSatMin(), 55.0);
-    double maxSAT    = numericOrDefault(getSatMax(), 70.0);
+    // ---- Read config with safe defaults (G36 names) ----
+    double minSAT    = numericOrDefault(getSPmin(), 55.0);  // SPmin
+    double maxSAT    = numericOrDefault(getSPmax(), 70.0);  // SPmax
     double minOAT    = numericOrDefault(getOatMin(), 60.0);
     double maxOAT    = numericOrDefault(getOatMax(), 70.0);
-    int TdSec        = minutesToSecondsSafe(getStartUpDelayMinutes(), 10);
-    int TSec         = minutesToSecondsSafe(getUpdateMinutes(), 2);
-    double Ignore    = numericOrDefault(getIgnore(), 2.0);
-    double trimVal   = numericOrDefault(getSPtrim(), 0.2);
-    double respVal   = numericOrDefault(getSPres(), -0.3);
-    double respMax   = numericOrDefault(getSPResMax(), -1.0);
+    int TdSec        = minutesToSecondsSafe(getStartUpDelayMinutes(), 10); // Td
+    int TSec         = minutesToSecondsSafe(getUpdateMinutes(), 2);        // T
+    double Ignore    = numericOrDefault(getIgnore(), 2.0);                 // I
+    double trimVal   = numericOrDefault(getSPtrim(), 0.2);                 // SPtrim
+    double respVal   = numericOrDefault(getSPres(), -0.3);                 // SPres
+    double respMax   = numericOrDefault(getSPResMax(), -1.0);              // SPres-max
 
     boolean fanRun = getFanRunCmd().getStatus().isOk() && getFanRunCmd().getValue();
-    double oat = getOutsideAirTemp().getStatus().isOk() ? getOutsideAirTemp().getValue() : minOAT;
-    
-    // NOTE: We no longer need 'currentSp' for the T&R calculation with the fix.
-    // It is only used here for initializing the display on the first run.
-    double currentSp = getDischargeAirTempSp().getStatus().isOk() ? getDischargeAirTempSp().getValue() : maxSAT;
+    double oat = getOutsideAirTemp().getStatus().isOk()
+                 ? getOutsideAirTemp().getValue()
+                 : minOAT;
+
+    double currentSp = getDischargeAirTempSp().getStatus().isOk()
+                       ? getDischargeAirTempSp().getValue()
+                       : maxSAT;
 
     // --- State 1: Fan is OFF ---
     if (!fanRun) {
-        this.tMaxState = maxSAT; // When fan is off, reset tMax to the maximum SAT
-        double newSetpoint = interpolate(oat, minOAT, this.tMaxState, maxOAT, minSAT, minSAT, maxSAT);
+        this.tMaxState = maxSAT; // same behavior as before (T-max reset to SPmax)
+        double newSetpoint = interpolate(oat, minOAT, this.tMaxState,
+                                         maxOAT, minSAT, minSAT, maxSAT);
         getDischargeAirTempSp().setValue(newSetpoint);
 
         if (lastFanRun) { // Log only on the transition from ON to OFF
             getStatusTrace().setValue("Fan OFF -> holding reset logic. SP=" + round1(newSetpoint));
             getLastActionTs().setValue(new java.util.Date(now).toString());
         }
-        
+
         fanOnStableSinceMs = 0;
         lastFanRun = false;
         return;
@@ -2451,31 +2339,38 @@ public void onExecute() throws Exception {
     if (!lastFanRun && fanRun) {
         fanOnStableSinceMs = now;
         lastFanRun = true;
-        this.tMaxState = maxSAT; // Reset tMax to the maximum SAT on startup
-        double newSetpoint = interpolate(oat, minOAT, this.tMaxState, maxOAT, minSAT, minSAT, maxSAT);
+
+        // On fan start, reinitialize T-max from SP0 (fall back to SPmax if needed)
+        double sp0 = numericOrDefault(getSP0(),
+                       numericOrDefault(getSPmax(), maxSAT));
+        this.tMaxState = clamp(sp0, minSAT, maxSAT);
+
+        double newSetpoint = interpolate(oat, minOAT, this.tMaxState,
+                                         maxOAT, minSAT, minSAT, maxSAT);
         getDischargeAirTempSp().setValue(newSetpoint);
         getStatusTrace().setValue("Fan ON -> holding initial SP during startup delay...");
         getLastActionTs().setValue(new java.util.Date(now).toString());
         return;
     }
-    
+
     lastFanRun = true;
 
     // --- State 3: Fan is ON, but waiting for startup delay ---
     boolean isStartupDelayMet = (now - fanOnStableSinceMs) / 1000 >= TdSec;
     if (!isStartupDelayMet) {
         long remaining = TdSec - ((now - fanOnStableSinceMs) / 1000);
-        // tMaxState holds its value from the previous cycle
-        double newSetpoint = interpolate(oat, minOAT, this.tMaxState, maxOAT, minSAT, minSAT, maxSAT);
+        double newSetpoint = interpolate(oat, minOAT, this.tMaxState,
+                                         maxOAT, minSAT, minSAT, maxSAT);
         getDischargeAirTempSp().setValue(newSetpoint);
         getStatusTrace().setValue("Waiting Td (" + remaining + "s left)... SP=" + round1(newSetpoint));
         return;
     }
-    
+
     // --- State 4: Waiting for T&R update cadence ---
-    boolean isUpdateCadenceMet = (lastMainLogicRunMs == 0) || ((now - lastMainLogicRunMs) / 1000 >= TSec);
+    boolean isUpdateCadenceMet = (lastMainLogicRunMs == 0) ||
+                                 ((now - lastMainLogicRunMs) / 1000 >= TSec);
     if (!isUpdateCadenceMet) {
-        return; // Safe to return, value is already being driven
+        return; // value already driven
     }
 
     // --- State 5: Run Core Trim & Respond Logic ---
@@ -2483,31 +2378,27 @@ public void onExecute() throws Exception {
         getStatusTrace().setValue("Missing totalRequests -> no T&R action this cycle.");
         return;
     }
-    double R = getTotalRequests().getValue();
+    double R = getTotalRequests().getValue();   // G36 R
 
     String action;
     if (R <= Ignore) {
         action = "trim";
-        // ============================ HOT FIX (THE FIX) ============================
-        // The logic now adjusts tMaxState based on its own previous value.
-        // This decouples the trim action from the final setpoint, allowing tMaxState
-        // to reliably climb back to satMax when there are no requests.
+        // T-max trim up toward SPmax when requests are low
         this.tMaxState = clamp(this.tMaxState + trimVal, minSAT, maxSAT);
-        // =========================================================================
     } else {
         action = "respond";
-        double respondAmount = Math.max(respVal * (R - Ignore), respMax); // Math.max because responding is negative
-        // ============================ HOT FIX (THE FIX) ============================
-        // This logic is also updated to ensure consistent behavior.
+        double respondAmount = Math.max(respVal * (R - Ignore), respMax);
         this.tMaxState = clamp(this.tMaxState + respondAmount, minSAT, maxSAT);
-        // =========================================================================
     }
-    
-    double newSetpoint = interpolate(oat, minOAT, this.tMaxState, maxOAT, minSAT, minSAT, maxSAT);
+
+    double newSetpoint = interpolate(oat, minOAT, this.tMaxState,
+                                     maxOAT, minSAT, minSAT, maxSAT);
     getDischargeAirTempSp().setValue(newSetpoint);
     lastMainLogicRunMs = now;
 
-    String detail = "R=" + round1(R) + " -> " + action.toUpperCase() + " -> tMax=" + round1(this.tMaxState) + " -> Final SP=" + round1(newSetpoint);
+    String detail = "R=" + round1(R) + " -> " + action.toUpperCase()
+                    + " -> tMax=" + round1(this.tMaxState)
+                    + " -> Final SP=" + round1(newSetpoint);
     getStatusTrace().setValue(detail);
     getLastActionTs().setValue(new java.util.Date(now).toString());
 }
@@ -2519,7 +2410,7 @@ public void onStop() throws Exception {
     }
 }
 
-// ===== Helper Methods =====
+// ===== Helper Methods (unchanged) =====
 void updateTimer() {
     if (ticket != null) ticket.cancel();
     ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
@@ -2567,24 +2458,190 @@ double round1(double v) {
  * on a line defined by two points (x1, y1) and (x2, y2).
  * Also clamps the result within finalMin and finalMax.
  */
-double interpolate(double currentX, double x1, double y1, double x2, double y2, double finalMin, double finalMax) {
+double interpolate(double currentX, double x1, double y1,
+                   double x2, double y2,
+                   double finalMin, double finalMax) {
     if (currentX <= x1) return y1;
     if (currentX >= x2) return y2;
-    
-    // Handle the case where x1 and x2 are the same to avoid division by zero
+
     if (Math.abs(x1 - x2) < 0.001) return y1;
 
     double slope = (y2 - y1) / (x2 - x1);
     double result = y1 + slope * (currentX - x1);
-    
+
     return clamp(result, finalMin, finalMax);
 }
-
 
 
 ```
 
 </details>
+
+---
+
+<details>
+<summary>🧊 Chiller Start/Stop Based on AHU Valve Demand (With Anti-Short-Cycle Logic)</summary>
+
+This block is a **chiller enable/disable controller** based on the **maximum AHU cooling valve position**. It avoids short-cycling the chiller by enforcing:
+
+* A **minimum ON time** (30 minutes)
+* A **minimum OFF time** (15 minutes)
+
+The chiller will:
+
+* ✅ Enable if **any AHU cooling valve ≥ 30%** and off-time has passed.
+* ❌ Disable if **all valves drop ≤ 10%** and it has run for the minimum ON time.
+
+This approach helps prevent chiller operation under low load when **economizer (free cooling)** should be prioritized — potentially saving significant **electrical energy**.
+
+---
+
+<p align="center">
+  <img src="snips/chillerEnableBlockSnip.png" alt="Chiller Start Logic Snip" width="800"> 
+</p>
+
+---
+
+### **Inputs & Parameters**
+
+| Slot Name                       | Description                                  | Type             | Writable |
+| ------------------------------- | -------------------------------------------- | ---------------- | -------- |
+| `ahuMaxClgVlv`                  | Maximum valve % from all AHUs                | `BStatusNumeric` | Yes      |
+| `ahuStartChillerMaxClgVlvThres` | Threshold to **start** chiller (default 30%) | `BStatusNumeric` | No       |
+| `ahuStopChillerMaxClgVlvThres`  | Threshold to **stop** chiller (default 10%)  | `BStatusNumeric` | No       |
+| `minOnTime`                     | Minimum ON duration (default 30 min)         | `BStatusNumeric` | No       |
+| `minOffTime`                    | Minimum OFF duration (default 15 min)        | `BStatusNumeric` | No       |
+
+---
+
+### **Outputs**
+
+| Slot Name                       | Description                             | Type             |
+| ------------------------------- | --------------------------------------- | ---------------- |
+| `ChillerEnableCommand`          | Set to `1.0` when chiller should run    | `BStatusNumeric` |
+| `ChillerRunStatus`              | Also `1.0` when running (optional flag) | `BStatusNumeric` |
+| `elapsedChillerOnTimerMinutes`  | Running time tracker                    | `BStatusNumeric` |
+| `elapsedChillerOffTimerMinutes` | Idle time tracker                       | `BStatusNumeric` |
+
+---
+
+### **Logic Summary**
+
+| Condition                                   | Action                |
+| ------------------------------------------- | --------------------- |
+| AHU valve ≥ 30% **and** min off time passed | ✅ Enable chiller      |
+| AHU valve ≤ 10% **and** min on time passed  | ❌ Disable chiller     |
+| Invalid or disconnected input               | Chiller OFF and reset |
+
+---
+
+### 💻 Java Code
+
+> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
+
+```java
+Clock.Ticket ticket; // Used to manage the current timer
+boolean chillerRunning = false; // Tracks chiller state
+boolean firstRun = true;
+
+int offTimeCounterSeconds = 0;  // Tracks OFF time in seconds
+int onTimeCounterSeconds  = 0;  // Tracks ON time in seconds
+
+// Constants
+final double AHU_START_THRESHOLD = 30.0;  // Chiller starts when valve ≥ 30%
+final double AHU_STOP_THRESHOLD  = 10.0;  // Chiller stops when valve ≤ 10%
+final double MIN_ON_TIME_MIN     = 30.0;  // Minimum ON duration
+final double MIN_OFF_TIME_MIN    = 15.0;  // Minimum OFF duration
+
+public void onStart() throws Exception {
+    updateTimer(); // Schedule recurring execution
+}
+
+public void onExecute() throws Exception {
+    updateTimer(); // Reschedule every 10 seconds
+
+    // Input and output slots
+    BStatusNumeric clgVlv    = getAhuMaxClgVlv();
+    BStatusNumeric onTimer   = getElapsedChillerOnTimerMinutes();
+    BStatusNumeric offTimer  = getElapsedChillerOffTimerMinutes();
+    BStatusNumeric enableOut = getChillerEnableCommand();
+    BStatusNumeric runFlag   = getChillerRunStatus();
+
+    // Update thresholds for viewing in wire sheet
+    getAhuStartChillerMaxClgVlvThres().setValue(AHU_START_THRESHOLD);
+    getAhuStopChillerMaxClgVlvThres().setValue(AHU_STOP_THRESHOLD);
+    getMinOnTime().setValue(MIN_ON_TIME_MIN);
+    getMinOffTime().setValue(MIN_OFF_TIME_MIN);
+
+    if (clgVlv.getStatus().isOk()) {
+        double valve = clgVlv.getValue();
+        int minOnSec  = (int)(MIN_ON_TIME_MIN * 60);
+        int minOffSec = (int)(MIN_OFF_TIME_MIN * 60);
+
+        if (!chillerRunning) {
+            offTimeCounterSeconds += 10;
+            offTimer.setValue(offTimeCounterSeconds / 60.0);
+
+            if ((firstRun || offTimeCounterSeconds >= minOffSec) && valve >= AHU_START_THRESHOLD) {
+                chillerRunning = true;
+                firstRun = false;
+                offTimeCounterSeconds = 0;
+                onTimeCounterSeconds = 0;
+                offTimer.setValue(0.0);
+                System.out.println("Chiller started.");
+            }
+        } else {
+            onTimeCounterSeconds += 10;
+            onTimer.setValue(onTimeCounterSeconds / 60.0);
+
+            if (valve <= AHU_STOP_THRESHOLD && onTimeCounterSeconds >= minOnSec) {
+                chillerRunning = false;
+                onTimeCounterSeconds = 0;
+                onTimer.setValue(0.0);
+                System.out.println("Chiller stopped.");
+            }
+        }
+
+        runFlag.setValue(chillerRunning ? 1.0 : 0.0);
+        enableOut.setValue(chillerRunning ? 1.0 : 0.0);
+    } else {
+        chillerRunning = false;
+        onTimeCounterSeconds = 0;
+        offTimeCounterSeconds = 0;
+        runFlag.setValue(0.0);
+        enableOut.setValue(0.0);
+        onTimer.setValue(0.0);
+        offTimer.setValue(0.0);
+        System.out.println("Invalid cooling valve input.");
+    }
+}
+
+public void onStop() throws Exception {
+    if (ticket != null) ticket.cancel();
+}
+
+public BComponent getProgram() {
+    return (BComponent) getComponent();
+}
+
+void updateTimer() {
+    if (ticket != null) ticket.cancel();
+    ticket = Clock.schedule(getProgram(), BRelTime.makeSeconds(10), BProgram.execute, null);
+}
+```
+
+---
+
+### Developer Notes
+
+* The logic evaluates every 10 seconds via `Clock.schedule()`.
+* Outputs `1.0` for *ON*, and `0.0` for *OFF*.
+* You can use this block with any AHU group by wiring in a `Maximum()` block first.
+* Great for systems that switch between **mechanical cooling** and **economizer/free cooling**.
+
+</details>
+
+
 
 <details>
 <summary>⏰ GL36 AHU Fault Detection</summary>
