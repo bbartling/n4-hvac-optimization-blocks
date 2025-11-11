@@ -342,7 +342,7 @@ While this could easily be done with basic Niagara Wire Sheet logic, it’s a pe
 ---
 
 <p align="center">
-<img src="snips/adderBlockSnip.png" alt="Simple Adder Block Snip" width="500">
+<img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/adderBlockSnip.png" alt="Simple Adder Block Snip" width="500">
 </p>
 
 ---
@@ -488,7 +488,7 @@ This dual-buffer approach gives you real-time interval statistics *and* a traili
 ---
 
 <p align="center">
-<img src="snips/MinMaxAveRollingSnip.png" alt="Min Max Avg Rolling Block Snip" width="600">
+<img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/MinMaxAveRollingSnip.png" alt="Min Max Avg Rolling Block Snip" width="600">
 </p>
 
 ---
@@ -663,7 +663,7 @@ This is the most resource-friendly way to handle actions that only need to happe
 ---
 
 <p align="center">
-<img src="snips/executeOnChangeSnip.png" alt="Execute on Change Wiresheet" width="600">
+<img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/executeOnChangeSnip.png" alt="Execute on Change Wiresheet" width="600">
 </p>
 
 ---
@@ -673,7 +673,7 @@ This is the most resource-friendly way to handle actions that only need to happe
 The magic happens in the **Slot Sheet**. For the `updateNow` boolean slot, you must open the **Config Flags** and check the **Execute On Change** box. This tells Niagara to execute the program component whenever this specific slot's value is written to.
 
 <p align="center">
-<img src="snips/executeOnChangeCheckSip.png" alt="Execute on Change Flag" width="600">
+<img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/executeOnChangeCheckSip.png" alt="Execute on Change Flag" width="600">
 </p>
 
 ---
@@ -748,7 +748,7 @@ Every execution cycle (running automatically **once per second**) performs the f
 This ensures the block continuously adapts to real-time input changes, self-heals when points drop offline, and never outputs stale or invalid data.
 
 <p align="center">
-  <img src="snips/top5Of15Snip.png" width="700">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/top5Of15Snip.png" width="700">
 </p>
 
 ---
@@ -941,7 +941,7 @@ Every cycle (executed automatically **once per second**) performs:
 This simple, robust pattern is perfect for **testing analog control loops**, **simulated demand profiles**, or **exercise routines** in a BAS environment.
 
 <p align="center">
-  <img src="snips/pingPongAlgorithmSnip.png" width="700">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/pingPongAlgorithmSnip.png" width="700">
 </p>
 
 ---
@@ -1203,7 +1203,7 @@ Unlike traditional AND logic, this block:
 ---
 
 <p align="center">
-  <img src="snips/customOffDelaySnip.png" alt="Custom Off Delay Block Wiresheet" width="800">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/customOffDelaySnip.png" alt="Custom Off Delay Block Wiresheet" width="800">
 </p>
 
 ---
@@ -1395,7 +1395,7 @@ This program block is a simple, practical example for anyone learning how to dev
 While this logic can easily be built using standard Wire Sheet blocks, it's a great starting point for experimenting with AI-assisted Java coding in Niagara. Once you're comfortable with basic examples like this, you can confidently move on to building more advanced control logic — some examples are shown below!
 
 <p align="center">
-<img src="snips/unitConverterBlockSnip.png" alt="Cooling Capacity Snip" width="600">
+<img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/unitConverterBlockSnip.png" alt="Cooling Capacity Snip" width="600">
 </p>
 
 ---
@@ -1578,7 +1578,7 @@ Instead of field-level request counting, it floats the **duct static pressure se
 ---
 
 <p align="center">
-  <img src="snips/nonG36ahuDuctStaticResetSnip.png" alt="Non-G36 AHU Duct Static Pressure Reset Snip" width="700">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/nonG36ahuDuctStaticResetSnip.png" alt="Non-G36 AHU Duct Static Pressure Reset Snip" width="700">
 </p>
 
 ---
@@ -1762,7 +1762,7 @@ It drives the **supply air temperature setpoint** using only:
 ---
 
 <p align="center">
-  <img src="snips/nonG36ahuLeaveTempBlockSnip.png" alt="Non-G36 AHU Supply Air Temp Reset Snip" width="700">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/nonG36ahuLeaveTempBlockSnip.png" alt="Non-G36 AHU Supply Air Temp Reset Snip" width="700">
 </p>
 
 ---
@@ -1986,7 +1986,6 @@ Implements ASHRAE Guideline 36 zone-level request logic for each VAV box.
 Each zone generates **Pressure** and **Cooling (SAT)** requests based on its local damper, airflow, and temperature.  
 These individual zone requests are totalized at the AHU level and used by Trim & Respond algorithms for duct static pressure and supply air temperature reset.
 
-![GL36 Spec Reference](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/GL_VAV_Requests_Counting_Spec.png)
 ![GL36 VAV Box Request Counter](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/gl36VavBoxReqCounter.png)
 
 #### Slot Map (Guideline 36 → Niagara ProgramObject)
@@ -2979,7 +2978,7 @@ double interpolate(double currentX, double x1, double y1,
 <details>
 <summary>🧊 GL36 Chiller Plant Enable Logic</summary>
 
-![GL36 Spec Reference](snips\GL_Chiller_Plant_Enable_Snip.png)
+![GL36 Logic Snip](https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/GL_Chiller_Plant_Enable_Snip.png)
 
 This ProgramObject implements **ASHRAE Guideline 36 – Section 5.18.15.2, Chiller Plant Requests**, extended for **multiple AHUs** with built-in minimum ON/OFF times and request counting.
 
@@ -3377,8 +3376,8 @@ This logic supersedes simpler staging methods by enforcing **per-chiller minimum
 
 
 <p align="center">
-  <img src="snips/chillerRotatorBlockSnip.png" alt="Chiller Rotator Wiresheet" width="800">
-  <img src="snips/chillerRotatorBlockLogs.png" alt="Chiller Rotator Console Logs" width="800">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/chillerRotatorBlockSnip.png" alt="Chiller Rotator Wiresheet" width="800">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/chillerRotatorBlockLogs.png" alt="Chiller Rotator Console Logs" width="800">
   <br><em>Chiller Rotator wiresheet with corresponding console logs in the Platform Admin showing per-chiller timer status.</em>
 </p>
 
@@ -3740,12 +3739,12 @@ See the included white paper:
   👉 https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf
 
 <p align="center">
-  <img src="snips/optimalStartSnip.png"  alt="Optimal Start Program Object" width="550">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/optimalStartSnip.png"  alt="Optimal Start Program Object" width="550">
   <br><em>Program Object wiring sheet</em>
 </p>
 
 <p align="center">
-  <img src="snips/zoneRecoverySnip.png" alt="Recovery Trend Example" width="750">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/zoneRecoverySnip.png" alt="Recovery Trend Example" width="750">
   <br><em>Recovery trend illustrating learned cool-down rate&nbsp;≈ 0.15 °F /min</em>
 </p>
 
@@ -4919,7 +4918,7 @@ private double round1(double v) {
 
 
 <p align="center">
-  <img src="snips/openWeatherMapAPI.png" alt="OpenWeatherMap API Niagara ProgramObject Snip" width="900">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/openWeatherMapAPI.png" alt="OpenWeatherMap API Niagara ProgramObject Snip" width="900">
 </p>
 
 This ProgramObject polls **OpenWeatherMap Current Weather** and outputs **Outside Air Temperature (°F)** and **Relative Humidity (%)** on a 20-minute cadence using a simple HTTP GET and lightweight JSON parsing (no extra libs). Lat/Lon, units, language, and cadence are **baked in as defaults**; you only provide your **API key**.
@@ -4950,7 +4949,7 @@ Grab a free API key here (which can take up to a few hours for them to return on
 Adjust as necessary in the `ProgramObject` property sheet.
 
 <p align="center">
-  <img src="snips/openWeatherMapAPIPropSheet.png" alt="OpenWeatherMap API Niagara ProgramObject Snip" width="900">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/openWeatherMapAPIPropSheet.png" alt="OpenWeatherMap API Niagara ProgramObject Snip" width="900">
 </p>
 
 > NOTE: Any change to defaults (location, units, cadence) requires **re-compiling the ProgramObject in Workbench** for it to take effect. ✔️
@@ -5322,7 +5321,7 @@ To add:
 4. Press **OK**, then **Compile** the program.
 
 <p align="center">
-  <img src="snips/openWeatherMapAPIReqImports.png" alt="Niagara Workbench Imports Example" width="650">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/openWeatherMapAPIReqImports.png" alt="Niagara Workbench Imports Example" width="650">
 </p>
 
 </details>
@@ -5364,7 +5363,7 @@ Where then some custom controls engineering logic can be applied or whatever is 
 ---
 
 <p align="center">
-<img src="snips/AiEngSnip.png" alt="Niagara AI Power Predictor Wiresheet" width="800">
+<img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/AiEngSnip.png" alt="Niagara AI Power Predictor Wiresheet" width="800">
 <br><em>Niagara ProgramObject calling the local FastAPI model container and writing kW + status back into the station.</em>
 </p>
 
@@ -5571,7 +5570,7 @@ Fetches **public holidays** from the free Nager.Date API and auto-drives a **Cal
 The Nager API program makes an HTTP GET request to the Nager web service, building a URL with the specified country code and year to retrieve a list of public holidays in the JSON format. It processes this JSON text by scanning for specific keys to extract the "date" string (e.g., "2025-12-25") and the "localName" for each holiday, storing them in a HashMap. This program also uses its calendarOrd to find the target BCalendarSchedule component, where it then adds a new BDateSchedule child for each holiday, setting the required Year, Month, and Day properties by parsing the date string.
 
 <p align="center">
-  <img src="snips/nagerApiSnip.png" alt="Nager API Holiday Checker wiresheet" width="820">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/nagerApiSnip.png" alt="Nager API Holiday Checker wiresheet" width="820">
 </p>
 
 **What it does**
@@ -5590,7 +5589,7 @@ The Nager API program makes an HTTP GET request to the Nager web service, buildi
 If you create a `CalendarSchedule` inside the Program’s *Imports* tab, add the **schedule** package:
 
 <p align="center">
-  <img src="snips/scheduleImportsNoteSnip.png" alt="Schedule import note" width="720">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/scheduleImportsNoteSnip.png" alt="Schedule import note" width="720">
 </p>
 
 On the Program Object’s `Source` tab (the auto-generated code base), the import statements—if configured correctly—should look similar to the example below.
@@ -6038,11 +6037,11 @@ The iCal program makes an HTTP GET request to a URL specified in its icsUrl slot
 ---
 
 <p align="center">
-  <img src="snips/icalAxPropSheetSnip.png" alt="iCal AX / N4 Property Sheet" width="850">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/icalAxPropSheetSnip.png" alt="iCal AX / N4 Property Sheet" width="850">
 </p>
 
 <p align="center">
-  <img src="snips/icalSnip.png" alt="iCal Wiresheet Snip" width="850">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/icalSnip.png" alt="iCal Wiresheet Snip" width="850">
 </p>
 
 ---
@@ -6552,7 +6551,7 @@ This block updates automatically **every second**, performing null-handling chec
 If the input wire is not connected or returns a null value, the outputs are cleared and the status trace reports `"Input not wired or NULL."`.
 
 <p align="center">
-  <img src="snips/unixTimeConvertSnip.png" width="700">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/unixTimeConvertSnip.png" width="700">
 </p>
 
 
