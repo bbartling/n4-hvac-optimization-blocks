@@ -1,532 +1,531 @@
-# AGENTS.md — Vibe Coding Agent Guide (Niagara 4 ProgramObject)
+# AGENTS.md — Vibe Coding Agent (Niagara 4 ProgramObject) Directive
 
-This document serves as the **operating manual for developer and AI agents** working within this repository. It defines how Niagara 4 Program Objects, logic agents, and future driver-integrated processes should be structured and extended.
+**Version:** 1.0
+**Document Purpose:** This document is the **Standard Operating Procedure (SOP)** and technical directive for AI and human developer agents tasked with generating Java code for Niagara 4 `ProgramObject` components within this repository.
 
-For hardware or legacy API references, see [`NIAGARA_AX_NOTES.md`](./NIAGARA_AX_NOTES.md).
-For live algorithm definitions and ready‑to‑deploy `.bog` examples, see [`README.md`](./README.md).
+Its goal is to ensure that all generated code is **safe, efficient, robust, and compliant** with the Niagara Framework's execution model. This guide defines the non-negotiable rules, canonical patterns, and operational context required for code generation.
 
-> **Note:** The main README has been reorganized to keep it concise.  Detailed tutorials and code examples have been moved into separate sub‑guides:
+-----
 
-- [**Tutorials & Algorithms**](README_TUTORIALS_ALGORITHMS.md) — step‑by‑step examples and general algorithm blocks.
-- [**GL36 Air Side Trim & Respond**](README_TRIM_RESPOND.md) — variable definitions tutorial, VAV box requests, and trim‑respond resets.
-- [**GL36 Central Plant & AHU FDD**](README_GL36.md) — chiller plant enable logic, AHU fault detection, and other GL36‑compliant strategies.
-- [**Non‑GL36 & Advanced Logic**](README_NON_GL36.md) — simplified resets and per‑chiller rotator for systems outside Guideline 36.
-- [**APIs & Web Requests**](README_APIS.md) — examples for calling weather, holiday and iCalendar APIs or integrating external ML models.
-- [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and polynomial regression.
-- [**Demand‑Side Management**](README_DEMAND_SIDE_MANAGEMENT.md) — OpenADR client and PNNL‑inspired intelligent load shedding.
-- [**Niagara AX Notes**](NIAGARA_AX_NOTES.md) — notes on creating `ProgramObjects` in legacy Niagara AX (earlier Java-based versions).
+## 📚 Supporting Documentation
 
+Before generating code, familiarize yourself with the available logic patterns and repository structure.
 
-These sub‑guides mirror the original README content exactly, so feel free to consult them when generating code for a specific category.
+  * **Legacy Hardware/API:** [`NIAGARA_AX_NOTES.md`](https://www.google.com/search?q=./NIAGARA_AX_NOTES.md)
+  * **Deployable Examples:** [`README.md`](https://www.google.com/search?q=./README.md) (Main BOG file index)
 
-**Audience:** Coding agents (and power users) that will auto-generate **method bodies** for Niagara 4 `Program` objects inside `ProgramImpl.java`.
+> **Note on Repository Structure:**
+> The main README has been refactored for brevity. Detailed tutorials and algorithm-specific code examples are located in dedicated sub-guides. These guides serve as the **primary source of truth** for task-specific logic.
 
-**Goal:** Given a slot table and a task, produce **only** the Java bodies for `onStart`, `onExecute`, `onStop`, plus any small helper methods or constants **inside** the class — no headers/imports/getters/setters. The human will paste results into Workbench and compile.
+  * [**Tutorials & Algorithms**](https://www.google.com/search?q=README_TUTORIALS_ALGORITHMS.md): Step-by-step examples and general algorithm blocks.
+  * [**GL36 Air Side Trim & Respond**](https://www.google.com/search?q=README_TRIM_RESPOND.md): VAV box requests and trim-respond logic.
+  * [**GL36 Central Plant & AHU FDD**](https://www.google.com/search?q=README_GL36.md): Chiller plant enable logic and AHU fault detection.
+  * [**Non-GL36 & Advanced Logic**](https://www.google.com/search?q=README_NON_GL36.md): Simplified resets and custom rotator logic.
+  * [**APIs & Web Requests**](https://www.google.com/search?q=README_APIS.md): Calling weather, holiday, iCal APIs, and integrating ML models.
+  * [**Optimal Start Algorithms**](https://www.google.com/search?q=README_OPT_START.md): PNNL-based adaptive optimal start.
+  * [**Demand-Side Management**](https://www.google.com/search?q=README_DEMAND_SIDE_MANAGEMENT.md): OpenADR client and intelligent load shedding.
 
----
+-----
 
-## 0) Hard Rules (Non‑Negotiable)
+## 1\. 🎯 Core Mission & Agent Contract
 
-1. **Generate method bodies only:**
-   - Allowed: `onStart(...)`, `onExecute(...)`, `onStop(...)`, private helpers inside the class (e.g., `private String normalizeCountry(String s) { ... }`), small `static final` constants.
-   - **Forbidden:** package/import lines, class headers, field/slot declarations, getters/setters, `main`, nested classes, project files.
+### 1.1. Agent Task (Your Goal)
 
-2. **Slot names/types are canonical.**
-   - Assume the properties (slots) already exist per the user’s table. **Do not** rename, add, or remove slots.
-   - When reading a slot, always check status (OK/GOOD) before using the value. Provide a safe fallback.
+Given a **slot table** and a **task description**, you will produce **only** the Java method bodies for `onStart()`, `onExecute()`, `onStop()`, and any necessary private helper methods or constants.
 
-3. **No busy loops or blocking waits.**
-   - Use Workbench’s scheduler/timer patterns (e.g., `Clock.schedule(...)` or the repo’s standard scheduling helper). Never `while(true)` or sleep loops.
+### 1.2. Agent Interaction Model
 
-4. **Resource limits (JACE‑safe):**
-   - Keep total execution light (aim for < 10 ms per `onExecute`).
-   - Avoid repeated allocations; reuse buffers when feasible.
-   - Rate‑limit network calls; default refresh windows: 1h+ for external APIs unless the human requests otherwise.
+**Inputs You Will Receive (The "Prompt"):**
 
-5. **Networking policy:**
-   - Only call HTTP(S) endpoints explicitly mentioned by the human (e.g., Nager.Date, NextSpaceflight). No discovery probes. Respect timeouts and backoff.
+1.  A **Slot Table**: A definitive list of all pre-existing properties (slots) on the `ProgramObject`, including their names and Java types (e.g., `BStatusNumeric`, `BOrd`, `BStatusBoolean`).
+2.  A **Task**: A clear description of the desired logic (e.g., "Fetch Nager holidays and populate a Calendar schedule," "Average all `In` slots," "Implement a lead-lag rotator").
 
-6. **Error handling & safety:**
-   - Never throw uncaught exceptions. Catch/log and set a status string (e.g., `apiResponse`) with concise context (`"OK"`, `"ERROR: message"`).
-   - If inputs are NULL/BAD, skip work and set status to a helpful message rather than crashing.
+**Deliverables You Must Return (The "Response"):**
 
-7. **Output structure for the human:**
-   - Return three fenced code blocks in this order: `onStart`, `onExecute`, `onStop`. Include any helper methods in a fourth block titled **Helpers**.
-   - Keep comments short and focused on what the code is doing in Niagara terms.
+1.  **Method Bodies Only**: Fenced Java code blocks for `onStart`, `onExecute`, and `onStop`.
+2.  **Helpers Block**: An optional fourth block, `// Helpers`, for any private helper methods or `private static final` constants.
+3.  **No other code**: No package declarations, no imports, no class headers, no field declarations, and no getters/setters.
 
----
+-----
 
-## 1) Minimal Contract You Must Follow
+## 2\. ❗ Core Directives & Invariants (Non-Negotiable)
 
-**Inputs you will receive from the human (or repo examples):**
-- A **slot table** describing writable/readonly slots (names & types) that already exist on the Program object.
-- A **task** (e.g., “Fetch Nager holidays and populate a Calendar schedule,” or “Parse generic `.ics` and map to Special Events”).
+These rules are absolute. Violation can lead to component failure, thread starvation, or JACE instability.
 
-**Outputs you must return:**
-- **Only method bodies** for `onStart`, `onExecute`, `onStop` (and optional small helpers).
-- If you need constants (e.g., default intervals), declare them `private static final` **inside** the class and keep them tiny.
+1.  **Generate Method Bodies ONLY**
 
-**Never**: change slot names, introduce new public properties, or emit full classes/imports.
+      * **ALLOWED:** The code *inside* `onStart()`, `onExecute()`, `onStop()`, and private helper methods at the class level (e.g., `private int clamp(...)`). Small `private static final` constants are also permitted.
+      * **FORBIDDEN:** You **must not** generate any of the following:
+          * `package ...;` or `import ...;` statements.
+          * `public class ProgramImpl extends ProgramBase { ... }` (or any class definition).
+          * Slot declarations (e.g., `public static final Property in1 = ...`).
+          * Auto-generated getter/setter methods (e.g., `public BStatusNumeric getIn1() { ... }`).
+          * `public static void main(String[] args)`.
+          * Nested classes.
+      * **Rationale:** The Niagara Workbench **auto-generates** all this boilerplate code. The human developer only pastes your method bodies into the pre-existing, non-editable `ProgramImpl.java` view. Generating forbidden code will cause a compile failure.
 
----
+2.  **Slots are the Immutable API**
 
-## 2) Canonical Slot‑IO Patterns
+      * The slot table provided by the human is **canonical**.
+      * You **must** use the slot names and types *exactly* as given.
+      * **Do not** invent new slots, rename existing slots, or assume a different type.
+      * **Rationale:** Slots are the public API of the component, defined visually in Workbench. The generated getter/setter methods (`getIn1()`, `setOut1()`) are based *exactly* on these names. A mismatch will fail to compile.
 
-When reading a slot that may be unwired or NULL, use the **status‑guard** pattern:
+3.  **No Blocking Operations or Busy Loops**
 
-```java
-// Example for a numeric slot
-double oatF = getOutsideAirTemp_F().getStatus().isOk()
-    ? getOutsideAirTemp_F().getValue()
-    : 70.0; // safe fallback
-```
+      * You **must not** use `while(true)`, `Thread.sleep()`, or any other operation that blocks the execution thread.
+      * All long-running or periodic tasks **must** use the asynchronous scheduling patterns defined in Section 5.
+      * **Rationale:** `ProgramObject` methods execute on a shared, limited thread pool (the "Worker" thread). Blocking this thread will starve all other components, timers, and logic on the JACE, potentially leading to a catastrophic controller-wide freeze.
 
-When writing status back to a string/numeric slot, **normalize** values and keep concise:
+4.  **Strict Performance & Resource Limits**
 
-```java
-getApiResponse().setValue("OK"); // or "ERROR: <short reason>"
-```
+      * Aim for `onExecute()` to complete in **\< 10ms**.
+      * Avoid repeated large memory allocations (e.g., creating large `byte[]` arrays or `String` buffers inside `onExecute`).
+      * If a buffer is needed, declare it as a private instance variable and reuse it.
+      * **Rationale:** The JACE is an embedded, resource-constrained device. A single, inefficient component can consume disproportionate CPU and memory, degrading the performance of the entire station.
 
-When updating a **Calendar/Special Event** target via an Ord, always:
-- Validate the `BOrd` resolves (non‑NULL).
-- Handle missing ord gracefully (set status; return).
+5.  **Network & Filesystem Policy**
 
----
+      * Only perform network calls (HTTP/S) to endpoints **explicitly authorized** by the human's task.
+      * **Do not** probe, discover, or call any other external service.
+      * **Do not** attempt to read from or write to the JACE filesystem unless the task explicitly provides a safe, pre-approved path.
+      * **Rationale:** Security and stability. Unauthorized network or file I/O is a significant security risk and can lead to JACE instability (e.g., filling the disk, network saturation).
 
-## 3) Scheduling Patterns (Use These, Don’t Invent New)
+6.  **Absolute Exception & Safety Discipline**
 
-### A) Execute‑on‑Change (preferred for one‑shot triggers)
-- Triggered by a boolean slot like `updateNow`.
-- Immediately perform action, then **auto‑reset** the trigger to `false`.
+      * Your code **must never** throw an uncaught exception.
+      * All primary logic (especially in `onExecute`) **must** be wrapped in a `try...catch (Exception e)` block.
+      * If an error occurs, **log it** (if possible) and **set a status string** (e.g., `getApiResponse()`) with a concise error message.
+      * **Rationale:** An uncaught exception in `onStart`, `onExecute`, or `onStop` will place the component into a fault state. This often requires a manual component/station restart to clear.
 
-Pseudocode flow for `onExecute`:
-1. If `updateNow` is not `true`, `return`.
-2. Do work (e.g., fetch holidays).
-3. Write concise status and **set `updateNow=false`**.
+-----
 
-### B) Timed Refresh (preferred for background)
-- Use a writable numeric slot like `refreshIntervalSeconds` (clamp to sane bounds, e.g., 3600..2592000).
-- Schedule the next run using the platform clock helper and **no busy loops**.
-- Keep network I/O bounded and resilient (timeouts, minimal retries, exponential backoff).
+## 3\. ⚙️ Understanding the Niagara Environment
 
----
+To write effective code, you must understand your execution context.
 
-## 4) Networking & Parsing Recipes
+### 3.1. The `ProgramObject` Sandbox
 
-### A) HTTP GET (Nager.Date, JSON)
-- Respect `countryCode` normalization (e.g., `UK→GB`, `USA→US`).
-- Build URL: `https://date.nager.at/api/v3/PublicHolidays/{year}/{cc}` (and optionally `{year+1}`).
-- Parse JSON safely; empty list is acceptable (set status `"OK: 0 holidays"`).
+Your code does not run like a normal Java application. It runs inside a secure sandbox called **`program-rt`**. This sandbox only grants access to a "whitelist" of safe, core Java and Niagara classes.
 
-### B) HTTP GET (Generic `.ics`)
-- Download `.ics` text and parse **VEVENT** blocks.
-- Extract `DTSTART`, `DTEND`, `SUMMARY` (fallbacks allowed).
-- Convert to internal Calendar/Special Event entries.
+  * **Available by Default:** `javax.baja.sys.*`, `javax.baja.status.*`, `javax.baja.util.*`, `com.tridium.program.*`, and core `java.util.*` packages.
+  * **NOT Available by Default:** Advanced APIs for scheduling, histories, alarms, or networking.
 
-**Always**: clamp number of imported events (e.g., max 1000 per run) and de‑dup on UID if present.
+### 3.2. Module Dependencies
 
----
+To use APIs *outside* the default sandbox, the human must **manually add a module dependency** to the `ProgramObject` in Workbench. Your code can then *assume* those classes are available.
 
-## 5) Guardrails & Clamps (Good Defaults)
+| Purpose | Module Required | Example Classes/Imports |
+| :--- | :--- | :--- |
+| **Calendars & Schedules** | `schedule-rt` | `javax.baja.schedule.*` |
+| **Histories & Trends** | `history-rt` | `javax.baja.history.*` |
+| **Alarms** | `alarm-rt` | `javax.baja.alarm.*` |
+| **Weather & Web Calls** | `inet-rt` | `javax.baja.inet.HttpURLConnection` |
+| **BACnet / Modbus Types** | (Driver Module) | `com.tridium.bacnet.B...` |
 
-- `executePeriodSeconds`: clamp to `60..3600` seconds.
-- `refreshIntervalSeconds`: clamp to `3600..2592000` (1h..30d).
-- Max events per import: `1000`.
-- HTTP timeouts: connect 5s, read 10s.
-- Backoff: 2× up to 3 tries on transient failures (HTTP 429/5xx).
+**Your responsibility:** If a task requires (e.g.) writing to a calendar, you will write the code assuming `javax.baja.schedule.*` is available. You can and should **add a comment** notifying the human if a non-standard module is required.
 
----
+### 3.3. The Auto-Generated Code Skeleton
 
-## 6) Validation & Status Discipline
-
-After every meaningful step, keep `apiResponse` short:
-- `"OK"` when successful.
-- `"OK: 213 events"` on bulk loads.
-- `"ERROR: timeout"` or `"ERROR: bad ord"` (≤ 60 chars).
-
-If a slot is misconfigured (e.g., null `calendarOrd`), **do not** proceed — set `"ERROR: calendar ord null"` and return.
-
----
-
-## 7) Output Format (What You Must Return)
-
-Return **four** blocks in this order. Only the first three are required; Helpers is optional.
-
-```java
-// onStart
-{ ...body only... }
-```
-
-```java
-// onExecute
-{ ...body only... }
-```
-
-```java
-// onStop
-{ ...body only... }
-```
-
-```java
-// Helpers (optional)
-{ private String normalizeCountry(String s) { ... } }
-```
-
-Keep each block self‑contained and paste‑ready for Workbench’s `ProgramImpl.java`.
-
----
-
-## 8) Prompt Starters (Agent‑Facing)
-
-**Holiday Fetcher (Nager.Date)**
-> Slots: `countryCode` (str, writable), `refreshIntervalSeconds` (num, writable), `updateNow` (bool, writable), `apiResponse` (str), `calendarOrd` (BOrd). Implement: on change of `updateNow`, fetch {thisYear, nextYear}, map to calendar special events via `calendarOrd`, set `apiResponse` with result. Clamp intervals and auto‑reset `updateNow=false`.
-
-**Generic iCal Importer**
-> Slots: `icsUrl` (str, writable), `refreshIntervalSeconds` (num, writable), `updateNow` (bool, writable), `calendarOrd` (BOrd), `apiResponse` (str). On `updateNow` or timer, GET `.ics`, parse VEVENTs, import as special events, de‑dup by UID if available, set concise status.
-
----
-
-## 9) Small Code Patterns You Can Reuse
-
-**Clamp helper (inline allowed in Helpers block):**
-```java
-private static int clamp(int v, int lo, int hi) {
-    return (v < lo) ? lo : (v > hi) ? hi : v;
-}
-```
-
-**Auto‑reset toggle after work:**
-```java
-if (getUpdateNow().getValue()) {
-    try {
-        // ...do work...
-        getApiResponse().setValue("OK");
-    } catch (Exception ex) {
-        getApiResponse().setValue("ERROR: " + shortMsg(ex));
-    } finally {
-        getUpdateNow().setValue(false);
-    }
-}
-```
-
-**Short exception message:**
-```java
-private static String shortMsg(Throwable t) {
-    String m = t.getMessage();
-    return (m == null) ? t.getClass().getSimpleName() : (m.length() > 56 ? m.substring(0, 56) : m);
-}
-```
-
----
-
-## 10) Review Checklist (Run Before Returning Code)
-
-- [ ] No imports or class headers included
-- [ ] Only method bodies + optional tiny helpers
-- [ ] Slots referenced exactly as provided (names/types)
-- [ ] Status‑guards on every external read
-- [ ] No busy loops; only timer/trigger patterns
-- [ ] Intervals clamped; network timeouts set
-- [ ] `apiResponse` set to short, meaningful string
-- [ ] `updateNow` auto‑resets to false if used
-- [ ] Event counts/limits respected
-- [ ] Methods paste‑ready into `ProgramImpl.java`
-
----
-
-<details>
-<summary>🧠 LLM Model Context Full</summary>
-
-AI/LLM's section to read...not required by the human. This section provides a guide for interacting with AI and LLMs (like ChatGPT) to generate **Niagara 4 Program Object** Java code *safely and correctly*.
-
-Niagara Workbench **auto-generates** important pieces of the Program Object code — do not generate or modify them manually.
-
-Default imports are automatic, special packages for networking, I/O, or advanced scheduling (like java.net, java.io, java.time, or javax.baja.schedule) MUST be added manually to the Program Object's Imports tab. Snips are available to the human for reference this.
-
----
-
-### **Key Rules for LLM and Human Collaboration**
-
-#### **❌ Do Not Generate or Modify These**
-
-> **LLMs must NOT generate:**
-> * Do not insert emoji into code as it will error out the compiling process.
-> * Class header and imports.
-> * `public class ProgramImpl extends ProgramBase`.
-> * Auto-generated slot getter and setter methods.
-> * `/* Auto-generated ProgramImpl Code */` sections.
-
-These are **automatically handled** by **Niagara Workbench** — no need to manually import or build the class boilerplate!
-
-**Workbench generates this structure for you**:
+Workbench generates a `ProgramImpl.java` file that looks conceptually like this. Your code only fills the commented sections.
 
 ```java
 /* Auto-generated ProgramImpl Code */
 
+// 1. Imports are added here (by Workbench, from Imports tab)
 import java.util.*;
 import javax.baja.sys.*;
 import javax.baja.status.*;
 import com.tridium.program.*;
+import javax.baja.schedule.*; // <-- Manually added by human
 
 public class ProgramImpl extends ProgramBase {
-  
-  public void onStart() throws Exception {
-    // startup code
-  }
 
-  public void onExecute() throws Exception {
-    // execute code
-  }
+    /* 2. Slot definitions and getters/setters are auto-generated here */
+    // ... public BStatusString getCountryCode() { ... }
+    // ... public BOrd getCalendarOrd() { ... }
 
-  public void onStop() throws Exception {
-    // shutdown code
-  }
+    /* 3. Your code is pasted here by the human */
+
+    public void onStart() throws Exception {
+        // AI-GENERATED onStart() BODY GOES HERE
+    }
+
+    public void onExecute() throws Exception {
+        // AI-GENERATED onExecute() BODY GOES HERE
+    }
+
+    public void onStop() throws Exception {
+        // AI-GENERATED onStop() BODY GOES HERE
+    }
+
+    /* 4. Your helper methods are pasted here */
+
+    // AI-GENERATED HELPER METHODS GO HERE
+    // private String normalizeCountry(String s) { ... }
 }
 ```
 
-On the Program Object’s Source tab (the auto-generated code base), the import statements—if configured correctly—should look similar to the example below. You can ask the human to show you the auto-generated source code (which cannot be modified) to verify that any required external packages or modules have been properly included.
+-----
+
+## 4\. ✍️ Code Generation Standards & Patterns
+
+Follow these patterns strictly for safety and consistency.
+
+### 4.1. Reading from Slots (The "Status-Guard" Pattern)
+
+**Never** access a slot's value directly. Always check its status first. Unwired or faulted slots will have a non-OK status (`isBad()`, `isFault()`, `isNull()`).
+
+#### **BStatusNumeric / BStatusBoolean**
+
 ```java
-/* Auto-generated ProgramImpl Code */
+// Preferred: Use a safe fallback value
+double oatF = getOutsideAirTemp_F().getStatus().isOk()
+    ? getOutsideAirTemp_F().getValue()
+    : 70.0; // A reasonable default
 
-import java.util.*;              /* java Predefined*/
-import javax.baja.nre.util.*;    /* nre Predefined*/
-import javax.baja.sys.*;         /* baja Predefined*/
-import javax.baja.status.*;      /* baja Predefined*/
-import javax.baja.util.*;        /* baja Predefined*/
-import com.tridium.program.*;    /* program-rt Predefined*/
-import javax.baja.schedule.*;    /* schedule-rt User Defined*/
-import javax.baja.naming.*;      /* baja By Property*/
+boolean enabled = getEnable().getStatus().isOk()
+    ? getEnable().getValue()
+    : false; // Default to a 'safe' state
+```
 
-public class ProgramImpl
-  extends com.tridium.program.ProgramBase
+#### **BStatusString**
+
+```java
+// Preferred: Use a safe fallback, check for null/empty
+String countryCode = "US"; // Default
+if (getCountryCode().getStatus().isOk()) {
+    String val = getCountryCode().getValue();
+    if (val != null && !val.trim().isEmpty()) {
+        countryCode = val.trim();
+    }
+}
+// Now 'countryCode' is guaranteed to be a valid, non-null string
+```
+
+#### **BOrd (Object Resolution)**
+
+This is a multi-step process:
+
+1.  Check if the `BOrd` slot itself is OK.
+2.  Resolve the ORD to a `BComponent`.
+3.  Check if the resolved component is non-null.
+4.  (Optional but recommended) Check if the component is the *type* you expect.
+
+<!-- end list -->
+
+```java
+// Example: Resolving a Calendar target
+BCalendarSchedule calendar = null;
+if (getCalendarOrd().getStatus().isOk()) {
+    try {
+        // Try to resolve the ORD string
+        BComponent component = (BComponent) getCalendarOrd().resolve(getContext()).get();
+        
+        // Check if it resolved and is the correct type
+        if (component instanceof BCalendarSchedule) {
+            calendar = (BCalendarSchedule) component;
+        } else {
+            // Resolved to something, but it's not a calendar
+            getApiResponse().setValue("ERROR: ORD is not a CalendarSchedule");
+        }
+    } catch (Exception e) {
+        // Failed to resolve (e.g., path is bad, component deleted)
+        getApiResponse().setValue("ERROR: Cannot resolve calendarOrd: " + e.getMessage());
+    }
+} else {
+    getApiResponse().setValue("ERROR: calendarOrd is unwired or in fault");
+}
+
+// *** CRITICAL ***
+// If the target is required, stop all further execution
+if (calendar == null) {
+    return; // Stop processing in onExecute
+}
+
+// Now 'calendar' is safe to use
+// ...
+```
+
+### 4.2. Writing to Slots
+
+  * **Data Slots:** Set the value directly.
+    `getOutValue().setValue(123.45);`
+  * **Status Slots:** Be concise and informative. This is the primary debugging tool for the human.
+      * **Success:** `getApiResponse().setValue("OK");`
+      * **Success with data:** `getApiResponse().setValue("OK: 21 holidays imported");`
+      * **Failure:** `getApiResponse().setValue("ERROR: HTTP 404 - Not Found");`
+      * **Configuration Error:** `getApiResponse().setValue("ERROR: calendarOrd is null");`
+
+### 4.3. State Management
+
+  * **Stateless:** `onExecute()` should be stateless whenever possible. All data should come from input slots and all results written to output slots.
+  * **Stateful:** If state *must* be preserved between executions (e.g., a timer ticket, a network client, a running total), use **private instance variables**.
+      * **Do not** use `static` variables, as they will be shared by *all* instances of your Program Object on the JACE, leading to unpredictable behavior.
+
+<!-- end list -->
+
+```java
+// CORRECT: Instance variable for state
+private Clock.Ticket timerTicket;
+private int executionCounter = 0;
+
+// INCORRECT: Static variable
+// private static Clock.Ticket timerTicket; // DANGEROUS!
+```
+
+-----
+
+## 5\. ⏱️ Execution & Scheduling Patterns
+
+Choose one of these two patterns. **Never** invent a new one.
+
+### Pattern A: Event-Driven (e.g., `updateNow` Trigger)
+
+Used for one-shot actions triggered by a human or another component.
+
+  * **Required Slots:** `updateNow` (BStatusBoolean, Writable)
+  * **Logic:** The work is performed *inside* a `try...catch...finally` block. The `finally` block **guarantees** the `updateNow` trigger is reset to `false`, preventing re-execution loops.
+
+<!-- end list -->
+
+```java
+// onStart
 {
-```
+    // No startup logic needed for this pattern
+}
 
-These are the methods that the human can modify only through AI-generated code. Adding packages and modules is done separately on the Imports tab of the Program Object, not programmatically within the source code.
-
-```java
-public void onStart() throws Exception
+// onExecute
 {
-  // start up code here
-}
+    // Only run if the updateNow trigger is true and OK
+    if (getUpdateNow().getStatus().isOk() && getUpdateNow().getValue()) {
+        try {
+            // ***************************
+            // *** DO ALL WORK HERE ***
+            // e.g., fetchHolidays();
+            // ***************************
 
-public void onExecute() throws Exception
-{
-  // execute code (set executeOnChange flag on inputs)
-}
+            getApiResponse().setValue("OK: Update complete");
 
-public void onStop() throws Exception
-{
-  // shutdown code here
-}
+        } catch (Exception e) {
+            // Log and set error status
+            log.error("Failed to execute update", e);
+            getApiResponse().setValue("ERROR: " + shortMsg(e));
 
-```
-
-### When Additional Niagara Modules Are Needed in Program Objects
-
-A **Program Object** runs in Niagara’s sandbox (“program-rt”), which only exposes safe core APIs (`javax.baja.sys`, `javax.baja.status`, `javax.baja.util`, etc.).
-You must **add or require extra modules** when you reference classes outside this default set.
-
-#### When a plain Program Object is enough
-
-* You only use built-in Baja types (e.g., `BStatusNumeric`, `BDateTime`, `BBoolean`).
-* You only call Java core packages like `java.net.*` or `java.util.*`.
-* You work with Niagara components already on the station (e.g., schedules, points).
-* You’re fine with limited privileges (no file I/O, threads, or external JARs).
-
-#### When to add a module dependency
-
-* You use types from another module (e.g., `javax.baja.schedule.*` → **schedule-rt**).
-* You call APIs that aren’t whitelisted in program-rt.
-* You want palette components, background threads, or long-running tasks.
-* You depend on 3rd-party libraries (JSON, iCal, OAuth, MQTT, etc.).
-* You need higher permissions, signed code, or access to histories/alarms.
-
-#### Common module examples
-
-| Purpose                        | Module Required                 |
-| ------------------------------ | ------------------------------- |
-| Calendar & schedules           | `schedule-rt`                   |
-| Histories & trends             | `history-rt`                    |
-| Alarms                         | `alarm-rt`                      |
-| Weather & web calls            | `inet-rt`                       |
-| BACnet / Modbus types          | Corresponding driver module     |
-| JSON / XML parsing beyond core | Custom module with embedded JAR |
-
-#### Rule of thumb
-
-* **Small glue logic + existing modules → Program Object**
-* **Anything needing new APIs, libraries, or long-lived behavior → Custom Module**
-
----
-
-### **✅ What You *Can* Ask LLMs to Generate**
-
-> **Only generate code inside:**
->
-> * `onStart()`
-> * `onExecute()`
-> * `onStop()`
-> * Small helper methods (at the class level)
-
-**⚠️ Reminder:**
-
-* Java does **NOT** allow nested methods.
-* **Helper functions (like `addIfWired()`) must be at class level**, not inside `onExecute()`.
-
-**Example of what NOT to do** — ❌ **Incorrect**
-
-```java
-public void onExecute() throws Exception {
-  // this is invalid: 
-  double addIfWired(BStatusNumeric input) { 
-    ...
-  }
-}
-```
-
-**Correct** — ✅ **Move helper outside**
-
-```java
-// Class-level helper
-int addIfWired(BStatusNumeric input) {
-  if (input.getStatus().isOk()) {
-    sum += input.getValue();
-    return 1;
-  }
-  return 0;
-}
-```
-
----
-
-### **Internal Timers in Niagara Program Objects**
-
-> **Use Clock.schedule() with a BRelTime object inside a helper method.**
-
-**Example (Correct Timer Logic):**
-
-```java
-Clock.Ticket ticket;
-
-void updateTimer() {            
-  if (ticket != null) {
-    ticket.cancel();
-  }  
-  // Hardcoded 10-second update interval
-  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
-}
-```
-
-🚫 **Do NOT** expose a writable `executePeriod` slot unless truly necessary —
-Just schedule internal periodic execution using `Clock.schedule()` directly!
-
----
-
-### **Common Mistakes to Avoid**
-
-| Mistake                              | Correction                                                                 |
-| ------------------------------------ | -------------------------------------------------------------------------- |
-| Generating class headers/imports     | ❌ Leave this to Workbench.                                                 |
-| Writing slot getters/setters         | ❌ Workbench auto-generates them based on slot definitions.                 |
-| Nesting helper methods               | ❌ Java doesn't allow methods inside methods — move helpers to class level. |
-| Generating update intervals as slots | ❌ Hardcode your `BRelTime` interval unless you need configurable timing.   |
-
----
-
-### **When Humans Provide Slot Names**
-
-If the human provides slot names:
-
-* Use them exactly.
-* Access them via `getSlotName()`, e.g., `getIn1().getValue()`.
-
-If no names are provided:
-
-* LLM should propose **reasonable slot names** and show a table.
-
----
-
-### **Example Slot Table if No Names Provided**
-
-| Slot Name      | Type           | Writable | Description           |
-| -------------- | -------------- | -------- | --------------------- |
-| `in1`          | BStatusNumeric | Yes      | First numeric input   |
-| `in2`          | BStatusNumeric | Yes      | Second numeric input  |
-| `outAvg`       | BStatusNumeric | No       | Average value output  |
-| `wiredInCount` | BStatusString  | No       | Count of wired inputs |
-
----
-
-### **How to Work With LLMs**
-
-1. Only paste **method bodies** (`onStart`, `onExecute`, `onStop`) into Workbench.
-2. **Compile** the Program Object.
-3. **If errors occur:**
-
-   * Screenshot the **error** and **slot sheet**.
-   * Share it back with the LLM for correction.
-
-⚡ **Quick Debug Tip:**
-Most compile errors come from:
-
-* Slot names mismatching.
-* Wrong assumptions about slot types or missing getter methods.
-
----
-
-### **Good Example Output (Correct)**
-
-```java
-public void onStart() throws Exception {
-    updateTimer();
-}
-
-public void onExecute() throws Exception {
-    updateTimer();
-    
-    sum = 0;
-    int wiredCount = 0;
-
-    wiredCount += addIfWired(getIn1());
-    wiredCount += addIfWired(getIn2());
-    
-    getOut().setValue(sum);
-    getWiredInCount().setValue("Wired Inputs: " + wiredCount);
-}
-
-public void onStop() throws Exception {
-    if (ticket != null) {
-        ticket.cancel();
+        } finally {
+            // *** CRITICAL ***
+            // Always reset the trigger to false, even if work failed
+            getUpdateNow().setValue(false);
+        }
     }
 }
 
-// ✅ Class-level helper function
-int addIfWired(BStatusNumeric input) {
-    if (input.getStatus().isOk()) {
-        sum += input.getValue();
-        return 1;
-    }
-    return 0;
+// onStop
+{
+    // No shutdown logic needed
 }
 ```
 
----
+### Pattern B: Time-Driven (Periodic Background Refresh)
 
-### **Summary**
+Used for background tasks like polling an API or recalculating a complex value.
 
-> **LLMs:**
->
-> * ✅ Only generate *method* code (no imports/class headers).
-> * ✅ Keep helper functions *outside* methods.
-> * ✅ Use internal `Clock.schedule()` hardcoded intervals unless told otherwise.
->
-> **Humans:**
->
-> * ✅ Use Workbench to compile.
-> * ✅ Screenshot and debug slot sheet + errors if issues arise.
+  * **Required Slots:** `refreshIntervalSeconds` (BStatusNumeric, Writable, Default e.g., 3600)
+  * **State:** Requires a `private Clock.Ticket timerTicket;` instance variable.
+  * **Logic:** `onStart` schedules the *first* execution. `onExecute` does the work and then **schedules the next** execution. `onStop` cancels the timer to prevent orphaned threads.
 
-</details>
+<!-- end list -->
 
-### Changelog
-- **v0.1 (draft):** Initial agent guide for VIBE Coding Addict repo.
+```java
+// --- Add to Helpers Block ---
+private Clock.Ticket timerTicket;
+
+private void scheduleNextRun() {
+    // Always cancel any previous timer
+    if (timerTicket != null) {
+        timerTicket.cancel();
+        timerTicket = null;
+    }
+
+    // 1. Get and clamp the interval from the slot
+    double seconds = 3600.0; // Default: 1 hour
+    if (getRefreshIntervalSeconds().getStatus().isOk()) {
+        seconds = getRefreshIntervalSeconds().getValue();
+    }
+    // Clamp to safe bounds (e.g., 5 min to 1 day)
+    seconds = Math.max(300.0, Math.min(86400.0, seconds));
+    
+    // 2. Schedule the next 'onExecute'
+    BRelTime interval = BRelTime.makeSeconds(seconds);
+    timerTicket = Clock.schedule(this, interval, BProgram.execute, null);
+}
+// --- End of Helpers Block ---
+
+
+// onStart
+{
+    // Schedule the first run to happen immediately
+    Clock.schedule(this, BRelTime.makeSeconds(1), BProgram.execute, null);
+}
+
+// onExecute
+{
+    try {
+        // ***************************
+        // *** DO ALL WORK HERE ***
+        // e.g., fetchApiData();
+        // ***************************
+
+        getApiResponse().setValue("OK: Refresh complete");
+
+    } catch (Exception e) {
+        log.error("Failed to execute periodic refresh", e);
+        getApiResponse().setValue("ERROR: " + shortMsg(e));
+    } finally {
+        // *** CRITICAL ***
+        // Schedule the *next* run, regardless of success or failure
+        scheduleNextRun();
+    }
+}
+
+// onStop
+{
+    // *** CRITICAL ***
+    // Clean up the timer to prevent leaks
+    if (timerTicket != null) {
+        timerTicket.cancel();
+        timerTicket = null;
+    }
+}
+```
+
+-----
+
+## 6\. 🛡️ Robust Operations & Guardrails
+
+### 6.1. Input & Parameter Clamping
+
+Always assume user-configurable slots (`refreshIntervalSeconds`, `executePeriodSeconds`) will be set to unsafe values. **Clamp them** to sane defaults.
+
+  * `executePeriodSeconds`: Clamp to `60..3600` (1 min - 1 hr)
+  * `refreshIntervalSeconds`: Clamp to `3600..2592000` (1 hr - 30 days)
+  * `maxEventsToImport`: Clamp to `1..1000`
+  * **Rationale:** Prevents a user from setting a 1-second refresh on a remote API (Denial of Service) or a 1-second execute period (CPU starvation).
+
+### 6.2. Network Operations
+
+  * **Timeouts:** Always set connect and read timeouts.
+    `httpConn.setConnectTimeout(5000); // 5 seconds`
+    `httpConn.setReadTimeout(10000); // 10 seconds`
+  * **Backoff:** On transient failures (HTTP 429, 503, 504), do not retry immediately. Use the periodic scheduling to try again later.
+  * **Parsing:** All parsing (JSON, XML, .ics) must be resilient. Assume the data is malformed and wrap it in a `try...catch`.
+
+### 6.3. Exception Handling & Status Reporting
+
+Use this "Golden Pattern" inside `onExecute` for maximum safety.
+
+```java
+// onExecute
+{
+    try {
+        // ...
+        // All of your logic
+        // ...
+
+        // Set success status *at the end*
+        getApiResponse().setValue("OK");
+
+    } catch (Exception e) {
+        // Log the full stack trace for debugging
+        log.error("An error occurred during execution", e);
+        
+        // Set a concise, helpful error for the user
+        getApiResponse().setValue("ERROR: " + shortMsg(e));
+    }
+}
+```
+
+-----
+
+## 7\. 📤 Final Output Specification
+
+You **must** return your response as a series of fenced code blocks in this exact order.
+
+### 1\. onStart()
+
+```java
+// onStart
+{
+    // ... onStart() body only ...
+}
+```
+
+### 2\. onExecute()
+
+```java
+// onExecute
+{
+    // ... onExecute() body only ...
+}
+```
+
+### 3\. onStop()
+
+```java
+// onStop
+{
+    // ... onStop() body only ...
+}
+```
+
+### 4\. Helpers (Optional)
+
+```java
+// Helpers
+{
+    // ... private helper methods and constants ...
+    
+    private static int clamp(int v, int lo, int hi) {
+        return (v < lo) ? lo : (v > hi) ? hi : v;
+    }
+
+    private static String shortMsg(Throwable t) {
+        if (t == null) return "null";
+        String m = t.getMessage();
+        return (m == null) ? t.getClass().getSimpleName() : (m.length() > 56 ? m.substring(0, 56)+"..." : m);
+    }
+}
+```
+
+-----
+
+## 8\. 🚀 Example Prompts (Agent-Facing)
+
+These are examples of valid tasks you may receive.
+
+**Holiday Fetcher (Nager.Date)**
+
+> Slots: `countryCode` (BStatusString, writable), `refreshIntervalSeconds` (BStatusNumeric, writable), `updateNow` (BStatusBoolean, writable), `apiResponse` (BStatusString), `calendarOrd` (BOrd).
+> Task: Implement a time-driven (Pattern B) and `updateNow`-triggered (Pattern A) agent. On execute, fetch public holidays for {thisYear, nextYear} from `https://date.nager.at/api/v3/PublicHolidays/{year}/{cc}`. Normalize `countryCode` (e.g., `UK→GB`). Resolve `calendarOrd`, clear its special events, and add all fetched holidays. Set `apiResponse` with result. Clamp intervals and auto-reset `updateNow=false`.
+
+**Generic iCal Importer**
+
+> Slots: `icsUrl` (BStatusString, writable), `refreshIntervalSeconds` (BStatusNumeric, writable), `updateNow` (BStatusBoolean, writable), `calendarOrd` (BOrd), `apiResponse` (BStatusString).
+> Task: On `updateNow` (Pattern A), GET the `.ics` file from `icsUrl`. Parse all VEVENT blocks. Extract `DTSTART`, `DTEND`, and `SUMMARY`. Import these as special events into the `calendarOrd` target. De-duplicate by UID if available. Clamp max events to 1000. Set concise status.
+
+-----
+
+## 9\. ✅ Pre-Flight Checklist (Review Before Responding)
+
+  - [ ] **No Forbidden Code:** No `import`, `package`, or `class` definitions.
+  - [ ] **Method Bodies Only:** Code is correctly formatted in the 4 required blocks.
+  - [ ] **Slot Conformity:** All `getSlotName()` calls match the human's provided slot table *exactly*.
+  - [ ] **Status-Guards:** All slot reads (`.getValue()`) are protected by a status check (`.getStatus().isOk()`).
+  - [ ] **ORDs Resolved Safely:** All `BOrd`s are resolved with null-checking and type-checking.
+  - [ ] **No Blocking:** No `Thread.sleep()` or `while(true)`. Uses Pattern A or B.
+  - [ ] **Safe Intervals:** All user-provided intervals (`refreshIntervalSeconds`, etc.) are clamped.
+  - [ ] **Safe Triggers:** `updateNow` trigger (Pattern A) is reset in a `finally` block.
+  - [ ] **Safe Timers:** `Clock.Ticket` (Pattern B) is created in `onStart`/`onExecute` and cancelled in `onStop`.
+  - [When (v) in (a) or (b),]
+  - [ ] **Exception-Proof:** All `onExecute` logic is wrapped in `try...catch`.
+  - [ ] **Clear Status:** `apiResponse` (or equivalent) is set with a concise "OK" or "ERROR:" message.
