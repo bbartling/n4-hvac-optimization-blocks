@@ -1178,14 +1178,196 @@ void updateTimer()
 --- 
 
 <details>
-<summary>🔥 kitControl's Tstat but with a True deadband</summary>
+<summary>🔥 kitControl's Tstat but with a True `deadband` and not a `diff` or differential</summary>
 
-* TODO
+This ProgramObject is a **simple thermostat** that implements a **true deadband** around a single space temperature setpoint.
+
+> The diff property on Niagara’s kitControl BTstat block isn’t a “deadband” in the strict sense—it’s actually the differential or hysteresis band used to determine when the thermostat changes state.
+
+The kitControl BTstat is basically a single-setpoint, two-sided thermostat that creates a band around sp using diff/2 and then remembers its last output. When cv rises above sp + diff/2 it turns “on”, when it falls below sp - diff/2 it turns “off”, and while cv is inside that band it just holds whatever state it was previously in (and can even mark the output as NULL when “in control”), which is why the deadband feels a bit odd compared to a simple true-deadband that forces both outputs off in the middle.
+
+---
+
+![True Deadband Tstat Snip](https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/tstatSnip.png)
+
+---
+
+### Slot Map (Niagara ProgramObject)
+
+| Slot Name     | Display Name | Type               | Role / Description                          |
+|---------------|--------------|--------------------|---------------------------------------------|
+| `setpoint`    | setpoint     | `baja:StatusNumeric` | Desired space temperature setpoint          |
+| `cv`          | cv           | `baja:StatusNumeric` | Current value (room temperature feedback)   |
+| `deadband`    | deadband     | `baja:StatusNumeric` | Total deadband width around setpoint        |
+| `coolOut`     | coolOut      | `baja:StatusBoolean` | Command to enable **cooling**               |
+| `heatOut`     | heatOut      | `baja:StatusBoolean` | Command to enable **heating**               |
+| `statusString`| statusString | `baja:StatusString`  | Human-readable status / debug trace         |
+
+---
+
+### 💻 Java Code
+
+> Niagara auto-generates class headers, imports, and getters/setters.  
+> Paste **only** the logic methods (onStart, onExecute, onStop, helpers) into the Program’s **Source** editor.
 
 ```java
-```
+/*
+ * ================================================================
+ * True Deadband Thermostat
+ * ================================================================
+ */
 
-</details>
+// ========= Class-level state variables =========
+
+Clock.Ticket ticket;
+private static final int UPDATE_INTERVAL_SEC = 5;
+
+// ========= Lifecycle Methods (onStart, onExecute, onStop) =========
+
+public void onStart() throws Exception
+{
+  nullOutputs("Program started. Awaiting inputs.");
+  updateTimer();
+}
+
+public void onExecute() throws Exception
+{
+  updateTimer();
+
+  // --- 0. Null-wire checker (like GL36 chiller block) ---
+  ensureNumericWiredOrNull("cv",        getCv());
+  ensureNumericWiredOrNull("setpoint",  getSetpoint());
+  ensureNumericWiredOrNull("deadband",  getDeadband());
+
+  // Grab statuses once AFTER wiring check
+  BStatus cvStatus = getCv().getStatus();
+  BStatus spStatus = getSetpoint().getStatus();
+  BStatus dbStatus = getDeadband().getStatus();
+
+  // If any input is NULL → outputs go NULL + OFF
+  if (cvStatus.isNull() || spStatus.isNull() || dbStatus.isNull())
+  {
+    nullOutputs("One or more inputs are NULL (unwired). Forcing outputs to NULL.");
+    return;
+  }
+
+  // --- 1. Check Input Status (valid / fault) ---
+  boolean cvOk = cvStatus.isOk();
+  boolean spOk = spStatus.isOk();
+  boolean dbOk = dbStatus.isOk();
+
+  if (!cvOk || !spOk || !dbOk)
+  {
+    String error = "Input Error: ";
+    if (!cvOk) error += "Check 'cv'. ";
+    if (!spOk) error += "Check 'setpoint'. ";
+    if (!dbOk) error += "Check 'deadband'. ";
+    setOutputs(false, false, error);
+    return;
+  }
+
+  // --- 2. Get Values ---
+  double currentCv = getCv().getValue();
+  double sp        = getSetpoint().getValue();
+  double db        = getDeadband().getValue();
+
+  db = Math.max(0.0, db);
+
+  // --- 3. Calculate Deadband Edges ---
+  double coolOn = sp + (db / 2.0);
+  double heatOn = sp - (db / 2.0);
+
+  // --- 4. Core Tstat Logic ---
+  if (currentCv > coolOn)
+  {
+    setOutputs(false, true,
+        String.format("Cooling (CV: %.1f > SP_Cool: %.1f)", currentCv, coolOn));
+  }
+  else if (currentCv < heatOn)
+  {
+    setOutputs(true, false,
+        String.format("Heating (CV: %.1f < SP_Heat: %.1f)", currentCv, heatOn));
+  }
+  else
+  {
+    setOutputs(false, false,
+        String.format("Deadband (SP_Heat: %.1f <= CV: %.1f <= SP_Cool: %.1f)",
+                      heatOn, currentCv, coolOn));
+  }
+}
+
+public void onStop() throws Exception
+{
+  if (ticket != null)
+  {
+    ticket.cancel();
+    ticket = null;
+  }
+  nullOutputs("Program stopped.");
+}
+
+// ========= Helper Methods =========
+
+void setOutputs(boolean heat, boolean cool, String trace)
+{
+  getHeatOut().setValue(heat);
+  getCoolOut().setValue(cool);
+
+  // When actively controlling, clear NULL and mark OK
+  getHeatOut().setStatus(BStatus.ok);
+  getCoolOut().setStatus(BStatus.ok);
+
+  getStatusString().setValue(trace);
+}
+
+void nullOutputs(String trace)
+{
+  getHeatOut().setValue(false);
+  getCoolOut().setValue(false);
+
+  // Mark outputs as NULL so downstream logic can ignore them
+  getHeatOut().setStatus(BStatus.nullStatus);
+  getCoolOut().setStatus(BStatus.nullStatus);
+
+  getStatusString().setValue(trace);
+}
+
+void updateTimer()
+{
+  if (ticket != null)
+  {
+    ticket.cancel();
+  }
+
+  ticket = Clock.schedule(
+      getComponent(),
+      BRelTime.makeSeconds(UPDATE_INTERVAL_SEC),
+      BProgram.execute,
+      null
+  );
+}
+
+/**
+ * Helper to mimic GL36 chiller-style null-wiring behavior.
+ * If the slot has no links, force it to NULL so status.isNull() works.
+ */
+void ensureNumericWiredOrNull(String slotName, BStatusNumeric point)
+{
+  try
+  {
+    if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0)
+    {
+      point.setValue(0);
+      point.setStatus(BStatus.nullStatus); // or BStatus.NULL in your station, if that's what you use
+    }
+  }
+  catch (Exception e)
+  {
+    // ignore
+  }
+}
+
+```
 
 --- 
 
