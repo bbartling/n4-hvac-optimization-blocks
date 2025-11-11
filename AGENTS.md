@@ -1,5 +1,10 @@
 # AGENTS.md — Vibe Coding Agent Guide (Niagara 4 ProgramObject)
 
+This document serves as the **operating manual for developer and AI agents** working within this repository. It defines how Niagara 4 Program Objects, logic agents, and future driver-integrated processes should be structured and extended.
+
+For hardware or legacy API references, see [`NIAGARA_AX_NOTES.md`](./NIAGARA_AX_NOTES.md).
+For live algorithm definitions and ready-to-deploy `.bog` examples, see [`README.md`](./README.md).
+
 **Audience:** Coding agents (and power users) that will auto-generate **method bodies** for Niagara 4 `Program` objects inside `ProgramImpl.java`.
 
 **Goal:** Given a slot table and a task, produce **only** the Java bodies for `onStart`, `onExecute`, `onStop`, plus any small helper methods or constants **inside** the class — no headers/imports/getters/setters. The human will paste results into Workbench and compile.
