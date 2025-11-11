@@ -32,6 +32,29 @@ Also, feel free to skip the tutorials entirely and jump right into the [**Prebui
 
 </details>
 
+<details>
+<summary>📊 JACE Resource Management – Best Practices</summary>
+
+To avoid Niagara runtime issues, monitor JACE system health:
+
+![Resource Usage](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/resource_management.png)
+
+#### Guidelines:
+
+* **CPU Usage:** Try to keep < 80% on average. Spikes are okay if brief.
+* **Heap Usage:** Keep `heap.used` < 75% of `heap.total`.
+
+**What to Watch:**
+
+| Metric                       | Limit                                                 |
+| ---------------------------- | ----------------------------------------------------- |
+| `heap.used`                  | < 75%                                                 |
+| `CPU %`                      | Avg < 80%                                             |
+| `resources.category.program` | Avoid frequent `Clock.schedule()` or unbounded loops. |
+
+</details>
+
+
 ---
 
 ## 📂 Additional Guides
