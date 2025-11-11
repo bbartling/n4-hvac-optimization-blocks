@@ -335,14 +335,17 @@ int addIfWired(BStatusNumeric input) {
 To keep this README concise, the detailed tutorials and algorithm implementations have been moved into separate sub‑guides.  Use the links below to navigate to the appropriate document:
 
 - [**Tutorials & Algorithms**](README_TUTORIALS_ALGORITHMS.md) — step‑by‑step examples and general algorithm blocks.
-- [**ASHRAE Guideline 36**](README_GL36.md) — chiller plant enable logic, AHU fault detection and other GL36‑compliant strategies.
-- [**GL36 Trim & Respond**](README_TRIM_RESPOND.md) — variable definitions, VAV box requests and trim‑respond resets.
+- [**GL36 Air Side Trim & Respond**](README_TRIM_RESPOND.md) — variable definitions tutorial, VAV box requests, and trim‑respond resets.
+- [**GL36 Central Plant & AHU FDD**](README_GL36.md) — chiller plant enable logic, AHU fault detection, and other GL36‑compliant strategies.
 - [**Non‑GL36 & Advanced Logic**](README_NON_GL36.md) — simplified resets and per‑chiller rotator for systems outside Guideline 36.
-- [**APIs & Web Requests**](README_APIS.md) — examples for calling weather, holiday and calendar APIs or integrating external ML models.
+- [**APIs & Web Requests**](README_APIS.md) — examples for calling weather, holiday and iCalendar APIs or integrating external ML models.
+- [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and polynomial regression.
 - [**Demand‑Side Management**](README_DEMAND_SIDE_MANAGEMENT.md) — OpenADR client and PNNL‑inspired intelligent load shedding.
+- [**Niagara AX Notes**](NIAGARA_AX_NOTES.md) — notes on creating `ProgramObjects` in legacy Niagara AX (earlier Java-based versions).
+
 ## 🔄 Future Plans
 
-Future plans include building a **full Niagara 4 module** for **ASHRAE Guideline 36 AHU Trim Respond**, **GL36 AHU Fault Detection**, and **Optimal Start** based off of lessons learned from implementation of these `ProgramObejcts` in the field — Stay Tuned! 🙌
+Someday future plans may include building a **full Niagara 4 module** for **ASHRAE Guideline 36 AHU Trim Respond**, **GL36 AHU Fault Detection**, and **Optimal Start** based off of lessons learned from implementation of these `ProgramObejcts` in the field — Stay Tuned! 🙌
 
 Check for demonstrations on Vibe Coding on 📺
 🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)

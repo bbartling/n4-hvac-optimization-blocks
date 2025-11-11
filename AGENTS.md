@@ -3,7 +3,21 @@
 This document serves as the **operating manual for developer and AI agents** working within this repository. It defines how Niagara 4 Program Objects, logic agents, and future driver-integrated processes should be structured and extended.
 
 For hardware or legacy API references, see [`NIAGARA_AX_NOTES.md`](./NIAGARA_AX_NOTES.md).
-For live algorithm definitions and ready-to-deploy `.bog` examples, see [`README.md`](./README.md).
+For live algorithm definitions and ready‑to‑deploy `.bog` examples, see [`README.md`](./README.md).
+
+> **Note:** The main README has been reorganized to keep it concise.  Detailed tutorials and code examples have been moved into separate sub‑guides:
+
+- [**Tutorials & Algorithms**](README_TUTORIALS_ALGORITHMS.md) — step‑by‑step examples and general algorithm blocks.
+- [**GL36 Air Side Trim & Respond**](README_TRIM_RESPOND.md) — variable definitions tutorial, VAV box requests, and trim‑respond resets.
+- [**GL36 Central Plant & AHU FDD**](README_GL36.md) — chiller plant enable logic, AHU fault detection, and other GL36‑compliant strategies.
+- [**Non‑GL36 & Advanced Logic**](README_NON_GL36.md) — simplified resets and per‑chiller rotator for systems outside Guideline 36.
+- [**APIs & Web Requests**](README_APIS.md) — examples for calling weather, holiday and iCalendar APIs or integrating external ML models.
+- [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and polynomial regression.
+- [**Demand‑Side Management**](README_DEMAND_SIDE_MANAGEMENT.md) — OpenADR client and PNNL‑inspired intelligent load shedding.
+- [**Niagara AX Notes**](NIAGARA_AX_NOTES.md) — notes on creating `ProgramObjects` in legacy Niagara AX (earlier Java-based versions).
+
+
+These sub‑guides mirror the original README content exactly, so feel free to consult them when generating code for a specific category.
 
 **Audience:** Coding agents (and power users) that will auto-generate **method bodies** for Niagara 4 `Program` objects inside `ProgramImpl.java`.
 
