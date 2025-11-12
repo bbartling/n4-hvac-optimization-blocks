@@ -22,7 +22,18 @@ Check for demonstrations on Vibe Coding on 📺
 2. **Open your LLM chat** (e.g., ChatGPT, Gemini, etc.).
 3. **Upload all the `README.md` files** from your downloads folder on your computer along with your idea in mind to try.  
 
-   > Example in LLM Chat: “See this README — I want a `ProgramObject` that automates my chiller plant with rocket science. 🚀🤭”
+
+**Comparison View ChatGPT and Gemeni with all READMEs uploaded**
+
+<table>
+<tr>
+<td><img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/chatGPTwAllReadMes.png" width="400"/></td>
+<td><img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/GemeniwAllReadMes.png" width="400"/></td>
+</tr>
+</table>
+
+
+   > Chat With AI what you are looking to achieve: “See these READMEs — I want a `ProgramObject` that automates my chiller plant with rocket science. 🚀🤭”
 
 4. Once the LLM confirms it understands the README, have it generate or edit your Niagara 4 `ProgramObject` code.
 5. Paste the resulting Java code into Workbench’s Program Editor, make your slots for your block, and compile in the `ProgramObject` editor view.
