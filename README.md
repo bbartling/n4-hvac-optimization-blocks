@@ -10,6 +10,8 @@ This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `Pro
 
 Also, feel free to skip the tutorials entirely and jump right into the [**Prebuilt Wiresheet Examples (.bog file format)**](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files) for everything shown below.
 
+Check for demonstrations on Vibe Coding on 📺
+🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
 
 ---
 
@@ -20,7 +22,7 @@ Also, feel free to skip the tutorials entirely and jump right into the [**Prebui
 2. **Open your LLM chat** (e.g., ChatGPT, Gemini, etc.).
 3. **Upload all the `README.md` files** from your downloads folder on your computer along with your idea in mind to try.  
 
-   > Example in LLM Chat: “See this README — I want a ProgramObject that automates my chiller plant with rocket science. 🚀🤭”
+   > Example in LLM Chat: “See this README — I want a `ProgramObject` that automates my chiller plant with rocket science. 🚀🤭”
 
 4. Once the LLM confirms it understands the README, have it generate or edit your Niagara 4 `ProgramObject` code.
 5. Paste the resulting Java code into Workbench’s Program Editor, make your slots for your block, and compile in the `ProgramObject` editor view.
@@ -69,18 +71,46 @@ To keep this README concise, the detailed tutorials and algorithm implementation
 - [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and polynomial regression.
 - [**Demand‑Side Management**](README_DEMAND_SIDE_MANAGEMENT.md) — OpenADR client and PNNL‑inspired intelligent load shedding.
 - [**Niagara AX Notes**](NIAGARA_AX_NOTES.md) — notes on creating `ProgramObjects` in legacy Niagara AX (earlier Java-based versions).
-- [**AGENTS.md**](AGENTS.md) — provides the AI model context and internal notes that guide how ChatGPT or other LLMs interpret this repository, generate Niagara logic, and assist in creating new ProgramObjects.
+- [**AGENTS.md**](AGENTS.md) — provides the AI model context and internal notes that guide how ChatGPT or other LLMs interpret this repository, generate Niagara logic, and assist in creating new `ProgramObject`s.
 
 
-## 🔄 Future Plans
 
-Someday future plans may include building a **full Niagara 4 module** for **ASHRAE Guideline 36 AHU Trim Respond**, **GL36 AHU Fault Detection**, and **Optimal Start** based off of lessons learned from implementation of these `ProgramObejcts` in the field — Stay Tuned! 🙌
+<details>
+<summary>🔜 Future Plans</summary> 
 
-Check for demonstrations on Vibe Coding on 📺
-🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
+The AI train 🚄 shows no signs of slowing down — it’s a constantly evolving adventure.  
+Recently, I hit an unexpected milestone (or limitation 😅): GitHub’s web renderer actually **truncates Markdown files over ~512 KB or 20,000 lines**. So, this project is officially “too big for one README” — which, honestly, feels like a badge of honor 😂.
+
+The next chapter is about refining **model context** workflows and exploring how these evolving best practices might someday form a **Model Context Protocol (MCP)** for Niagara 4 — enabling AI agents to interact with `ProgramObject`s, data models, and control logic natively.  
+For now, much of the process is still manual — a mix of copy-paste wizardry and Workbench perseverance — but the long game is a living, learning ecosystem of tools, agents, and context.
+
+---
+
+### 🧭 Vision
+Someday, this project could evolve into a **full Niagara 4 module** implementing:
+- **ASHRAE Guideline 36 AHU Trim & Respond**
+- **GL36 AHU Fault Detection**
+- **Optimal Start / Stop Sequences**
+
+All grounded in field-tested logic, data, and lessons learned from real-world BAS deployments.  
+Stay tuned — this story is still being written. 🙌
+
+---
+
+### 🎯 Near-Term Goals
+✅ Prebuilt Wiresheets for Air-Side Guideline 36  
+⬜ Add `ProgramObject` examples that parse CSVs with simulated historical data to mimic HVAC fault logic  
+⬜ Add `ProgramObject` examples that query trend logs from Niagara databases for simulated diagnostics  
+⬜ Implement Air-Side Fault Detection per ASHRAE Guideline 36 in native `ProgramObject`s  
+⬜ Enhance iCalendar `ProgramObject` for dynamic weekly scheduling  
+⬜ Integrate OpenADR 3.0 client logic  
+⬜ Prototype a **PNNL Intelligent Load Control mimic** inside a `ProgramObject`  
+
+</details>
 
 
-## 💛 Support This Work
+<details>
+<summary>💛 Support This Work</summary>
 
 I’ve personally never donated to open-source software before — but hey, what the heck! If this project helped you build something neat or saved you at least 10× the man-hours on your Niagara BAS project with the help of AI and model context like this, and AND you’re feeling generous today, your support directly fuels Ben’s bad habits at Starbucks — but there’s absolutely no pressure.
 
@@ -92,6 +122,7 @@ I’ve personally never donated to open-source software before — but hey, what
 
 [![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/donate/?business=VBRBPMBZ6ZKM8&no_recurring=0&item_name=Thank+you+for+contributing+to+help+fund+open+source+building+automation+system+%28BAS%29+software+development+donation.+&currency_code=USD)
 
+</details>
 
 ## 📜 License
 
