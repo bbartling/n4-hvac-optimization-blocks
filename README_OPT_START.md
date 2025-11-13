@@ -9,8 +9,8 @@ The quadratic model further below draws on PNNL's research for the `Model 1` usi
 
 ---
 
-<details>
-<summary>⏱️ Linear Degree Per Minute Optimal Start Self-Tuning Block</summary>
+
+### Linear Degree Per Minute Optimal Start Self-Tuning Block
 
 The linear model continuously self-tunes its heating and cooling recovery rates—specifically the learned degrees-per-minute values used to calculate how many “minutes” the system needs to condition the zone. After each successful warm-up or cool-down event, the block computes a new effective recovery rate and stores it in an N-day rolling history. These values are then blended using an Exponential Moving Average (EMA), which gives greater weight to the most recent recovery performance while still retaining long-term memory. The model evaluates whether the zone currently requires heating or cooling and automatically selects the appropriate EMA-smoothed learned rate for use in the runtime calculation.
 
@@ -77,7 +77,9 @@ where:
 
 ---
 
-### 💻 Java Code
+
+<details>
+<summary>💻 Java Code Linear Model</summary>
 
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
@@ -594,8 +596,8 @@ private double round1(double v) {
 
 ---
 
-<details>
-<summary>📊 Quadratic Regression Optimal Start Self-Tuning Block</summary>
+
+### 📊 Quadratic Regression Optimal Start Self-Tuning Block
 
 The quadratic model below (PNNL Model 1 from white paper) predicts recovery time using a curved relationship between temperature difference and required runtime, expressed as a fitted quadratic equation of the form ( t = A(\Delta T^2) + B(\Delta T) + C ). When the system has little or no historical data, the block begins with default (A), (B), and (C) coefficients to provide a stable baseline. As the building completes successful warm-up or cool-down cycles, the block stores these recovery records in an N-day history and performs a quadratic regression across that dataset to continuously compute new learned coefficients. This regression process allows the model to capture diminishing-returns behavior—fast recovery when far from setpoint and slower recovery as the zone approaches target—and adapt its predictions as equipment performance, seasons, and building loads evolve. Although the internal math differs from the linear version, both models use the same slot names and wiring, making them drop-in interchangeable within Niagara Workbench.
 
@@ -615,10 +617,12 @@ This captures how systems heat or cool quickly at first but slow down as they ap
 * **C** is the baseline offset.  
 * The **Quadratic block also maintains a similar N-day history** and uses those same stored records for self-tuning, just with a more complex regression model behind the scenes.
 
+
 ---
 
 
-### 💻 Java Code
+<details>
+<summary>💻 Java Code Quadratic Model</summary>
 
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
