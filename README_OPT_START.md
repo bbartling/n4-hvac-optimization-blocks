@@ -1,22 +1,20 @@
 # Optimal Start Logic
 
-Based on PNNL research paper located in the `pdf` directory on this repository.
+Inspired by the existing `kitControl` Optimal Start, this block is enhanced with a self-tuning algorithm based on the latest PNNL research.
 
+The quadratic model further below draws on PNNL's research for the `Model 1` using Quadratic Regression, as detailed in the included white paper:
+
+* **Optimal Start Control for ACs and HPs (PNNL)** — `pdf/Optimal Start Control for ACs and HPs.pdf`
+    👉 [https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf)
 
 ---
 
 <details>
 <summary>⏱️ Linear Degree Per Minute Optimal Start Self-Tuning Block</summary>
 
-This block implements a **self-learning Optimal Start/Stop algorithm** for zone recovery in Niagara 4.  
-It continuously tunes heating & cooling rates with an Exponential Moving Average (EMA) so the zone reaches setpoint **just-in-time**—saving energy without sacrificing comfort.
+The linear model continuously tunes heating & cooling parameters (specifically, the degrees-per-minute rate on linear model) used to calculate the "minutes" required to condition the zone. This tuning is done using an Exponential Moving Average (EMA) across the history, which gives more weight to the most recent performance data. The block automatically calculates whether heating or cooling recovery is required and uses the respective learned rate (heating or cooling) as needed.
 
-The Optimal Start logic draws on the latest PNNL research for **Model 1**, which is detailed in the *Quadratic Regression Optimal Start Self-Tuning Block* section of this README. The linear model is a slightly simpler version.
-
-See the included white paper:
-
-- **Optimal Start Control for ACs and HPs (PNNL)** — `pdf/Optimal Start Control for ACs and HPs.pdf`  
-  👉 https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf
+> The Quadratic Model **always** uses a quadratic equation ($t = A \times (\Delta T^2) + B$) to predict the recovery time. When no data is available, it uses hard-coded **default** $A$ and $B$ values. As soon as enough data from past recovery cycles is collected, the block performs a quadratic regression to calculate **new, learned** $A$ and $B$ parameters, making its predictions more accurate over time.
 
 <p align="center">
   <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/optimalStartSnip.png"  alt="Optimal Start Program Object" width="550">
@@ -39,10 +37,10 @@ See the included white paper:
 | `outdoorAirTemp` | `BStatusNumeric` | Optional outdoor air temperature, used for logging performance history. |
 | `scheduleNextValue` | `BStatusBoolean` | The occupancy value of the *next* schedule event (`true` if occupied). |
 | `scheduleNextEventTime` | `BStatusNumeric` | The timestamp (in Java milliseconds) of the next schedule event. |
-| `maxMinutesAllowed` | `BStatusNumeric` | Safety cap for the maximum calculated `minutesToSetpoint` (default = 180 min). |
+| `maxMinutesAllowed` | `BStatusNumeric` | Safety cap for the maximum calculated `minutesToSetpointPredicted` (default = 180 min). |
 | `tempTolerance` | `BStatusNumeric` | The acceptable temperature deviation from setpoint (e.g., 1.0°F, default = 0.5°F). |
 | `historyDaysToRetain` | `BStatusNumeric` | The number of recent performance records to keep for learning (default = 10). |
-| `emaWeightingFactor` | `BStatusNumeric` | The smoothing factor for the EMA learning algorithm (1-10, default = 2). |
+| `emaWeightingFactor` | `BStatusNumeric` | **(Linear Model Only)** The smoothing factor for the EMA learning algorithm (1-10, default = 2). |
 | `commandOffDelaySeconds`| `BStatusNumeric`| Countdown delay in seconds that starts after the optimal start run ends to release to `null`. |
 | `clearHistoryNow` | `BStatusBoolean` | A manual trigger to erase all learned performance history. |
 | `printToConsoleLog` | `BStatusBoolean` | Set to `true` to enable detailed debug messages in the Niagara console. |
@@ -52,24 +50,44 @@ See the included white paper:
 | Slot | Type | Description |
 | :--- | :--- | :--- |
 | `equipmentStartCommand` | `BStatusBoolean` | **The final output command; `true` when the equipment should run else `null`. **|
-| `minutesToSetpoint` | `BStatusNumeric` | The last run actual time recorded to reach setpoint based on the learning model. |
-| `degreesPerMinuteHeat` | `BStatusNumeric` | Active value used in the heating rate in °F / minute. |
-| `degreesPerMinuteCool` | `BStatusNumeric` | Active value used in the cooling rate in °F / minute. |
+| `minutesToSetpointPredicted` | `BStatusNumeric` | The **live calculated prediction** of how many minutes the *next* run will take. |
+| `degreesPerMinuteHeat` | `BStatusNumeric` | Active learned heating rate in °F / minute (or average rate for Quadratic). |
+| `degreesPerMinuteCool` | `BStatusNumeric` | Active learned cooling rate in °F / minute (or average rate for Quadratic). |
 | `currentHistoryRecordCount`| `BStatusNumeric` | The total number of HEAT and COOL performance records being stored. |
 | `statusLog` | `BStatusString` | A timestamped log of the block's most recent major action. |
 | `historyLog` | `BStatusString` | A multi-line string showing a dump of all performance history records. |
 | `isRunning` | `BStatusBoolean` | `True` only when a learning run is actively in progress.** |
 | `zoneAtTempTolerance` | `BStatusBoolean` | `True` if the current `zoneTemp` is within the tolerance of the `targetZoneTempSetpoint`. |
-| `warmupTimeMinutes` | `BStatusNumeric` | A live stopwatch showing how many minutes the current run has been active. |
+| `currentRunElapsedMinutes` | `BStatusNumeric` | A **live stopwatch** showing how many minutes the current run has been active. |
 | `countdownToNullStatus`| `BStatusBoolean` | Returns `True` only when the off-delay countdown is active. |
+| `lastRunPredictedMinutes` | `BStatusNumeric` | **(New)** The predicted time that was snapshotted at the *start* of the last run. |
+| `lastRunActualMinutes` | `BStatusNumeric` | **(New)** The final, actual time it took to reach setpoint during the *last* run. |
+| `lastRunErrorMinutes` | `BStatusNumeric` | **(New)** The calculated error (`Predicted - Actual`) from the *last* run. |
 
-### Key Features
+---
 
-* **Adaptive EMA learning** keeps separate heat / cool models and prunes history after _N_ days.  
-* **Internal timer & off-delay**—no Execute-on-Change flag required.  
-* **Automatic NULL handling** for outputs during countdown.  
-* **Verbose console debugging** toggled via `printToConsoleLog`.  
-* Designed to drop straight into a **Schedule → Optimal Start Block → Equipment Enable** chain.
+### 🔹 Linear Model — the “Straight-Line” Lesson
+
+The **Linear** model assumes a direct relationship between how far the zone is from setpoint and how long recovery will take.
+
+$$
+\text{RunTime} = (A \times \text{TempDiff}^2) + (B \times \text{TempDiff}) + C
+$$
+
+where:  
+- **TempDiff** = TargetSetpoint − ZoneTemp  
+- **A** and **B** = learned coefficients for curve shape  
+- **C** = baseline offset  
+
+> Note - Outside air temperature is included but for reference only at the moment until more advanced models are attemped like PNNL Model 3 from the White Paper.
+
+* The block tracks both **heating and cooling recovery rates** over multiple days (N-day rolling history).
+* Each recovery event records how quickly the zone temperature changes (°F per minute).
+* An **Exponential Moving Average (EMA)** smooths these values—giving the **most recent recoveries the most weight**.
+* This allows the block to automatically adapt to seasonal shifts, load changes, or mechanical performance drift.
+
+In short: *it’s always learning, but it trusts recent days the most.*
+
 
 ---
 
@@ -560,55 +578,6 @@ Both Linear and Quadratic Regression Optimal Start Self-Tuning Block implement a
 They share the **exact same slot names and wiring**, so you can compile and drop either version into Niagara Workbench with zero rewiring.
 Under the hood, only the math model differs.
 
-This Optimal Start logic draws on the latest PNNL research for `Model 1` Quadratic Regression Optimal Start Self-Tuning Block. See the included white paper:
-
-- **Optimal Start Control for ACs and HPs (PNNL)** — `pdf/Optimal Start Control for ACs and HPs.pdf`  
-  👉 https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf
-
----
-
-### 🧩 Slot & Naming Compatibility
-
-The **Linear** and **Quadratic** blocks use the same I/O interface:
-
-| Slot                     | Type             | Description                        |
-| :----------------------- | :--------------- | :--------------------------------- |
-| `zoneTemp`               | `BStatusNumeric` | Current zone temperature           |
-| `targetZoneTempSetpoint` | `BStatusNumeric` | Desired occupied setpoint          |
-| `outdoorAirTemp`         | `BStatusNumeric` | Optional, reference only           |   |
-| `scheduleNextValue`      | `BStatusBoolean` | Next event occupancy flag          |
-| `scheduleNextEventTime`  | `BStatusNumeric` | Timestamp of next schedule event   |
-| `maxMinutesAllowed`      | `BStatusNumeric` | Safety cap on start time           |
-| `tempTolerance`          | `BStatusNumeric` | Acceptable deviation from setpoint |
-| `minutesToSetpoint`      | `BStatusNumeric` | Calculated time to reach setpoint  |
-
-Because the slots are identical, **technicians can swap Linear ↔ Quadratic codebases freely** to test which model best fits the building.
-
-> 🔄 *Recompile either version with Workbench to try both algorithms—no re-wiring, no slot edits required.*
-
----
-
-### 🔹 Linear Model — the “Straight-Line” Lesson
-
-The **Linear** model assumes a direct relationship between how far the zone is from setpoint and how long recovery will take.
-
-$$
-\text{RunTime} = (A \times \text{TempDiff}^2) + (B \times \text{TempDiff}) + C
-$$
-
-where:  
-- **TempDiff** = TargetSetpoint − ZoneTemp  
-- **A** and **B** = learned coefficients for curve shape  
-- **C** = baseline offset  
-
-> Note - Outside air temperature is included but for reference only at the moment until more advanced models are attemped like PNNL Model 3 from the White Paper.
-
-* The block tracks both **heating and cooling recovery rates** over multiple days (N-day rolling history).
-* Each recovery event records how quickly the zone temperature changes (°F per minute).
-* An **Exponential Moving Average (EMA)** smooths these values—giving the **most recent recoveries the most weight**.
-* This allows the block to automatically adapt to seasonal shifts, load changes, or mechanical performance drift.
-
-In short: *it’s always learning, but it trusts recent days the most.*
 
 ---
 
@@ -626,17 +595,6 @@ This captures how systems heat or cool quickly at first but slow down as they ap
 * **B** adjusts the slope — the overall rate per degree of difference.  
 * **C** is the baseline offset.  
 * The **Quadratic block also maintains a similar N-day history** and uses those same stored records for self-tuning, just with a more complex regression model behind the scenes.
-
----
-
-
-### ✅ Key Takeaways
-
-* Both models share identical slots and naming conventions.
-* Linear = simple straight-line rate; Quadratic = curved and more realistic.
-* Both store N days of recovery data for heating & cooling modes.
-* EMA weighting gives more importance to recent recoveries.
-* You can safely recompile and test either version in the same station.
 
 ---
 

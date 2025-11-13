@@ -20,7 +20,7 @@ Check for demonstrations on Vibe Coding on 📺
 
 1. **Download all `README` markdown files** (`*.md` containing “README” in the filename) directly from GitHub including the `AGENTS.md` file.
 2. **Open your LLM chat** (e.g., ChatGPT, Gemini, etc.).
-3. **Upload all the `README.md` files** from your downloads folder on your computer along with your idea in mind to try.  
+3. **Upload all the `README.md` files** from your downloads folder on your computer along with your idea in mind to try. The more context the LLM has — in the form of README files — the better the results you’re likely to achieve.
 
 
 **Comparison View ChatGPT and Gemeni with all READMEs uploaded**
@@ -32,8 +32,9 @@ Check for demonstrations on Vibe Coding on 📺
 </tr>
 </table>
 
+**Chat with AI what you are looking to achieve**
 
-   > Chat With AI what you are looking to achieve: “See these READMEs — I want a `ProgramObject` that automates my chiller plant with rocket science. 🚀🤭”
+   > “See these READMEs — I want a `ProgramObject` that automates my chiller plant with rocket science. 🚀🤭”
 
 4. Once the LLM confirms it understands the README, have it generate or edit your Niagara 4 `ProgramObject` code.
 5. Paste the resulting Java code into Workbench’s Program Editor, make your slots for your block, and compile in the `ProgramObject` editor view.
@@ -98,21 +99,9 @@ For now, much of the process is still manual — a mix of copy-paste wizardry an
 Someday, this project could evolve into a **full Niagara 4 module** implementing:
 - **ASHRAE Guideline 36 AHU Trim & Respond**
 - **GL36 AHU Fault Detection**
-- **Optimal Start / Stop Sequences**
+- **Optimal Start / Stop Blocks**
 
-All grounded in field-tested logic, data, and lessons learned from real-world BAS deployments.  
-Stay tuned — this story is still being written. 🙌
 
----
-
-### 🎯 Near-Term Goals
-✅ Prebuilt Wiresheets for Air-Side Guideline 36  
-⬜ Add `ProgramObject` examples that parse CSVs with simulated historical data to mimic HVAC fault logic  
-⬜ Add `ProgramObject` examples that query trend logs from Niagara databases for simulated diagnostics  
-⬜ Implement Air-Side Fault Detection per ASHRAE Guideline 36 in native `ProgramObject`s  
-⬜ Enhance iCalendar `ProgramObject` for dynamic weekly scheduling  
-⬜ Integrate OpenADR 3.0 client logic  
-⬜ Prototype a **PNNL Intelligent Load Control mimic** inside a `ProgramObject`  
 
 </details>
 
@@ -120,7 +109,9 @@ Stay tuned — this story is still being written. 🙌
 <details>
 <summary>💛 Support This Work</summary>
 
-I’ve personally never donated to open-source software before — but hey, what the heck! If this project helped you build something neat or saved you at least 10× the man-hours on your Niagara BAS project with the help of AI and model context like this, and AND you’re feeling generous today, your support directly fuels Ben’s bad habits at Starbucks — but there’s absolutely no pressure.
+If you make something cool or need help dont hesitate to reach out and I can add it as an example!
+
+Also if this project helped you build something neat or saved you at least 10× in labor-hours on your Niagara BAS project with the help of AI and model context like this, and AND you’re feeling generous today, your support directly fuels Ben’s bad habits at Starbucks — but there’s absolutely no pressure. I’ve personally never donated to open-source software before — but hey, what the heck! 
 
 | 💵 Option           | Link                                                                                                                                                                                                                                              |
 | :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
