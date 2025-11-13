@@ -12,9 +12,7 @@ The quadratic model further below draws on PNNL's research for the `Model 1` usi
 <details>
 <summary>⏱️ Linear Degree Per Minute Optimal Start Self-Tuning Block</summary>
 
-The linear model continuously tunes heating & cooling parameters (specifically, the degrees-per-minute rate on linear model) used to calculate the "minutes" required to condition the zone. This tuning is done using an Exponential Moving Average (EMA) across the history, which gives more weight to the most recent performance data. The block automatically calculates whether heating or cooling recovery is required and uses the respective learned rate (heating or cooling) as needed.
-
-> The Quadratic Model **always** uses a quadratic equation ($t = A \times (\Delta T^2) + B$) to predict the recovery time. When no data is available, it uses hard-coded **default** $A$ and $B$ values. As soon as enough data from past recovery cycles is collected, the block performs a quadratic regression to calculate **new, learned** $A$ and $B$ parameters, making its predictions more accurate over time.
+The linear model continuously self-tunes its heating and cooling recovery rates—specifically the learned degrees-per-minute values used to calculate how many “minutes” the system needs to condition the zone. After each successful warm-up or cool-down event, the block computes a new effective recovery rate and stores it in an N-day rolling history. These values are then blended using an Exponential Moving Average (EMA), which gives greater weight to the most recent recovery performance while still retaining long-term memory. The model evaluates whether the zone currently requires heating or cooling and automatically selects the appropriate EMA-smoothed learned rate for use in the runtime calculation.
 
 <p align="center">
   <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/optimalStartSnip.png"  alt="Optimal Start Program Object" width="550">
@@ -70,9 +68,8 @@ The linear model continuously tunes heating & cooling parameters (specifically, 
 
 The **Linear** model assumes a direct relationship between how far the zone is from setpoint and how long recovery will take, based on a learned rate.
 
-$$
-\text{RunTime} = \frac{\text{TempDiff}}{\text{LearnedRate}}
-$$
+\( \text{RunTime} = \frac{\text{TempDiff}}{\text{LearnedRate}_{EMA(N\text{ days})}} \)
+
 
 where:
 * **TempDiff** = TargetSetpoint − ZoneTemp
@@ -600,12 +597,7 @@ private double round1(double v) {
 <details>
 <summary>📊 Quadratic Regression Optimal Start Self-Tuning Block</summary>
 
-
-The Quadratic Model always uses a quadratic equation ($t = A \times (\Delta T^2) + B$) to predict the recovery time. When no data is available, it uses hard-coded default $A$ and $B$ values. As soon as enough data from past recovery cycles is collected, the block performs a quadratic regression to calculate new, learned $A$ and $B$ parameters, making its predictions more accurate over time.
-
-They share the **exact same slot names and wiring**, so you can compile and drop either version into Niagara Workbench with zero rewiring.
-Under the hood, only the math model differs.
-
+The quadratic model below (PNNL Model 1 from white paper) predicts recovery time using a curved relationship between temperature difference and required runtime, expressed as a fitted quadratic equation of the form ( t = A(\Delta T^2) + B(\Delta T) + C ). When the system has little or no historical data, the block begins with default (A), (B), and (C) coefficients to provide a stable baseline. As the building completes successful warm-up or cool-down cycles, the block stores these recovery records in an N-day history and performs a quadratic regression across that dataset to continuously compute new learned coefficients. This regression process allows the model to capture diminishing-returns behavior—fast recovery when far from setpoint and slower recovery as the zone approaches target—and adapt its predictions as equipment performance, seasons, and building loads evolve. Although the internal math differs from the linear version, both models use the same slot names and wiring, making them drop-in interchangeable within Niagara Workbench.
 
 ---
 
@@ -613,9 +605,8 @@ Under the hood, only the math model differs.
 
 The **Quadratic** version is a smarter, drop-in upgrade that adds curvature for more realistic recovery behavior.
 
-$$
-\text{RunTime} = (A \times \text{TempDiff}^2) + (B \times \text{TempDiff}) + C
-$$
+\( \text{RunTime} = (A \times \text{TempDiff}^2) + (B \times \text{TempDiff}) + C \)
+
 
 This captures how systems heat or cool quickly at first but slow down as they approach setpoint (diminishing returns).
 
