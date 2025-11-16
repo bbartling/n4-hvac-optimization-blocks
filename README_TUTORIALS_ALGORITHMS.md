@@ -2781,25 +2781,439 @@ void updateTimer() {
 
 
 <details>
-<summary>📊 JACE Resource Management – Best Practices</summary>
+<summary>📄 CSV File Reader + Console Logger (ProgramObject Tutorial)</summary>
 
-To avoid Niagara runtime issues, monitor JACE system health:
+This tutorial shows how to build a simple **Niagara 4 ProgramObject that reads a CSV file**, parses each row, and prints the output directly to the **Application Director console** using:
 
-![Resource Usage](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/resource_management.png)
+```
 
-#### Guidelines:
+System.out.println("-----------------");
 
-* **CPU Usage:** Try to keep < 80% on average. Spikes are okay if brief.
-* **Heap Usage:** Keep `heap.used` < 75% of `heap.total`.
+```
 
-**What to Watch:**
+Perfect for lab work, debugging, or feeding small configuration datasets into more advanced logic.
 
-| Metric                       | Limit                                                 |
-| ---------------------------- | ----------------------------------------------------- |
-| `heap.used`                  | < 75%                                                 |
-| `CPU %`                      | Avg < 80%                                             |
-| `resources.category.program` | Avoid frequent `Clock.schedule()` or unbounded loops. |
+---
 
+## 🔧 **What You Need**
+To run this example, your ProgramObject must include these imports:
+
+- **baja.file** → `javax.baja.file.*`  
+- **java.io** → `java.io.*`  
+
+These are required for:
+
+✔ Resolving a CSV file  
+✔ Reading file streams  
+✔ Converting them into rows of text  
+
+You **do not** need any NiagaraNetwork or Fox classes for this tutorial. Maybe in the future we could build off of that and actually use network stack protocols but this only demos parsing a CSV file.
+
+---
+
+## 📁 **Preparing the CSV File**
+
+1. Create a CSV file with simple headers, for example:
+
+```
+
+name,address
+EdgeLite01,10.10.1.11
+EdgeLite02,10.10.1.12
+CampusN4,10.10.1.50
+
+```
+
+2. Save the file to your local machine.
+
+3. In Workbench, drag the CSV file into:
+
+```
+
+/Files
+
+```
+
+This creates a station-level file you can reference with a `BOrd`, e.g.:
+
+```
+
+file:^edgeStations.csv
+
+```
+
+Set this value on your ProgramObject’s `fileOrd` slot.
+
+---
+
+## 🧪 **Running the ProgramObject**
+
+Hit **Execute** on the ProgramObject.  
+Each parsed row will print to the Application Director like:
+
+```
+
+Row 1
+["EdgeLite01"]
+["10.10.1.11"]
+--------------
+
+```
+
+Status messages also appear in the `statusMessage` slot inside Workbench.
+
+---
+
+## 🖥️ **Printing to Application Director Console**
+
+Your ProgramObject can write directly to the console using:
+
+```java
+System.out.println("your text here");
+```
+
+And for formatting separators:
+
+```java
+System.out.println("-----------------");
+```
+
+### 💻 Java Code
+
+> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
+
+
+```java
+// ===============================
+// Utility for writing status + console print
+// ===============================
+private void updateStatus(String msg)
+{
+  getStatusMessage().setValue(msg);
+
+  // Print to Application Director console
+  System.out.println("CSV Parser >>> " + msg);
+  System.out.println("-------------------------------");
+}
+
+// ===============================
+// onStart
+// ===============================
+public void onStart() throws Exception
+{
+  updateStatus("CSV Parser: ready.");
+}
+
+// ===============================
+// onExecute
+// ===============================
+public void onExecute() throws Exception
+{
+  try
+  {
+    // --- 1) Resolve CSV ---
+    BOrd fileOrd = getFileOrd();
+    if (fileOrd == null)
+    {
+      updateStatus("Error: fileOrd is null.");
+      return;
+    }
+
+    BIFile file = (BIFile) fileOrd.getOrd().resolve().get();
+    if (file == null)
+    {
+      updateStatus("Error: fileOrd did not resolve to a BIFile.");
+      return;
+    }
+
+    // --- 2) Read file ---
+    InputStreamReader reader = new InputStreamReader(file.getInputStream());
+    String[] rows = FileUtil.readLines(reader);
+
+    if (rows == null || rows.length == 0)
+    {
+      updateStatus("CSV is empty.");
+      return;
+    }
+
+    updateStatus(rows.length + " rows found.");
+
+    // --- 3) Parse lines + print to console ---
+    for (int i = 0; i < rows.length; i++)
+    {
+      String line = rows[i];
+      if (line == null || line.trim().length() == 0)
+        continue;
+
+      String[] fields = TextUtil.splitAndTrim(line, ',');
+
+      // Print in your requested style
+      System.out.println("-----------------");
+      System.out.println("Row " + i);
+      for (int j = 0; j < fields.length; j++)
+      {
+        System.out.println("  [" + fields[j] + "]");
+      }
+    }
+
+    updateStatus("CSV parsing complete. See Application Director.");
+  }
+  catch (Exception e)
+  {
+    updateStatus("Error: " + e.toString());
+    throw e;
+  }
+}
+
+// ===============================
+// onStop
+// ===============================
+public void onStop() throws Exception
+{
+  updateStatus("CSV Parser: stopped.");
+}
+
+```
 </details>
 
 
+---
+
+
+<details>
+<summary>📈 History Min/Max via BQL + Application Director Logging</summary>
+
+This tutorial walks you through building a **Niagara 4 ProgramObject** that:
+
+✔ Pulls a **history** using a `BOrd`
+✔ Lets you select a **time range** using a `baja:StatusEnum`
+✔ Runs a BQL query to compute **min()** and **max()**
+✔ Prints results in the **Application Director**
+✔ Updates two **baja:StatusNumeric** outputs (`minValue`, `maxValue`)
+✔ Mirrors every message into a human-readable `statusMessage` string
+
+This is one of the cleanest ways to build “data science” primitives inside Niagara without a full module.
+
+---
+
+## 🔧 **Required Imports**
+
+Your ProgramObject must import:
+
+* `javax.baja.history.*` (history access + BITable)
+* `javax.baja.collection.*` (cursor + column utilities)
+* `javax.baja.naming.*` (BOrd)
+* `javax.baja.status.*` (StatusEnum, StatusNumeric, StatusString)
+
+Workbench Import Manager should show:
+
+```
+baja → javax.baja.history     (User Defined)
+baja → javax.baja.collection  (User Defined)
+baja → javax.baja.naming      (By Property)
+baja → javax.baja.status      (Predefined)
+```
+
+No other modules are needed.
+
+---
+
+## 🧩 **Configuring the Time-Range Enum (VERY IMPORTANT)**
+
+Your ProgramObject has a slot:
+
+```
+timeRange : baja:StatusEnum
+```
+
+You **must** define the Enum facets in Workbench so each option maps to a valid BQL `period=` value.
+
+Example good tag names:
+
+| Human Text     | Enum Tag        | BQL Period Valid? |
+| -------------- | --------------- | ----------------- |
+| Today          | `today`         | ✅                 |
+| Yesterday      | `yesterday`     | ✅                 |
+| Last 7 Days    | `last7days`     | ✅                 |
+| This Month     | `thisMonth`     | ✅                 |
+| Previous Month | `previousMonth` | ✅                 |
+| Last 24 Hours  | `last24hours`   | ✅                 |
+
+👉 Your code uses **enum tags**, so configure your Enum like:
+
+```
+today
+yesterday
+last7days
+thisMonth
+previousMonth
+last24hours
+```
+
+If the tags are missing, the fallback mapping still works — but users won’t know why “0” shows in logs.
+
+---
+
+## 🧪 **Running the ProgramObject**
+
+1. Set `historyOrd` to a valid history, for example:
+
+```
+history:/AHU1/SupplyAirTemp
+```
+
+2. Pick a time range from the `timeRange` enum.
+3. Press **Execute**.
+
+Output appears in Application Director:
+
+```
+[HistoryMinMax] 2025-11-16 10:58:11 CST — Using time range: last7days
+[HistoryMinMax] 2025-11-16 10:58:11 CST — Min: 55.12, Max: 72.44
+```
+
+The numeric min/max values also appear in your slots and can be wired to logic.
+
+---
+
+## 🖥️ **Console + Status Logging**
+
+This ProgramObject writes to both:
+
+* **Application Director** (`System.out.println(...)`)
+* **statusMessage** (human readable string)
+
+with timestamp labeling.
+
+---
+
+## 🧠 **The Code (Paste Only These Methods)**
+
+> Niagara auto-generates imports, class header, and getters/setters.
+> Paste **only** this Program Source into your ProgramObject.
+
+```java
+// ------------------------------
+// Human-friendly rounding
+// ------------------------------
+private String fmt2(double v)
+{
+  return String.format("%.2f", v);
+}
+
+// ------------------------------
+// Unified logging (console + StatusString)
+// ------------------------------
+private void updateStatus(String msg)
+{
+  BAbsTime now = BAbsTime.now();
+  String stamp = now.toString();
+
+  String full = stamp + " — " + msg;
+
+  // Console output
+  System.out.println("[HistoryMinMax] " + full);
+
+  // StatusString slot
+  try {
+    BStatusString s = getStatusMessage();
+    if (s != null) s.setValue(full);
+  }
+  catch (Exception ignore) {}
+}
+
+// Map selected enum to a BQL period= parameter
+private String resolvePeriodTag()
+{
+  BStatusEnum en = getTimeRange();
+  if (en == null || en.getValue() == null)
+    return "today";
+
+  BEnum v = en.getValue();
+  String tag = v.getTag();
+
+  if (tag != null && tag.length() > 0 && !tag.equals("0"))
+    return tag.toLowerCase();
+
+  // fallback by ordinal
+  switch (v.getOrdinal())
+  {
+    case 0: return "today";
+    case 1: return "yesterday";
+    case 2: return "last7days";
+    case 3: return "thisMonth";
+    case 4: return "previousMonth";
+    case 5: return "last24hours";
+    default: return "today";
+  }
+}
+
+public void onStart() throws Exception
+{
+  updateStatus("HistoryMinMax: ready.");
+}
+
+public void onExecute() throws Exception
+{
+  updateStatus("Starting execution...");
+
+  BOrd baseOrd = getHistoryOrd();
+  if (baseOrd == null)
+  {
+    updateStatus("History ORD is not set.");
+    return;
+  }
+
+  // Find BQL period tag
+  String period = resolvePeriodTag();
+  updateStatus("Using time range: " + period);
+
+  String bqlOrdString = baseOrd.toString()
+      + "?period=" + period
+      + "|bql:select min(value), max(value)";
+
+  updateStatus("Constructed BQL ORD: " + bqlOrdString);
+
+  // Resolve and query
+  BITable table;
+  try {
+    table = (BITable) BOrd.make(bqlOrdString).resolve().get();
+    updateStatus("BQL resolved successfully.");
+  }
+  catch (Exception e) {
+    updateStatus("Failed to resolve BQL ORD: " + e.getMessage());
+    return;
+  }
+
+  ColumnList cols = table.getColumns();
+  if (cols.size() < 2)
+  {
+    updateStatus("Unexpected BQL result format.");
+    return;
+  }
+
+  TableCursor cur = table.cursor();
+  if (cur.next())
+  {
+    double min = ((BNumber) cur.cell(cols.get(0))).getDouble();
+    double max = ((BNumber) cur.cell(cols.get(1))).getDouble();
+
+    updateStatus("Min: " + fmt2(min) + ", Max: " + fmt2(max));
+
+    // Write into baja:StatusNumeric slots
+    getMinValue().setValue(min);
+    getMaxValue().setValue(max);
+  }
+  else
+  {
+    updateStatus("No data returned for selected time range.");
+  }
+}
+
+public void onStop() throws Exception
+{
+  updateStatus("HistoryMinMax: stopped.");
+}
+```
+
+</details>

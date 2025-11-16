@@ -68,8 +68,9 @@ The linear model continuously self-tunes its heating and cooling recovery ratesâ
 
 The **Linear** model assumes a direct relationship between how far the zone is from setpoint and how long recovery will take, based on a learned rate.
 
+$$
 \( \text{RunTime} = \frac{\text{TempDiff}}{\text{LearnedRate}_{EMA(N\text{ days})}} \)
-
+$$
 
 where:
 * **TempDiff** = TargetSetpoint âˆ’ ZoneTemp
@@ -607,8 +608,9 @@ The quadratic model below (PNNL Model 1 from white paper) predicts recovery time
 
 The **Quadratic** version is a smarter, drop-in upgrade that adds curvature for more realistic recovery behavior.
 
+$$
 \( \text{RunTime} = (A \times \text{TempDiff}^2) + (B \times \text{TempDiff}) + C \)
-
+$$
 
 This captures how systems heat or cool quickly at first but slow down as they approach setpoint (diminishing returns).
 
