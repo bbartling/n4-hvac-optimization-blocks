@@ -2783,40 +2783,9 @@ void updateTimer() {
 <details>
 <summary>📄 CSV File Reader + Console Logger (ProgramObject Tutorial)</summary>
 
-This tutorial shows how to build a simple **Niagara 4 ProgramObject that reads a CSV file**, parses each row, and prints the output directly to the **Application Director console** using:
+Create a CSV file with simple headers, for example:  
 
-```
-
-System.out.println("-----------------");
-
-```
-
-Perfect for lab work, debugging, or feeding small configuration datasets into more advanced logic.
-
----
-
-## 🔧 **What You Need**
-To run this example, your ProgramObject must include these imports:
-
-- **baja.file** → `javax.baja.file.*`  
-- **java.io** → `java.io.*`  
-
-These are required for:
-
-✔ Resolving a CSV file  
-✔ Reading file streams  
-✔ Converting them into rows of text  
-
-You **do not** need any NiagaraNetwork or Fox classes for this tutorial. Maybe in the future we could build off of that and actually use network stack protocols but this only demos parsing a CSV file.
-
----
-
-## 📁 **Preparing the CSV File**
-
-1. Create a CSV file with simple headers, for example:
-
-```
-
+```sql
 name,address
 EdgeLite01,10.10.1.11
 EdgeLite02,10.10.1.12
@@ -2824,59 +2793,44 @@ CampusN4,10.10.1.50
 
 ```
 
-2. Save the file to your local machine.
+In the AX Property Sheet view set the `Ord` for the CSV file in the Stations `Files` directory. In Workbench I navigated into my C drive and manually copied the CSV file into the Station.  
 
-3. In Workbench, drag the CSV file into:
 
+<p align="center">
+<img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/CsvParserSnip.png" alt="history tutorial" width="600">
+</p>
+
+
+See logs prints in the Application director as well as athe program uses `System.out.println`.  
+
+```java
+  System.out.println("CSV Parser >>> " + msg);
+  System.out.println("-------------------------------");
 ```
-
-/Files
-
-```
-
-This creates a station-level file you can reference with a `BOrd`, e.g.:
-
-```
-
-file:^edgeStations.csv
-
-```
-
-Set this value on your ProgramObject’s `fileOrd` slot.
 
 ---
 
-## 🧪 **Running the ProgramObject**
+## 🔧 **Required Imports**
 
-Hit **Execute** on the ProgramObject.  
-Each parsed row will print to the Application Director like:
+Your ProgramObject must import:
 
-```
+* `java.io.*` 
+* `javax.baja.file.*`
 
-Row 1
-["EdgeLite01"]
-["10.10.1.11"]
---------------
-
-```
-
-Status messages also appear in the `statusMessage` slot inside Workbench.
-
----
-
-## 🖥️ **Printing to Application Director Console**
-
-Your ProgramObject can write directly to the console using:
+Workbench on the ProgramObject auto generated code it should look like this below with proper imports set:
 
 ```java
-System.out.println("your text here");
+import java.util.*;              /* java Predefined*/
+import javax.baja.nre.util.*;    /* nre Predefined*/
+import javax.baja.sys.*;         /* baja Predefined*/
+import javax.baja.status.*;      /* baja Predefined*/
+import javax.baja.util.*;        /* baja Predefined*/
+import com.tridium.program.*;    /* program-rt Predefined*/
+import javax.baja.file.*;        /* baja User Defined*/
+import java.io.*;                /* java User Defined*/
+import javax.baja.naming.*;      /* baja By Property*/
 ```
 
-And for formatting separators:
-
-```java
-System.out.println("-----------------");
-```
 
 ### 💻 Java Code
 
@@ -2983,16 +2937,18 @@ public void onStop() throws Exception
 <details>
 <summary>📈 History Min/Max via BQL + Application Director Logging</summary>
 
-This tutorial walks you through building a **Niagara 4 ProgramObject** that:
+This tutorial walks you through building a **Niagara 4 ProgramObject** that pull trend histories and finds the min and max values.
 
-✔ Pulls a **history** using a `BOrd`
-✔ Lets you select a **time range** using a `baja:StatusEnum`
-✔ Runs a BQL query to compute **min()** and **max()**
-✔ Prints results in the **Application Director**
-✔ Updates two **baja:StatusNumeric** outputs (`minValue`, `maxValue`)
-✔ Mirrors every message into a human-readable `statusMessage` string
 
-This is one of the cleanest ways to build “data science” primitives inside Niagara without a full module.
+<p align="center">
+<img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/historyMinMaxSnip.png" alt="history tutorial" width="600">
+</p>
+
+In the AX Property Sheet view set the `Ord` for the CSV file in the Stations `Files` directory. In Workbench I navigated into my C drive and manually copied the CSV file into the Station.  
+
+<p align="center">
+<img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/historyMinMaxAxPropSheetSnip.png" alt="history tutorial prop sheet" width="600">
+</p>
 
 ---
 
@@ -3005,43 +2961,28 @@ Your ProgramObject must import:
 * `javax.baja.naming.*` (BOrd)
 * `javax.baja.status.*` (StatusEnum, StatusNumeric, StatusString)
 
-Workbench Import Manager should show:
+Workbench on the ProgramObject auto generated code it should look like this below with proper imports set:
 
+```java
+import java.util.*;              /* java Predefined*/
+import javax.baja.nre.util.*;    /* nre Predefined*/
+import javax.baja.sys.*;         /* baja Predefined*/
+import javax.baja.status.*;      /* baja Predefined*/
+import javax.baja.util.*;        /* baja Predefined*/
+import com.tridium.program.*;    /* program-rt Predefined*/
+import javax.baja.collection.*;  /* baja User Defined*/
+import javax.baja.history.*;     /* history-rt User Defined*/
+import javax.baja.naming.*;      /* baja By Property*/
 ```
-baja → javax.baja.history     (User Defined)
-baja → javax.baja.collection  (User Defined)
-baja → javax.baja.naming      (By Property)
-baja → javax.baja.status      (Predefined)
-```
-
-No other modules are needed.
 
 ---
 
 ## 🧩 **Configuring the Time-Range Enum (VERY IMPORTANT)**
 
-Your ProgramObject has a slot:
-
-```
-timeRange : baja:StatusEnum
-```
-
-You **must** define the Enum facets in Workbench so each option maps to a valid BQL `period=` value.
-
-Example good tag names:
-
-| Human Text     | Enum Tag        | BQL Period Valid? |
-| -------------- | --------------- | ----------------- |
-| Today          | `today`         | ✅                 |
-| Yesterday      | `yesterday`     | ✅                 |
-| Last 7 Days    | `last7days`     | ✅                 |
-| This Month     | `thisMonth`     | ✅                 |
-| Previous Month | `previousMonth` | ✅                 |
-| Last 24 Hours  | `last24hours`   | ✅                 |
 
 👉 Your code uses **enum tags**, so configure your Enum like:
 
-```
+```java
 today
 yesterday
 last7days
@@ -3050,47 +2991,14 @@ previousMonth
 last24hours
 ```
 
-If the tags are missing, the fallback mapping still works — but users won’t know why “0” shows in logs.
+
 
 ---
 
-## 🧪 **Running the ProgramObject**
+### 💻 Java Code
 
-1. Set `historyOrd` to a valid history, for example:
+> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
-```
-history:/AHU1/SupplyAirTemp
-```
-
-2. Pick a time range from the `timeRange` enum.
-3. Press **Execute**.
-
-Output appears in Application Director:
-
-```
-[HistoryMinMax] 2025-11-16 10:58:11 CST — Using time range: last7days
-[HistoryMinMax] 2025-11-16 10:58:11 CST — Min: 55.12, Max: 72.44
-```
-
-The numeric min/max values also appear in your slots and can be wired to logic.
-
----
-
-## 🖥️ **Console + Status Logging**
-
-This ProgramObject writes to both:
-
-* **Application Director** (`System.out.println(...)`)
-* **statusMessage** (human readable string)
-
-with timestamp labeling.
-
----
-
-## 🧠 **The Code (Paste Only These Methods)**
-
-> Niagara auto-generates imports, class header, and getters/setters.
-> Paste **only** this Program Source into your ProgramObject.
 
 ```java
 // ------------------------------
