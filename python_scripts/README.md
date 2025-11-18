@@ -41,12 +41,12 @@ These methods return the current state, predictions, and learned parameters.
 
 ## 3. 📝 Model Equations Summary
 
-The models are formulated from a simplified thermal-resistance and capacitance model (2R1C or 1R1C) of the zone dynamics[cite: 184, 185].
+The models are formulated from a simplified thermal-resistance and capacitance model (2R1C or 1R1C) of the zone dynamics.
 
-| Model | Underlying Equation [cite: 217, 243, 254] | Description |
+| Model | Underlying Equation | Description |
 | :--- | :--- | :--- |
-| **Model 1** | $t_{opt} = \alpha_{1,a}(T_{sp} - T_{z,0})^{2} + \alpha_{1,b}$ [cite: 243] | **Quadratic:** Assumes thermal mass is concentrated in the indoor air (1R1C model) and neglects outdoor temperature influence. Best for interior/well-insulated zones[cite: 236, 237]. |
-| **Model 3** | $t_{opt} = \alpha_{3,a}(T_{sp} - T_{z,0}) + \alpha_{3,b}(T_{sp} - T_{z,0})\frac{(T_{sp} - T_{o})}{\alpha_{3,c}} + \alpha_{3,d}$ [cite: 254] | **Weather Compensated:** Uses a 2R1C approximation and includes outdoor air temperature ($T_o$) influence via the second term[cite: 252].|
+| **Model 1** | $t_{opt} = \alpha_{1,a}(T_{sp} - T_{z,0})^{2} + \alpha_{1,b}$ | **Quadratic:** Assumes thermal mass is concentrated in the indoor air (1R1C model) and neglects outdoor temperature influence. Best for interior/well-insulated zones. |
+| **Model 3** | $t_{opt} = \alpha_{3,a}(T_{sp} - T_{z,0}) + \alpha_{3,b}(T_{sp} - T_{z,0})\frac{(T_{sp} - T_{o})}{\alpha_{3,c}} + \alpha_{3,d}$ | **Weather Compensated:** Uses a 2R1C approximation and includes outdoor air temperature ($T_o$) influence via the second term.|
 
 
 The difference in implementation stems directly from the mathematical **complexity** of the underlying models:
