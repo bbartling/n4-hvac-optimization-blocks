@@ -52,11 +52,13 @@ To keep this README concise, the detailed tutorials and algorithm implementation
 
 - [**Tutorials & Algorithms**](README_TUTORIALS_ALGORITHMS.md) — step‑by‑step examples and general algorithm blocks.
 - [**GL36 Air Side Trim & Respond**](README_TRIM_RESPOND.md) — variable definitions tutorial, VAV box requests, and trim‑respond resets.
+- [**GL36 Air Side FDD**](README_GL36_AHU_FDD.md) — coming soon! TODO.
 - [**GL36 Central Plant & AHU FDD**](README_GL36.md) — chiller plant enable logic, AHU fault detection, and other GL36‑compliant strategies.
 - [**Non‑GL36 & Advanced Logic**](README_NON_GL36.md) — simplified resets and per‑chiller rotator for systems outside Guideline 36.
 - [**APIs & Web Requests**](README_APIS.md) — examples for calling weather, holiday and iCalendar APIs or integrating external data science machine learning models running in docker containers.
 - [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and polynomial regression.
 - [**Demand‑Side Management**](README_DEMAND_SIDE_MANAGEMENT.md) — OpenADR client and PNNL‑inspired intelligent load shedding.
+- [**Astronomical Clock**](README_ASTRONOMICAL_CLOCK.md) — Uses Station time and site coordinates to calculate the sun's Azimuth (compass direction) and Elevation (height in the sky).
 - [**Niagara AX Notes**](NIAGARA_AX_NOTES.md) — notes on creating `ProgramObjects` in legacy Niagara AX (earlier Java-based versions).
 - [**AGENTS.md**](AGENTS.md) — provides the AI model context and internal notes that guide how ChatGPT or other LLMs interpret this repository, generate Niagara logic, and assist in creating new `ProgramObject`s.
 
