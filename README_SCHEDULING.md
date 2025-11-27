@@ -341,7 +341,6 @@ private java.util.Calendar computeNextChange(java.util.Calendar cal) {
 
 ---
 
-````markdown
 <details>
 <summary>📅 iCal Schedule Agent</summary>
 
@@ -1045,5 +1044,3 @@ private void log(String msg)
 ```
 
 </details>
-```
-
