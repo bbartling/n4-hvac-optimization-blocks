@@ -1932,3 +1932,224 @@ public void onStop() throws Exception
 ```
 
 </details>
+
+
+
+<details>
+<summary>🚨 Fault-Aware Math Block (Status & Exception Handling)</summary>
+
+This ProgramObject is a **fault-aware math demo** that shows how to:
+
+* Safely read `baja:StatusNumeric` and `baja:StatusBoolean` inputs  
+* Use **`BStatus.fault`** and **`BStatus.nullStatus`** as an “exception channel”  
+* Expose a simple `outFaultFlag` and `statusTrace` string to explain what went wrong  
+
+It takes a single numeric input, doubles it, and publishes the result — **unless** it detects a problem.  
+If the input is `NULL`, unwired, or in a non-OK status, the block marks its output as `{fault}` and raises a boolean flag.
+
+---
+
+<p align="center">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/faultTutorialSnip.png" alt="Fault-Aware Math Block Snip" width="650">
+</p>
+
+---
+
+### ⚙️ Slots (Niagara ProgramObject)
+
+| Slot Name      | Type               | Role / Description                                           |
+|----------------|--------------------|--------------------------------------------------------------|
+| `enable`       | `baja:StatusBoolean` | Master enable; when not OK/true, outputs are forced to NULL |
+| `inValue`      | `baja:StatusNumeric` | Main numeric input to be processed                          |
+| `faultIn`      | `baja:StatusBoolean` | Manual fault injection (forces block into FAULT)            |
+| `outValue`     | `baja:StatusNumeric` | Output value (`inValue * 2`) with status `{ok}` or `{fault}`|
+| `outFaultFlag` | `baja:StatusBoolean` | `true` when block is in fault; `false` when healthy         |
+| `statusTrace`  | `baja:StatusString`  | Human-readable trace message for debugging                  |
+
+**Timer**  
+The block uses an internal timer (`Clock.schedule`) to execute every **5 seconds**.
+
+---
+
+### 🧠 Under the Hood
+
+This block treats **status as its exception mechanism**:
+
+1. **Enable guard**  
+   * If `enable` is not OK/true, the block calls `nullOutputs()` and exits.  
+   * This clears outputs to `BStatus.nullStatus` and writes a reason into `statusTrace`.
+
+2. **Unwired / NULL input handling**  
+   * `ensureNumericWiredOrNull("inValue", getInValue())` checks if `inValue` has a link.  
+   * If not wired, it forces `inValue` to `0` with `BStatus.nullStatus`, so `inStatus.isNull()` becomes true.
+
+3. **Auto fault rules**  
+   * If `inValue` is `NULL` → outputs forced `NULL`, `outFaultFlag = true`.  
+   * If `inValue.status` is non-OK or `faultIn == true` → `outValue.status = BStatus.fault`, `outFaultFlag = true`.  
+   * Otherwise, `outValue.status = BStatus.ok` and `outFaultFlag = false`.
+
+4. **Exception safety**  
+   * `onExecute()` is wrapped in a `try/catch`.  
+   * If anything throws, the block sets outputs to `nullStatus` and writes the error to `statusTrace` instead of crashing the station.
+
+This pattern is a great template for any **algorithm block** where you want robust, inspectable fault behavior.
+
+---
+
+### 💻 Java Code
+
+> Niagara auto-generates class headers, imports, and getters/setters.  
+> Paste **only** the methods below into the Program’s **Source** editor for your `Fault Demo` ProgramObject.
+
+```java
+// ==========================
+// Class-level state
+// ==========================
+Clock.Ticket ticket;
+private static final int EXEC_PERIOD_SEC = 5; // run every 5 seconds
+
+// ==========================
+// Lifecycle
+// ==========================
+public void onStart() throws Exception
+{
+  // Initialize outputs as NULL so downstream logic knows it's not ready yet
+  nullOutputs("Fault demo block started.");
+  updateTimer();
+}
+
+public void onExecute() throws Exception
+{
+  try
+  {
+    updateTimer();
+
+    // --- 0. Master enable guard ---
+    if (!safeBool(getEnable()))
+    {
+      nullOutputs("Disabled via 'enable' flag.");
+      return;
+    }
+
+    // --- 1. Handle unwired numeric input (optional) ---
+    ensureNumericWiredOrNull("inValue", getInValue());
+
+    BStatus inStatus    = getInValue().getStatus();
+    boolean manualFault = safeBool(getFaultIn());
+
+    // --- 2. If input is NULL, force outputs NULL + raise fault flag ---
+    if (inStatus.isNull())
+    {
+      getOutValue().setValue(0);
+      getOutValue().setStatus(BStatus.nullStatus);
+
+      getOutFaultFlag().setValue(true);
+      getOutFaultFlag().setStatus(BStatus.ok);
+
+      getStatusTrace().setValue("inValue is NULL (unwired or cleared) → outputs forced NULL, faultFlag=TRUE.");
+      return;
+    }
+
+    // --- 3. If input itself is not OK, treat that as a fault source ---
+    boolean upstreamFault = !inStatus.isOk();
+
+    // --- 4. Normal math: double the value ---
+    double inVal = getInValue().getValue();
+    double result = inVal * 2.0;
+
+    getOutValue().setValue(result);
+
+    // --- 5. Decide final fault state ---
+    boolean effectiveFault = manualFault || upstreamFault;
+
+    if (effectiveFault)
+    {
+      // Mark the numeric as "fault" so it shows yellow {fault}
+      getOutValue().setStatus(BStatus.fault);
+
+      getOutFaultFlag().setValue(true);
+      getOutFaultFlag().setStatus(BStatus.ok);
+
+      String reason = manualFault ? "manual faultIn=TRUE" : "upstream input status not OK";
+      getStatusTrace().setValue("FAULT: " + reason + " | in=" + inVal + " → out=" + result);
+    }
+    else
+    {
+      getOutValue().setStatus(BStatus.ok);
+
+      getOutFaultFlag().setValue(false);
+      getOutFaultFlag().setStatus(BStatus.ok);
+
+      getStatusTrace().setValue("OK: inValue=" + inVal + " → outValue=" + result);
+    }
+  }
+  catch (Exception e)
+  {
+    // Never let exceptions bubble out of onExecute
+    getOutValue().setStatus(BStatus.nullStatus);
+    getOutFaultFlag().setStatus(BStatus.nullStatus);
+    getStatusTrace().setValue("Error in fault demo block: " + e.toString());
+  }
+}
+
+public void onStop() throws Exception
+{
+  if (ticket != null)
+  {
+    ticket.cancel();
+    ticket = null;
+  }
+  nullOutputs("Fault demo block stopped.");
+}
+
+// ==========================
+// Helpers
+// ==========================
+private void updateTimer()
+{
+  if (ticket != null) ticket.cancel();
+  ticket = Clock.schedule(
+      getComponent(),
+      BRelTime.makeSeconds(EXEC_PERIOD_SEC),
+      BProgram.execute,
+      null
+  );
+}
+
+/** Treat any non-OK or NULL boolean as false */
+private boolean safeBool(BStatusBoolean b)
+{
+  if (b == null) return false;
+  if (!b.getStatus().isOk()) return false;
+  return b.getValue();
+}
+
+/** If slot is unwired, mark it NULL so downstream logic can see it */
+private void ensureNumericWiredOrNull(String slotName, BStatusNumeric point)
+{
+  try
+  {
+    if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0)
+    {
+      point.setValue(0);
+      point.setStatus(BStatus.nullStatus);
+    }
+  }
+  catch (Exception e)
+  {
+    // ignore – safest thing is to leave status as-is
+  }
+}
+
+/** Convenience: clear outputs + set trace */
+private void nullOutputs(String trace)
+{
+  getOutValue().setValue(0);
+  getOutValue().setStatus(BStatus.nullStatus);
+
+  getOutFaultFlag().setValue(false);
+  getOutFaultFlag().setStatus(BStatus.nullStatus);
+
+  getStatusTrace().setValue(trace);
+}
+```

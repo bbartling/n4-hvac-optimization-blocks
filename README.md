@@ -52,7 +52,7 @@ To keep this README concise, the detailed tutorials and algorithm implementation
 
 
 - [**AGENTS.md**](AGENTS.md) — most importantly provides the AI model context and internal notes that guide how ChatGPT or other LLMs interpret this repository, generate Niagara logic, and assist in creating new `ProgramObject`s.
-- [**Tutorials & Algorithms**](README_TUTORIALS_ALGORITHMS.md) — step‑by‑step examples and general algorithm blocks.
+- [**Beginner Tutorials**](README_BEGINNER_TUTORIALS.md) — step‑by‑step examples and general algorithm blocks.
 - [**GL36 Air Side Trim & Respond**](README_TRIM_RESPOND.md) — variable definitions tutorial, VAV box requests, and trim‑respond resets.
 - **GL36 Air Side FDD** — coming soon! TODO.
 - [**GL36 Central Plant**](README_GL36.md) — chiller plant enable logic, AHU fault detection, and other GL36‑compliant strategies.
