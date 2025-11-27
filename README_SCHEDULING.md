@@ -118,7 +118,10 @@ Effects:
 
 ---
 
-# 🧪 Programmatically Driving a Weekly Schedule
+
+<details>
+<summary>🧪 Programmatically Driving a Weekly Schedule</summary>
+
 
 ### *Using a ProgramObject to override a BooleanSchedule.In*
 
@@ -131,6 +134,9 @@ Use case:
 Just **link the ProgramObject output → BooleanSchedule.in**.
 
 This is the recommended way to override a schedule.
+
+
+![Schedule Tut Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/scheduleTutSnip.png)
 
 ---
 
@@ -165,30 +171,38 @@ The schedule will show:
 private Clock.Ticket ticket = null;
 
 // Run every 60 seconds
-private static final int EXEC_PERIOD_SEC = 60;
+private static final int EXEC_PERIOD_SEC = 10;
 
 // Office hours (local station time) 
 // 8:00 AM to 5:00 PM
-private static final int START_HOUR = 8;    
-private static final int END_HOUR   = 17;   
+private static final int START_HOUR = 8;
+private static final int END_HOUR   = 17;
 
 // ======================================
 // 2. Lifecycle Methods (Start/Stop)
 // ======================================
 
 public void onStart() throws Exception {
-    // This runs once when the component starts.
-    // We must start the timer here!
+    // Optional: initialize outputs to NULL on startup
+    getOccupiedOut().setValue(false);
+    getOccupiedOut().setStatus(BStatus.nullStatus);
+    getStatusTrace().setValue("Office-hours block started (outputs NULL)");
+
+    // Start timer
     updateTimer();
 }
 
 public void onStop() throws Exception {
-    // This runs when the component is disabled or the station stops.
-    // We must kill the timer so it doesn't run in the background forever.
+    // Kill timer
     if (ticket != null) {
         ticket.cancel();
         ticket = null;
     }
+
+    // Optional: mark outputs NULL on stop
+    getOccupiedOut().setValue(false);
+    getOccupiedOut().setStatus(BStatus.nullStatus);
+    getStatusTrace().setValue("Office-hours block stopped (outputs NULL)");
 }
 
 // ======================================
@@ -196,50 +210,69 @@ public void onStop() throws Exception {
 // ======================================
 
 public void onExecute() throws Exception {
-    // Schedule the next run
+    // Always schedule the next run first
     updateTimer();
 
-    // Safety Check: If disabled, return NULL
-    if (!safeBool(getEnable())) {
-        getOccupiedOut().setValue(false);
-        getOccupiedOut().setStatus(BStatus.NULL);
-        getStatusTrace().setValue("Disabled — output forced NULL");
-        return;
+    try {
+        // Safety Check: If disabled, return NULL
+        if (!safeBool(getEnable())) {
+            getOccupiedOut().setValue(false);
+            getOccupiedOut().setStatus(BStatus.nullStatus);
+            getStatusTrace().setValue("Disabled — output forced NULL");
+            return;
+        }
+
+        // Get Current Time using Java Calendar (station local time)
+        java.util.Calendar cal = java.util.Calendar.getInstance();
+
+        // Java Calendar: Sunday=1, Monday=2, ... Saturday=7
+        int dow    = cal.get(java.util.Calendar.DAY_OF_WEEK);
+        int hour   = cal.get(java.util.Calendar.HOUR_OF_DAY); // 0-23
+        int minute = cal.get(java.util.Calendar.MINUTE);
+
+        // Logic: Is it a Weekday? (Mon=2 through Fri=6)
+        boolean isWeekday = (dow >= java.util.Calendar.MONDAY &&
+                             dow <= java.util.Calendar.FRIDAY);
+
+        // Logic: Is it within hours?
+        boolean inHourRange = (hour >= START_HOUR && hour < END_HOUR);
+
+        // Combine logic
+        boolean occ = isWeekday && inHourRange;
+
+        // Compute when the output will change next
+        java.util.Calendar nextChange = computeNextChange(cal);
+
+        // Format times as human-readable station time (YYYY-MM-DD HH:MM)
+        String nowStr  = String.format("%1$tY-%1$tm-%1$td %1$tH:%1$tM", cal);
+        String nextStr = String.format("%1$tY-%1$tm-%1$td %1$tH:%1$tM", nextChange);
+
+        // Set Outputs (normal OK path)
+        getOccupiedOut().setValue(occ);
+        getOccupiedOut().setStatus(BStatus.ok);
+
+        boolean nextValue = !occ;
+        
+        getStatusTrace().setValue(
+            "StationTime=" + nowStr +
+            " | NextChange=" + nextStr +
+            " | NextValue=" + nextValue
+        );
+
     }
-
-    // Get Current Time using Java Calendar
-    java.util.Calendar cal = java.util.Calendar.getInstance();
-    
-    // Java Calendar: Sunday=1, Monday=2, ... Saturday=7
-    int dow = cal.get(java.util.Calendar.DAY_OF_WEEK);
-    int hour = cal.get(java.util.Calendar.HOUR_OF_DAY); // 0-23
-    int minute = cal.get(java.util.Calendar.MINUTE);
-
-    // Logic: Is it a Weekday? (Mon=2 through Fri=6)
-    boolean isWeekday = (dow >= java.util.Calendar.MONDAY && dow <= java.util.Calendar.FRIDAY);
-
-    // Logic: Is it within hours?
-    boolean inHourRange = (hour >= START_HOUR && hour < END_HOUR);
-
-    // Combine logic
-    boolean occ = isWeekday && inHourRange;
-
-    // Set Outputs
-    getOccupiedOut().setValue(occ);
-    getOccupiedOut().setStatus(BStatus.ok);
-
-    getStatusTrace().setValue(
-        "Day=" + dow + 
-        " Hr=" + hour + 
-        " Occ=" + occ
-    );
+    catch (Exception e) {
+        // FAULT path: something went wrong in our logic
+        getOccupiedOut().setValue(false);
+        getOccupiedOut().setStatus(BStatus.fault);
+        getStatusTrace().setValue("FAULT in office-hours block: " + e.toString());
+    }
 }
+
 
 // ======================================
 // 4. Helper Methods
 // ======================================
 
-// This was the missing method causing your error!
 private void updateTimer() {
     if (ticket != null) ticket.cancel();
     ticket = Clock.schedule(
@@ -255,18 +288,106 @@ private boolean safeBool(BStatusBoolean b) {
     if (!b.getStatus().isOk()) return false;
     return b.getValue();
 }
+
+/**
+ * Compute the next time (station local) when the occupied flag will change.
+ * Occupied = true on weekdays between START_HOUR and END_HOUR.
+ */
+private java.util.Calendar computeNextChange(java.util.Calendar cal) {
+    java.util.Calendar next = (java.util.Calendar) cal.clone();
+    next.set(java.util.Calendar.SECOND, 0);
+    next.set(java.util.Calendar.MILLISECOND, 0);
+
+    int dow    = cal.get(java.util.Calendar.DAY_OF_WEEK);
+    int hour   = cal.get(java.util.Calendar.HOUR_OF_DAY);
+    int minute = cal.get(java.util.Calendar.MINUTE);
+
+    boolean isWeekday = (dow >= java.util.Calendar.MONDAY &&
+                         dow <= java.util.Calendar.FRIDAY);
+    boolean inHourRange = (hour >= START_HOUR && hour < END_HOUR);
+    boolean occNow = isWeekday && inHourRange;
+
+    if (isWeekday && hour < START_HOUR) {
+        // Before office hours on a weekday: next change is today at START_HOUR
+        next.set(java.util.Calendar.HOUR_OF_DAY, START_HOUR);
+        next.set(java.util.Calendar.MINUTE, 0);
+    }
+    else if (isWeekday && inHourRange) {
+        // During office hours on a weekday: next change is today at END_HOUR
+        next.set(java.util.Calendar.HOUR_OF_DAY, END_HOUR);
+        next.set(java.util.Calendar.MINUTE, 0);
+    }
+    else {
+        // After hours on a weekday OR weekend: next change is next weekday at START_HOUR
+        do {
+            next.add(java.util.Calendar.DAY_OF_MONTH, 1);
+            int ndow = next.get(java.util.Calendar.DAY_OF_WEEK);
+            if (ndow >= java.util.Calendar.MONDAY && ndow <= java.util.Calendar.FRIDAY) {
+                break;
+            }
+        } while (true);
+
+        next.set(java.util.Calendar.HOUR_OF_DAY, START_HOUR);
+        next.set(java.util.Calendar.MINUTE, 0);
+    }
+
+    return next;
+}
+
+
 ```
+
+</details>
 
 ---
 
+````markdown
 <details>
-<summary>🗓️ iCal Integration</summary>
+<summary>📅 iCal Schedule Agent</summary>
 
-Use this block to **subscribe** to an online iCalendar (`.ics`) feed (e.g., shared Google/Outlook/Apple calendar URLs) and expose “next event” details inside Niagara for schedule logic (holiday/vacation shutdowns, special events, etc.). This is designed for a **Program Object**—the Java is already done; this section just documents how to set it up.
+This ProgramObject turns an **iCalendar (.ics) feed** into a live Boolean
+schedule and “next event” hints for optimal start.
 
-The iCal program makes an HTTP GET request to a URL specified in its icsUrl slot, fetching a raw text file in the iCalendar (.ics) format. It then processes this text by looping through each VEVENT block, parsing the SUMMARY, LOCATION, DESCRIPTION, and DTSTART tags to create a list of EventInfo Java objects. Finally, it accesses the target BCalendarSchedule component via its calendarOrd slot, locks it, and dynamically adds new BDateSchedule children, each populated with the specific Year, Month, and Day derived from the event's start time.
+It exposes:
 
-> Note this is a concept idea that only works with CalenderSchedules. Future TODO will be to overhaul with generic weekly schedules.
+- `occupiedOut` → **BooleanSchedule.in** (true when *any* event is active)
+- `statusTrace` → human-readable debug string  
+  `StationTime / EventState / EventName / NextChange / NextValue / ParsedEvents`
+- Optimal-start signals:
+  - `scheduleNextValue` → occupancy value at the **next change edge** (true/false)
+  - `scheduleNextEventTime` → Java **milliseconds timestamp** of that next change
+
+Under the hood it does two distinct loops:
+
+1. **Slow loop – Fetch & parse ICS (network)**  
+   - Runs only when:
+     - the `updateNow` flag is set, **or**
+     - the cached data is older than `icsFetchPeriodSeconds`, **or**
+     - the cache is empty on startup.
+   - Downloads the `.ics` file, parses all `VEVENT` blocks, and builds an
+     in-memory `eventCache` list (typically a few hundred events).
+   - Replaces the old cache in one shot so memory doesn’t grow over time.
+   - Updates:
+     - `lastFetchTs` with a human-readable timestamp
+     - `statusTrace` and optional console logs (`logToConsole`).
+
+2. **Fast loop – Evaluate schedule (no network)**  
+   - Runs every `EXEC_PERIOD_SEC` seconds (currently 10s).
+   - Compares the current **station time** against the cached events:
+     - If `now` falls between any event’s `startMillis`/`endMillis`,
+       `occupiedOut = true`.
+     - Finds the **next change edge**:
+       - from unoccupied → occupied (next event start)
+       - or occupied → unoccupied (end of the current event).
+   - Writes:
+     - `occupiedOut` (for the BooleanSchedule `In` slot)
+     - `scheduleNextEventTime` (Java millis)
+     - `scheduleNextValue` (true/false at that millis)
+     - `statusTrace` (single debug line)
+
+Because the evaluation loop never hits the network, the output toggles
+**instantly** when an event starts/stops, even if you only fetch the ICS once
+per hour.
 
 ---
 
@@ -280,442 +401,649 @@ The iCal program makes an HTTP GET request to a URL specified in its icsUrl slot
 
 ---
 
-### ⚙️ Slot Sheet (suggested)
-| Slot Name               | Type             | Writable | Notes |
-| ---                     | ---              | ---      | --- |
-| `calendarUrl`           | `BStatusString`  | ✅       | Full HTTPS URL to the **.ics** feed (public/share link). |
-| `internalUpdateSeconds` | `BStatusNumeric` | ✅       | How often to refresh, seconds (e.g., `21600` = 6h). |
-| `updateNow`             | `BStatusBoolean` | ✅       | Toggle `true` to force an immediate fetch (auto-resets `false`). |
-| `statusTrace`           | `BStatusString`  | ❌       | Short “OK / ERROR: …” health text. |
-| `lastRefreshTs`         | `BStatusString`  | ❌       | Timestamp of last successful refresh. |
-| `nextEventsJson`        | `BStatusString`  | ❌       | JSON array of upcoming events (already normalized in code). |
-| `etagCache` (optional)  | `BStatusString`  | ❌       | If-None-Match cache to reduce bandwidth (if your code uses it). |
+### 🧩 Slots
 
-> **Tip:** The slot formerly called `pollSeconds` was renamed to `internalUpdateSeconds` for clarity.
+Create these slots on your ProgramObject:
 
----
+| Slot Name                 | Type             | Writable | Flags        | Notes |
+|---------------------------|------------------|----------|--------------|-------|
+| `enable`                  | `BStatusBoolean` | ✅        | `sL`         | Master enable; when false, all outputs are forced `NULL`. |
+| `occupiedOut`             | `BStatusBoolean` | ❌        | `rs`         | **Output** wired to `BooleanSchedule.in` (true when any event is active). |
+| `statusTrace`             | `BStatusString`  | ❌        | `rs`         | Human-readable log of current state, next change, and parsed count. |
+| `icsUrl`                  | `BStatusString`  | ✅        | `f`          | HTTPS URL of the `.ics` feed. Defaults to **Google US Holidays** on start if empty. |
+| `icsFetchPeriodSeconds`   | `BStatusNumeric` | ✅        | `f`          | Fetch period for the slow loop (seconds). Defaults to **3600** (1 hour) if `NULL`/bad. |
+| `updateNow`               | `BStatusBoolean` | ✅        | `sX`         | Manual trigger; when set `true`, forces an immediate fetch, then auto-resets to `false`. |
+| `scheduleNextValue`       | `BStatusBoolean` | ❌        | `rs`         | **Output** for optimal-start: occupancy value at `scheduleNextEventTime`. |
+| `scheduleNextEventTime`   | `BStatusNumeric` | ❌        | `rs`         | **Output** for optimal-start: next change edge in Java millis (`double`). |
+| `lastFetchTs`             | `BStatusString`  | ❌        | `rs`         | Time of the last successful ICS fetch, for troubleshooting. |
+| `logToConsole`            | `BStatusBoolean` | ✅        | `s`          | When true, prints lightweight debug logs to the station console. |
+| `Link` (optional helper)  | `baja:Link`      | —        |              | Only needed if you want to visually wire things in an AX/N4 demo palette. |
 
-### ✅ How to use
-1. **Set `calendarUrl`** to a public/subscribable `.ics` link (not a file import).  
-   - Google Calendar: “**Settings → Integrate calendar → Secret address in iCal format**”.  
-   - Outlook/Apple: share/publish the calendar and copy the iCal URL.
-2. **(Optional) Enable trigger:** Check **Execute On Change** for `updateNow` so a **true** write runs the fetch immediately.
-3. **Refresh cadence:** The program’s internal timer uses `internalUpdateSeconds` to re-pull the feed on a fixed schedule.
-4. **Consume results:** Read `nextEventsJson` (stringified JSON) for your logic—e.g., “if any event today tagged Public/Bank Holiday → disable schedules”.
+> **Wiring pattern (basic schedule):**  
+> `iCalProgram.occupiedOut → BooleanSchedule.in`  
+> `BooleanSchedule.out → Your AHU/VAV schedule consumer`
 
----
-
-### 🔎 Practical notes
-- **Subscribe vs. Import:** Use a **URL subscription** so clients stay in sync; avoid one-time calendar file imports.  
-- **Throttling:** Most calendar hosts update **every few hours**. Avoid setting `internalUpdateSeconds` too low.  
-- **Null-safety:** If URL is empty or fetch fails, `statusTrace` shows the error and outputs remain unchanged.
-- **Filtering:** Your Program Object’s Java already normalizes and filters events; this doc just standardizes the slots/UI.
+> **Wiring pattern (optimal start):**  
+> `iCalProgram.scheduleNextValue      → OptimalStart.scheduleNextValue`  
+> `iCalProgram.scheduleNextEventTime  → OptimalStart.scheduleNextEventTime`
 
 ---
 
-### 💻 Java Code
+### Application Director Logs When Set True
 
-> Testing on next space flight ical: https://nextspaceflight.com/calendar/
+* Parsing ical events debug will show up like below in Platform Application Director
 
+```
+[IcalScheduleAgent] ... BEGIN:VEVENT
+[IcalScheduleAgent]     DTSTART: Tue Jul 04 00:00:00 CDT 2028 (ALL-DAY)
+[IcalScheduleAgent]     DTEND:   Wed Jul 05 00:00:00 CDT 2028
+[IcalScheduleAgent]     SUMMARY: Independence Day
+[IcalScheduleAgent] ... adding event: Independence Day | start=Tue Jul 04 00:00:00 CDT 2028 | end=Wed Jul 05 00:00:00 CDT 2028 | allDay=true
+[IcalScheduleAgent] ... BEGIN:VEVENT
+[IcalScheduleAgent]     DTSTART: Sun Dec 24 00:00:00 CST 2028 (ALL-DAY)
+[IcalScheduleAgent]     DTEND:   Mon Dec 25 00:00:00 CST 2028
+[IcalScheduleAgent]     SUMMARY: Christmas Eve
+[IcalScheduleAgent] ... adding event: Christmas Eve | start=Sun Dec 24 00:00:00 CST 2028 | end=Mon Dec 25 00:00:00 CST 2028 | allDay=true
+[IcalScheduleAgent] ... BEGIN:VEVENT
+[IcalScheduleAgent]     DTSTART: Sun Dec 31 00:00:00 CST 2028 (ALL-DAY)
+[IcalScheduleAgent]     DTEND:   Mon Jan 01 00:00:00 CST 2029
+[IcalScheduleAgent]     SUMMARY: New Year's Eve
+[IcalScheduleAgent] ... adding event: New Year's Eve | start=Sun Dec 31 00:00:00 CST 2028 | end=Mon Jan 01 00:00:00 CST 2029 | allDay=true
+[IcalScheduleAgent] ... BEGIN:VEVENT
+[IcalScheduleAgent]     DTSTART: Mon Jan 15 00:00:00 CST 2029 (ALL-DAY)
+[IcalScheduleAgent]     DTEND:   Tue Jan 16 00:00:00 CST 2029
+[IcalScheduleAgent]     SUMMARY: Martin Luther King Jr. Day
+[IcalScheduleAgent] ... adding event: Martin Luther King Jr. Day | start=Mon Jan 15 00:00:00 CST 2029 | end=Tue Jan 16 00:00:00 CST 2029 | allDay=true
+[IcalScheduleAgent] ... BEGIN:VEVENT
+[IcalScheduleAgent]     DTSTART: Mon Dec 31 00:00:00 CST 2029 (ALL-DAY)
+[IcalScheduleAgent]     DTEND:   Tue Jan 01 00:00:00 CST 2030
+[IcalScheduleAgent]     SUMMARY: New Year's Eve
+[IcalScheduleAgent] ... adding event: New Year's Eve | start=Mon Dec 31 00:00:00 CST 2029 | end=Tue Jan 01 00:00:00 CST 2030 | allDay=true
+[IcalScheduleAgent] ... BEGIN:VEVENT
+[IcalScheduleAgent]     DTSTART: Thu Dec 24 00:00:00 CST 2020 (ALL-DAY)
+[IcalScheduleAgent]     DTEND:   Fri Dec 25 00:00:00 CST 2020
+[IcalScheduleAgent]     SUMMARY: Christmas Eve
+[IcalScheduleAgent] ... adding event: Christmas Eve | start=Thu Dec 24 00:00:00 CST 2020 | end=Fri Dec 25 00:00:00 CST 2020 | allDay=true
+[IcalScheduleAgent] ... BEGIN:VEVENT
+[IcalScheduleAgent]     DTSTART: Mon Oct 12 00:00:00 CDT 2020 (ALL-DAY)
+[IcalScheduleAgent]     DTEND:   Tue Oct 13 00:00:00 CDT 2020
+[IcalScheduleAgent]     SUMMARY: Columbus Day
+```
+
+### 📦 Imports (Workbench → Imports tab)
+
+Add these (if they’re not already there):
+
+- `java.util`
+- `java.io`
+- `java.net`
+- `java.text`
+- `javax.baja.status`
+- `javax.baja.time`
+- `com.tridium.program`
+
+Do **not** paste them into the code window; they go in the **Imports** tab.
+
+---
+
+### ⚙️ Defaults
+
+On `onStart()` the block auto-heals common config issues:
+
+- If `icsFetchPeriodSeconds` is `NULL` or ≤ 0, it is set to **3600 seconds**.
+- If `icsUrl` is empty, it is set to the public **Google US Holiday** feed:
+
+  ```text
+  https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics
+````
+
+This means you can drop the ProgramObject into a station, hit **Compile**, and
+it will start behaving like a holiday-based Boolean schedule with zero
+configuration.
+
+---
+
+### 🔁 How the loop behaves
+
+Each `onExecute()`:
+
+1. Keeps the **timer heartbeat** going (every 10s).
+2. Decides whether to re-fetch the ICS:
+
+   * If `updateNow == true` → fetch immediately.
+   * Else if `now - lastDownload > icsFetchPeriodSeconds` → fetch.
+   * Else if the cache is empty (first run) → fetch.
+3. Uses the **cached events only** to compute:
+
+   * `occupiedOut` (any event active now?)
+   * `scheduleNextEventTime` / `scheduleNextValue` (next edge)
+   * `statusTrace` (single debug line).
+
+Because the heavy ICS parse runs infrequently and the fast loop uses only
+in-memory data, this is very light weight for a JACE or Supervisor while still
+giving **instant** schedule transitions.
+
+---
+
+### 💻 Program Source (full Java)
+
+> Workbench auto-generates the class header and getters/setters; paste **only**
+> the code below into the **Program Source** section.
 
 ```java
 ////////////////////////////////////////////////////////////////
-// Program Source — ICS Subscriber (v3 - Concurrency Fix)
+// Program Source — iCal-Driven Boolean Schedule Replacement
 ////////////////////////////////////////////////////////////////
 
-// Runtime
-private Clock.Ticket ticket;
-private long lastFetchMs = 0L;
+// ==========================
+// Internal Types
+// ==========================
 
-// Small record for parsed events
-class EventInfo implements Comparable<EventInfo> {
-  java.util.Date startTime;
-  java.util.Date endTime;   
+class IcalEvent {
+  long startMillis;
+  long endMillis;
   String summary;
-  String location;       
-  String description;   
+  boolean isAllDay;
 
-  EventInfo(java.util.Date start, java.util.Date end, String sum, String loc, String desc) {
-    this.startTime = start;
-    this.endTime = end;
-    this.summary = sum;
-    this.location = loc;
-    this.description = desc;
-  }
-
-  // Null-safe comparison
-  public int compareTo(EventInfo o) {
-    if (this.startTime == null && o.startTime == null) return 0;
-    if (this.startTime == null) return -1;
-    if (o.startTime == null) return 1;
-    return this.startTime.compareTo(o.startTime);
+  IcalEvent(long s, long e, String sum, boolean ad) {
+    startMillis = s;
+    endMillis   = e;
+    summary     = (sum == null) ? "" : sum;
+    isAllDay    = ad;
   }
 }
 
-// ================= Lifecycle =================
-
-public void onStart() throws Exception {
-  log("onStart");
-  getStatusTrace().setValue("Program started.");
-  scheduleHeartbeat();
+class ParsedDate {
+  long millis;
+  boolean isAllDay;
+  ParsedDate(long m, boolean ad) { millis = m; isAllDay = ad; }
 }
 
-public void onExecute() throws Exception {
-  // 1) Manual/External fetch trigger
+
+// ==========================
+// Class-Level State
+// ==========================
+
+private Clock.Ticket ticket;
+private static final int EXEC_PERIOD_SEC = 10;   // Fast loop
+
+private java.util.List<IcalEvent> eventCache =
+    new java.util.ArrayList<IcalEvent>();
+
+private java.text.SimpleDateFormat fmtUtc;
+private java.text.SimpleDateFormat fmtAllDay;
+
+private long lastDownload = 0L;
+
+
+// ==========================
+// onStart
+// ==========================
+
+public void onStart() throws Exception
+{
+  fmtUtc = new java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'");
+  fmtUtc.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
+
+  fmtAllDay = new java.text.SimpleDateFormat("yyyyMMdd");
+  fmtAllDay.setTimeZone(java.util.TimeZone.getDefault());
+
+  // <---- NEW: apply defaults if those slots are empty/bad
+  applyDefaultConfig();
+
+  getStatusTrace().setValue("iCal Schedule Agent Started");
+  updateTimer();
+}
+
+
+
+// ==========================
+// onExecute
+// ==========================
+
+public void onExecute() throws Exception
+{
+  updateTimer();
+
   try {
-    if (getUpdateNow().getStatus().isOk() && getUpdateNow().getValue()) {
-      log("updateNow=TRUE → fetching ICS once");
-      fetchAndParseIcsOnce();
-      try { setUpdateNow(new BStatusBoolean(false)); } catch (Exception ignore) {}
+    // ❌ If disabled: return NULL
+    if (!safeBool(getEnable())) {
+      forceNullOutputs("Disabled");
+      return;
     }
-  } catch (Exception ignore) {}
 
-  // 2) Heartbeat: recompute eventActive (no network)
-  try { computeEventActiveToday(); } catch (Exception e) { log("eventActive error: " + e.getMessage()); }
+    long now = System.currentTimeMillis();
 
-  scheduleHeartbeat();
-}
+    // ==========================================================
+    // 1) SLOW LOOP — ICS DOWNLOAD
+    // ==========================================================
+    double fetchPeriod = 300; // default 5-minute fetch
+    if (getIcsFetchPeriodSeconds().getStatus().isOk()) {
+      fetchPeriod = Math.max(30, getIcsFetchPeriodSeconds().getValue());
+    }
 
-public void onStop() throws Exception {
-  if (ticket != null) { ticket.cancel(); ticket = null; }
-  log("onStop");
-  getStatusTrace().setValue("Program stopped.");
-}
+    boolean manual = safeBool(getUpdateNow());
+    if (manual) {
+      getUpdateNow().setValue(false);
+      getUpdateNow().setStatus(BStatus.ok);
+    }
 
-// ================= Heartbeat (internalUpdateSeconds) =================
+    boolean expired = (now - lastDownload) > (long)(fetchPeriod * 1000);
 
-private void scheduleHeartbeat() {
-  if (ticket != null) { ticket.cancel(); ticket = null; }
-  int secs = 10; // default 10s
-  try {
-    if (getInternalUpdateSeconds().getStatus().isOk())
-      secs = (int)Math.max(2, Math.min(600, getInternalUpdateSeconds().getValue()));
-    setInternalUpdateSeconds(new BStatusNumeric(secs));
-  } catch (Exception ignore) {}
-  // Use a shorter heartbeat (e.g., 60s) if you use the StringWritable
-  ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(secs), BProgram.execute, null);
-  log("next heartbeat in " + secs + "s");
-}
+    if (manual || expired || eventCache.isEmpty()) {
+      fetchIcs();
+    }
 
-// ================= Core: one-shot fetch + write =================
+    // ==========================================================
+    // 2) FAST LOOP — EVALUATE CURRENT & NEXT EVENT
+    // ==========================================================
+    evaluateSchedule(now);
 
-private void fetchAndParseIcsOnce() {
-  long t0 = System.currentTimeMillis();
-
-  String url = "https://calendar.google.com/calendar/ical/nextspaceflight.com_l328q9n2alm03mdukb05504c44%40group.calendar.google.com/public/basic.ics";
-  try {
-    if (getIcsUrl().getStatus().isOk() && !getIcsUrl().getValue().isEmpty())
-      url = getIcsUrl().getValue();
-    else
-      setIcsUrl(new BStatusString(url));
-  } catch (Exception ignore) {}
-
-  BComponent calComp = resolveCalendar();
-  if (calComp == null) {
-    getStatusTrace().setValue("ERROR: calendarOrd does not resolve to a Calendar Schedule.");
-    log("calendarOrd unresolved");
-    return;
-  } else {
-    log("calendarOrd resolved → " + calComp.getType().toString());
+  } catch (Exception e) {
+    forceFaultOutputs("FAULT in onExecute: " + e.toString());
   }
+}
+
+
+// ==========================
+// onStop
+// ==========================
+
+public void onStop() throws Exception
+{
+  if (ticket != null) {
+    ticket.cancel();
+    ticket = null;
+  }
+}
+
+
+// ==========================
+// Timer Helper
+// ==========================
+
+private void updateTimer()
+{
+  if (ticket != null) ticket.cancel();
+  ticket = Clock.schedule(
+      getComponent(),
+      BRelTime.makeSeconds(EXEC_PERIOD_SEC),
+      BProgram.execute,
+      null
+  );
+}
+
+
+// ==========================
+// ICS Fetcher
+// ==========================
+
+private void fetchIcs()
+{
+  String urlStr = "";
+  if (getIcsUrl().getStatus().isOk() &&
+      getIcsUrl().getValue() != null) {
+    urlStr = getIcsUrl().getValue().trim();
+  }
+
+  if (urlStr.length() == 0) {
+    getStatusTrace().setValue("Config error: no ICS URL");
+    log("Config error: no ICS URL");
+    return;
+  }
+
+  java.util.List<IcalEvent> newEvents =
+      new java.util.ArrayList<IcalEvent>();
 
   java.net.HttpURLConnection conn = null;
-  java.util.List<EventInfo> events = new java.util.ArrayList<>();
+  java.io.BufferedReader reader = null;
+
   try {
-    log("GET " + url);
-    java.net.URL u = new java.net.URL(url);
-    conn = (java.net.HttpURLConnection)u.openConnection();
+    log("GET " + urlStr);
+    java.net.URL url = new java.net.URL(urlStr);
+    conn = (java.net.HttpURLConnection) url.openConnection();
+    conn.setConnectTimeout(4000);
+    conn.setReadTimeout(8000);
     conn.setRequestMethod("GET");
-    conn.setConnectTimeout(10000);
-    conn.setReadTimeout(10000);
 
     int code = conn.getResponseCode();
-    java.io.InputStream is = (code >= 200 && code < 300) ? conn.getInputStream() : conn.getErrorStream();
-    java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(is, "UTF-8"));
+    if (code != 200) {
+      getStatusTrace().setValue("HTTP error: " + code);
+      log("HTTP error: " + code);
+      return;
+    }
 
-    events = parseIcsStream(r);
-    r.close();
+    reader = new java.io.BufferedReader(
+        new java.io.InputStreamReader(conn.getInputStream(), "UTF-8"));
 
-    if (code < 200 || code >= 300) throw new Exception("HTTP " + code);
+    boolean inEvent = false;
+    String summary = null;
+    long dtStart = -1L;
+    long dtEnd = -1L;
+    boolean isAllDay = false;
 
-    log("parsed future events: " + events.size());
-  } catch (Exception e) {
-    getStatusTrace().setValue("ERROR: fetch/parse " + e.getMessage());
-    log("fetch error: " + e.getMessage());
-    return;
-  } finally {
-    if (conn != null) conn.disconnect();
-  }
+    String line;
+    while ((line = reader.readLine()) != null) {
+      line = line.trim();
 
-  try {
-    int added = updateCalendarChildren(calComp, events); // This is now thread-safe
-    lastFetchMs = System.currentTimeMillis();
-
-    getLastFetchTs().setValue(new java.util.Date(t0).toString());
-    getEventsAdded().setValue(added);
-
-    StringBuilder sb = new StringBuilder();
-    if (!events.isEmpty()) {
-      EventInfo next = events.get(0);
-      String nextEventStr = next.summary + " @ " + next.startTime.toString();
-      if (next.location != null && !next.location.isEmpty()) {
-        nextEventStr += " (Loc: " + next.location + ")";
-      }
-      getNextEvent().setValue(nextEventStr);
-      
-      // Populate the string writable for ALL events
-      for(EventInfo ev : events) {
-        if(ev == null || ev.summary == null || ev.startTime == null) continue;
-        sb.append("EVENT: ").append(ev.summary).append("\n");
-        sb.append("  START: ").append(ev.startTime).append("\n");
-        if(ev.endTime != null) sb.append("  END: ").append(ev.endTime).append("\n");
-        if(ev.location != null) sb.append("  LOC: ").append(ev.location).append("\n");
-        if(ev.description != null) sb.append("  DESC: ").append(ev.description).append("\n");
-        sb.append("\n");
+      if (line.equals("BEGIN:VEVENT")) {
+        inEvent = true;
+        summary = null;
+        dtStart = -1L;
+        dtEnd = -1L;
+        isAllDay = false;
+        log("... BEGIN:VEVENT");
+        continue;
       }
 
-    } else {
-      getNextEvent().setValue("No upcoming events");
-    }
-    
-    // Assuming you have a BStatusString slot named 'stringWritable'
-    // getStringWritable().setValue(sb.toString());
-
-    getStatusTrace().setValue("OK: Fetched " + events.size() + ", added " + added);
-    log("update complete; added " + added);
-  } catch (Exception e) {
-    log("Niagara update error: " + e.getMessage());
-    getStatusTrace().setValue("ERROR updating calendar: " + e.getMessage());
-  }
-}
-
-// ================= ICS parse (Handles UTC DTSTART AND All-Day VALUE=DATE) =================
-private java.util.List<EventInfo> parseIcsStream(java.io.BufferedReader reader) throws Exception {
-  java.util.List<EventInfo> out = new java.util.ArrayList<>();
-  
-  java.text.SimpleDateFormat utcFormat = new java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss'Z'");
-  utcFormat.setTimeZone(java.util.TimeZone.getTimeZone("UTC"));
-  
-  java.text.SimpleDateFormat allDayFormat = new java.text.SimpleDateFormat("yyyyMMdd");
-  allDayFormat.setTimeZone(java.util.Calendar.getInstance().getTimeZone()); // Use JACE's local timezone
-  
-  long now = System.currentTimeMillis();
-  String line; 
-  boolean inVEvent=false; 
-  
-  String sum = null;
-  java.util.Date start = null;
-  java.util.Date end = null;
-  String loc = null;
-  String desc = null;
-
-  while ((line = reader.readLine()) != null) {
-    if ("BEGIN:VEVENT".equals(line)) { 
-      inVEvent=true; 
-      sum = null; start = null; end = null; loc = null; desc = null; // Reset for new event
-      log("... found BEGIN:VEVENT");
-      continue; 
-    }
-    
-    if ("END:VEVENT".equals(line))   {
-      if (inVEvent && sum != null && start != null && start.getTime() > now) {
-        log("... adding event: " + sum + " @ " + start.toString());
-        out.add(new EventInfo(start, end, sum, loc, desc)); 
-      } else if (inVEvent) {
-        log("... skipping event (missing summary/start, or is in the past)");
-      }
-      inVEvent=false; 
-      continue;
-    }
-    
-    if (!inVEvent) continue;
-    
-    if (line.startsWith("SUMMARY:")) {
-      sum = line.substring(8);
-      log("       SUMMARY: " + sum);
-    }
-    else if (line.startsWith("LOCATION:")) {
-      loc = line.substring(9);
-      log("      LOCATION: " + loc);
-    }
-    else if (line.startsWith("DESCRIPTION:")) {
-      desc = line.substring(12); // Does not handle multi-line descriptions
-      log("   DESCRIPTION: " + desc);
-    }
-    
-    // --- DTSTART Parsers ---
-    else if (line.startsWith("DTSTART;VALUE=DATE:")) {
-      try {
-        String dateStr = line.substring(line.indexOf(':') + 1).trim();
-        if (dateStr.length() > 8) dateStr = dateStr.substring(0, 8); // Clean extra chars
-        start = allDayFormat.parse(dateStr); 
-        log("       DTSTART (All-Day): " + start.toString());
-      } catch (java.text.ParseException pe) { 
-        log("Failed to parse all-day date: " + line);
-        start = null; 
-      }
-    }
-    else if (line.startsWith("DTSTART:")) {
-      try { 
-        String timeStr = line.substring(line.indexOf(':') + 1).trim();
-        start = utcFormat.parse(timeStr); 
-        log("       DTSTART (UTC): " + start.toString());
-      } catch (java.text.ParseException pe) { 
-        log("Skipping non-UTC time format: " + line);
-        start = null; 
-      }
-    }
-    
-    // --- DTEND Parsers ---
-    else if (line.startsWith("DTEND;VALUE=DATE:")) {
-      try {
-        String dateStr = line.substring(line.indexOf(':') + 1).trim();
-        if (dateStr.length() > 8) dateStr = dateStr.substring(0, 8);
-        end = allDayFormat.parse(dateStr); 
-        log("         DTEND (All-Day): " + end.toString());
-      } catch (java.text.ParseException pe) { 
-        log("Failed to parse all-day end date: " + line);
-        end = null; 
-      }
-    }
-    else if (line.startsWith("DTEND:")) {
-      try { 
-        String timeStr = line.substring(line.indexOf(':') + 1).trim();
-        end = utcFormat.parse(timeStr); 
-        log("         DTEND (UTC): " + end.toString());
-      } catch (java.text.ParseException pe) { 
-        log("Skipping non-UTC end time format: " + line);
-        end = null; 
-      }
-    }
-  }
-  java.util.Collections.sort(out);
-  return out;
-}
-
-// ================= Write BDateSchedule children (all-day markers) =================
-
-private int updateCalendarChildren(BComponent parentCal, java.util.List<EventInfo> events) {
-  String prefix = "";
-  if (getNamePrefix().getStatus().isOk()) prefix = getNamePrefix().getValue();
-
-  int max = 10;
-  if (getMaxEvents().getStatus().isOk()) max = (int)getMaxEvents().getValue();
-
-  log("Preparing to add events: parsed=" + events.size() + ", max=" + max + ", prefix='" + prefix + "'");
-
-  int removed = 0;
-  int added = 0;
-
-  // Lock the calendar component to prevent race-condition crashes
-  synchronized (parentCal) {
-  
-    // --- 1. Remove our prior children ---
-    BComponent[] kids = parentCal.getChildComponents(); // Get a snapshot of children
-    for (BComponent k : kids) {
-      if (prefix.isEmpty() || k.getName().startsWith(prefix)) {
-        try { 
-          parentCal.remove(k.getName()); 
-          removed++; 
-        } catch (Exception ignore) {}
-      }
-    }
-    log("Removed prior children with prefix: " + removed);
-
-    // --- 2. Add new children ---
-    java.util.Calendar cal = java.util.Calendar.getInstance(); // Use JACE's local timezone
-
-    for (int i=0; i<events.size() && i<max; i++) {
-      EventInfo ev = events.get(i);
-
-      // --- Start of new/modified name logic ---
-      
-      // 1. Sanitize the summary (replace bad chars with _)
-      String cleanSummary = ev.summary.replaceAll("[^a-zA-Z0-9_]", "_");
-      
-      // 2. Collapse multiple underscores (e.g., "___") into one
-      cleanSummary = cleanSummary.replaceAll("__+", "_"); 
-      
-      // 3. Truncate the summary part to a shorter length
-      int maxSummaryLength = 30; // <-- YOU CAN CHANGE THIS VALUE
-      if (cleanSummary.length() > maxSummaryLength) {
-        cleanSummary = cleanSummary.substring(0, maxSummaryLength);
-      }
-      
-      // 4. Add the prefix (if any) and the unique index
-      String nm = prefix + cleanSummary + "_" + (i+1);
-      // --- End of new/modified name logic ---
-
-      try {
-        cal.setTime(ev.startTime); // Set calendar to the event's start time
-
-        BDateSchedule ds = new BDateSchedule();
-        ds.setYear(cal.get(java.util.Calendar.YEAR));
-        ds.setMonth(BMonth.make(cal.get(java.util.Calendar.MONTH)));   // 0..11
-        ds.setDay(cal.get(java.util.Calendar.DAY_OF_MONTH));
-
-        parentCal.add(nm, ds);
-        added++;
-      } catch (Exception e) {
-        log("add '" + nm + "' failed: " + e.getMessage());
-      }
-    }
-    log("Added new children: " + added);
-    
-  } // --- End of synchronized block ---
-
-  return added;
-}
-
-// ================= eventActive (today matches any BDateSchedule) =================
-
-private void computeEventActiveToday() {
-  BComponent cal = resolveCalendar();
-  if (cal == null) return;
-
-  java.util.Calendar now = java.util.Calendar.getInstance(); // Uses JACE's local timezone
-  final int y = now.get(java.util.Calendar.YEAR);
-  final int m = now.get(java.util.Calendar.MONTH);         // 0..11
-  final int d = now.get(java.util.Calendar.DAY_OF_MONTH);  // 1..31
-
-  boolean active = false;
-  // We must also lock here when reading, to be fully thread-safe
-  synchronized (cal) {
-    for (BComponent c : cal.getChildComponents()) {
-      try {
-        if (c instanceof BDateSchedule) {
-          BDateSchedule ds = (BDateSchedule) c;
-          if (ds.getYear() == y && ds.getMonth() == m && ds.getDay() == d) {
-            active = true; break;
+      if (line.equals("END:VEVENT")) {
+        if (dtStart != -1L) {
+          if (dtEnd == -1L) {
+            dtEnd = isAllDay ?
+              dtStart + 86400000L : dtStart + 3600000L;
           }
-        }
-      } catch (Exception ignore) {}
-    }
-  } // --- End of synchronized block ---
+          log("... adding event: " + summary +
+              " | start=" + new java.util.Date(dtStart) +
+              " | end=" + new java.util.Date(dtEnd) +
+              " | allDay=" + isAllDay);
 
-  try { setEventActive(new BStatusBoolean(active)); } catch (Exception ignore) {}
-  if (active) try { getStatusTrace().setValue("OK: eventActive=true (today)"); } catch (Exception ignore) {}
+          newEvents.add(new IcalEvent(dtStart, dtEnd, summary, isAllDay));
+        } else {
+          log("... skipping VEVENT (missing DTSTART)");
+        }
+        inEvent = false;
+        continue;
+      }
+
+      if (!inEvent) continue;
+
+      if (line.startsWith("SUMMARY:")) {
+        summary = line.substring(8).trim();
+        log("    SUMMARY: " + summary);
+      }
+
+      if (line.startsWith("DTSTART")) {
+        ParsedDate p = parseDate(line);
+        if (p != null) {
+          dtStart  = p.millis;
+          isAllDay = p.isAllDay;
+          log("    DTSTART: " + new java.util.Date(dtStart) +
+              (isAllDay ? " (ALL-DAY)" : ""));
+        } else {
+          log("    FAILED TO PARSE DTSTART: " + line);
+        }
+      }
+
+      if (line.startsWith("DTEND")) {
+        ParsedDate p = parseDate(line);
+        if (p != null) {
+          dtEnd = p.millis;
+          log("    DTEND:   " + new java.util.Date(dtEnd));
+        } else {
+          log("    FAILED TO PARSE DTEND: " + line);
+        }
+      }
+    }
+
+    eventCache.clear();
+    eventCache.addAll(newEvents);
+    lastDownload = System.currentTimeMillis();
+
+    getLastFetchTs().setValue(new java.util.Date(lastDownload).toString());
+    getLastFetchTs().setStatus(BStatus.ok);
+
+    log("parsed future events: " + newEvents.size());
+    getStatusTrace().setValue("OK: fetched " + newEvents.size() + " events");
+
+  } catch (Exception e) {
+    String msg = "Fetch error: " + e.toString();
+    getStatusTrace().setValue(msg);
+    log(msg);
+  }
+  finally {
+    try { if (reader != null) reader.close(); } catch(Exception e){}
+    try { if (conn != null) conn.disconnect(); } catch(Exception e){}
+  }
 }
 
-// ================= Helpers =================
 
-private BComponent resolveCalendar() {
+// ==========================
+// Evaluation of Occupancy & Next Event
+// ==========================
+
+private void evaluateSchedule(long now)
+{
+  boolean occNow = false;
+  String currentNames = "";
+
+  long nextStart = Long.MAX_VALUE;
+  long nextEnd   = Long.MAX_VALUE;
+
+  // --- Scan all events ---
+  synchronized (eventCache) {
+    for (IcalEvent ev : eventCache) {
+      boolean nowIn = (now >= ev.startMillis && now < ev.endMillis);
+
+      if (nowIn) {
+        occNow = true;
+
+        if (currentNames.length() > 0) currentNames += ", ";
+        currentNames += ev.summary;
+
+        if (ev.endMillis < nextEnd) {
+          nextEnd = ev.endMillis;
+        }
+      }
+      else {
+        if (ev.startMillis > now && ev.startMillis < nextStart) {
+          nextStart = ev.startMillis;
+        }
+      }
+    }
+  }
+
+  // --- Determine next change edge ---
+  long    nextChange = -1L;
+  boolean nextValue  = occNow;   // default if we don't find a change
+
+  if (!occNow && nextStart != Long.MAX_VALUE) {
+    // currently unoccupied, next change is becoming occupied
+    nextChange = nextStart;
+    nextValue  = true;
+  }
+  else if (occNow && nextEnd != Long.MAX_VALUE) {
+    // currently occupied, next change is becoming unoccupied
+    nextChange = nextEnd;
+    nextValue  = false;
+  }
+
+  // ------------ Primary Outputs ------------
+
+  // OccupiedOut → BooleanSchedule.in
+  getOccupiedOut().setValue(occNow);
+  getOccupiedOut().setStatus(BStatus.ok);
+
+  // Optimal-start outputs
+  if (nextChange > 0L) {
+    getScheduleNextEventTime().setValue((double) nextChange);
+    getScheduleNextEventTime().setStatus(BStatus.ok);
+
+    getScheduleNextValue().setValue(nextValue);
+    getScheduleNextValue().setStatus(BStatus.ok);
+  }
+  else {
+    getScheduleNextEventTime().setValue(0.0);
+    getScheduleNextEventTime().setStatus(BStatus.nullStatus);
+
+    getScheduleNextValue().setValue(false);
+    getScheduleNextValue().setStatus(BStatus.nullStatus);
+  }
+
+  // ------------ StatusTrace (single line) ------------
+
+  String nowStr  = formatLocal(new java.util.Date(now));
+  String nextStr = (nextChange > 0L)
+      ? formatLocal(new java.util.Date(nextChange))
+      : "none";
+
+  String activeStr = occNow ? "ACTIVE" : "inactive";
+
+  // If no current event name, just say "none"
+  String eventNameStr =
+      (currentNames != null && currentNames.length() > 0)
+          ? currentNames
+          : "none";
+
+  int parsedCount;
+  synchronized (eventCache) {
+    parsedCount = eventCache.size();
+  }
+
+  String trace =
+      "StationTime=" + nowStr +
+      " | EventState=" + activeStr +
+      " | EventName=" + eventNameStr +
+      " | NextChange=" + nextStr +
+      " | NextValue=" + nextValue +
+      " | ParsedEvents=" + parsedCount;
+
+  getStatusTrace().setValue(trace);
+  getStatusTrace().setStatus(BStatus.ok);
+}
+
+
+// ==========================
+// Helpers
+// ==========================
+
+private boolean safeBool(BStatusBoolean b)
+{
+  return b != null && b.getStatus().isOk() && b.getValue();
+}
+
+private void forceNullOutputs(String msg)
+{
+  getOccupiedOut().setValue(false);
+  getOccupiedOut().setStatus(BStatus.nullStatus);
+
+  getScheduleNextEventTime().setValue(0.0);
+  getScheduleNextEventTime().setStatus(BStatus.nullStatus);
+
+  getScheduleNextValue().setValue(false);
+  getScheduleNextValue().setStatus(BStatus.nullStatus);
+
+  getStatusTrace().setValue(msg);
+}
+
+private void forceFaultOutputs(String msg)
+{
+  getOccupiedOut().setValue(false);
+  getOccupiedOut().setStatus(BStatus.fault);
+
+  getScheduleNextEventTime().setValue(0.0);
+  getScheduleNextEventTime().setStatus(BStatus.fault);
+
+  getScheduleNextValue().setValue(false);
+  getScheduleNextValue().setStatus(BStatus.fault);
+
+  getStatusTrace().setValue(msg);
+}
+
+
+private ParsedDate parseDate(String line)
+{
   try {
-    if (getCalendarOrd().isNull()) return null;
-    BObject o = getCalendarOrd().resolve().get();
-    if (o instanceof javax.baja.schedule.BCalendarSchedule) return (BComponent)o;
-  } catch (Exception e) { log("resolve error: " + e.getMessage()); }
+    if (line.contains("VALUE=DATE")) {
+      int idx = line.lastIndexOf(":");
+      if (idx > 0) {
+        String v = line.substring(idx + 1);
+        java.util.Date d = fmtAllDay.parse(v.substring(0,8));
+        return new ParsedDate(d.getTime(), true);
+      }
+    } else {
+      int idx = line.lastIndexOf(":");
+      if (idx > 0) {
+        String v = line.substring(idx + 1);
+        if (v.endsWith("Z")) {
+          java.util.Date d = fmtUtc.parse(v);
+          return new ParsedDate(d.getTime(), false);
+        } else {
+          java.text.SimpleDateFormat f =
+              new java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss");
+          f.setTimeZone(java.util.TimeZone.getDefault());
+          java.util.Date d = f.parse(v.substring(0,15));
+          return new ParsedDate(d.getTime(), false);
+        }
+      }
+    }
+  }
+  catch (Exception ignore) {}
   return null;
 }
 
-private void log(String s) {
-  try {
-    if (getLogToConsole().getStatus().isOk() && getLogToConsole().getValue())
-      System.out.println("[iCal_Program] " + s);
-  } catch (Exception ignore) {}
+private String formatLocal(java.util.Date d)
+{
+  java.text.SimpleDateFormat f =
+      new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+  f.setTimeZone(java.util.TimeZone.getDefault());
+  return f.format(d);
 }
+
+// Set sensible defaults if config slots are NULL / bad
+private void applyDefaultConfig()
+{
+  // --- Default fetch period: 3600 seconds (1 hour) ---
+  try {
+    boolean badPeriod =
+        (getIcsFetchPeriodSeconds() == null) ||
+        !getIcsFetchPeriodSeconds().getStatus().isOk() ||
+        getIcsFetchPeriodSeconds().getValue() <= 0.0;
+
+    if (badPeriod) {
+      getIcsFetchPeriodSeconds().setValue(3600.0);  // 1 hour
+      getIcsFetchPeriodSeconds().setStatus(BStatus.ok);
+    }
+  }
+  catch (Exception e) {
+    // ignore – safest is to leave as-is
+  }
+
+  // --- Default ICS URL: Google US Holidays (public) ---
+  try {
+    String url = null;
+    if (getIcsUrl() != null && getIcsUrl().getStatus().isOk()) {
+      url = getIcsUrl().getValue();
+    }
+
+    if (url == null || url.trim().length() == 0) {
+      getIcsUrl().setValue(
+        "https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics"
+      );
+      getIcsUrl().setStatus(BStatus.ok);
+    }
+  }
+  catch (Exception e) {
+    // ignore
+  }
+}
+
+// Simple conditional logger controlled by logToConsole
+private void log(String msg)
+{
+  try {
+    if (getLogToConsole() != null &&
+        getLogToConsole().getStatus().isOk() &&
+        getLogToConsole().getValue())
+    {
+      System.out.println("[IcalScheduleAgent] " + msg);
+    }
+  } catch (Exception ignore) {
+    // never let logging break the block
+  }
+}
+
 ```
 
 </details>
-
+```
 
