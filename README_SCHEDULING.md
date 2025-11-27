@@ -2,119 +2,98 @@
 
 * ***TODO NOT FINISHED!***
 
-This sub-guide explains how Niagara scheduling works and how to build a generic **Monday–Friday 8-5 occupancy schedule** inside a **ProgramObject** — with full support for overriding a real BooleanSchedule using its **In** slot.
-
-Written in the same friendly high-signal vibe as your other docs 📡
+Niagara schedules are components that emit values over time. A ProgramObject can either **read** them or **own** them by writing to `In`.
 
 ---
 
-# 🚦 Types of Schedules
+#### Schedule types
 
-Niagara has **four** schedule component types. All share the same views, tabs, and workflow.
-
-### 1️⃣ **Weekly Schedules**
-
-Define repeating events by **day of week + time of day**.
-They can also include **special events** such as holidays.
-
-Four variants by datatype:
-
-* `BooleanSchedule`
-* `NumericSchedule`
-* `EnumSchedule`
-* `StringSchedule`
-
-### 2️⃣ **Calendar Schedules**
-
-Define specific **dates**, **date ranges**, or **recurring exceptions**.
-Weekly schedules **reference** calendar schedules to override the normal week.
-
-### 3️⃣ **Trigger Schedules**
-
-Fire “topics” or actions at specific times.
-
-Useful for:
-
-* alarms
-* reports
-* scripting
-* MQTT publishing
-* digital events
-
-### 4️⃣ **ScheduleSelector**
-
-A dropdown allowing operators to choose between schedules.
+- **WeeklySchedule** (`BooleanSchedule`, `NumericSchedule`, `EnumSchedule`, `StringSchedule`)  
+  Repeating time-of-day events by weekday. Can reference calendars for exceptions.
+- **CalendarSchedule**  
+  Specific dates / date ranges (holidays, shutdowns, etc.).
+- **TriggerSchedule**  
+  Fires “topics” or actions at specific times (alarms, reports, scripts, MQTT, digital I/O).
+- **ScheduleSelector**  
+  Operator dropdown to choose between multiple schedules.
 
 ---
 
-# 🧠 Weekly Schedule Behavior
+#### WeeklySchedule behavior
 
-Each WeeklySchedule has two important slots:
+Key slots:
 
-| Slot    | Meaning                                                             |
-| ------- | ------------------------------------------------------------------- |
-| **Out** | The computed schedule output at this moment                         |
-| **In**  | Optional override value (if non-null → *bypass all schedule logic*) |
+- `Out` – current effective output (what the rest of the station sees)
+- `In` – optional override; non-null bypasses the internal schedule logic
 
-### 🔺 Weekly Schedule Priority Stack
+Priority stack (high → low):
 
-From highest to lowest:
+1. `In` override (non-null)
+2. Special event (holiday / exception)
+3. Normal weekly block
+4. Default output (Properties tab)
 
-1. **In override** → If `In` receives a non-null value, it **wins**
-2. **Special event** (holiday, exception)
-3. **Weekly event** (normal time-of-day block)
-4. **Default output** (configured on Properties tab)
-
-This means:
-
-> If your ProgramObject writes to a BooleanSchedule’s **In**, you now own the schedule output completely.
+If your ProgramObject writes to `BooleanSchedule.in`, that value **wins** until you clear it.
 
 ---
 
-# 🗓 Special Events
+#### Special events
 
-Weekly schedules allow one-time or recurring exceptions:
+Weekly schedules can define one-off or recurring exceptions:
 
-* Holidays
-* Early release
-* Late start
-* Shutdown days
+- Holidays / shutdown days  
+- Early release / late start
 
-Special events sit **just below** the In override in the priority stack.
+They sit just under `In` in the priority order and temporarily replace the normal week.
 
 ---
 
-# 🏢 Master / Slave Schedules (Enterprise)
+#### Parent / Child schedules
 
-Niagara supports master/slave schedules across the driver layer.
+At the driver layer, a **Parent** schedule can fan out to **Child** schedules on many devices:
 
-Changing the master updates all slaves.
+- Enterprise holiday calendars  
+- Chain-wide store hours  
+- Campus-wide occupancy
 
-Great for:
-
-* enterprise holiday calendars
-* chain-wide store hours
-* campus-wide occupancy patterns
+Change the Parent → all Childs follow.
 
 ---
 
-# 🧰 Schedule Subsystem Internals (From the Decompiled Module)
+#### Internal scheduler (from `scheduleModule`)
 
-The uploaded `scheduleModule.zip` contained the full internal scheduler classes.
-Here’s a vibe-coder summary of the important ones:
+Notable classes:
 
-| Java Class                                               | What It Does                                                          |
-| -------------------------------------------------------- | --------------------------------------------------------------------- |
-| **BIScheduleSnapshotHandler / BScheduleSnapshotHandler** | Takes UI edits → validates → writes back to live schedule objects     |
-| **ScheduleUtil**                                         | Month/day arrays, deep-copy helpers, dynamic property ordering        |
-| **ScheduleValidator**                                    | Validates date, time, weekday, date-range logic                       |
-| **Chronometer**                                          | GregorianCalendar wrapper with Niagara types (`BAbsTime`, `BWeekday`) |
-| **ExecutionQueue**                                       | Worker thread pool for schedule processing tasks                      |
-| **ScheduleSpyManager**                                   | Debugger for scheduler threads + timing                               |
-| **IntSet**                                               | Minimal integer set used for events                                   |
-| **SimpleSortedSet**                                      | Lightweight sorted linked structure for event ordering                |
+- `BIScheduleSnapshotHandler` / `BScheduleSnapshotHandler` – apply UI edits, validate, write back
+- `ScheduleUtil` – helpers (month/day arrays, deep copy, property ordering)
+- `ScheduleValidator` – validates date / time / weekday / range logic
+- `Chronometer` – time arithmetic (wraps `BAbsTime`, `BWeekday`)
+- `ExecutionQueue` – worker threads for schedule evaluation
+- `ScheduleSpyManager` – debugging / timing visibility
 
-Most users never interact with these — but they explain why scheduling is deterministic, thread-safe, and able to calculate `NextTime` efficiently.
+You don’t call these directly; they guarantee deterministic, thread-safe, “next time” evaluation.
+
+---
+
+#### Programmatically driving a WeeklySchedule
+
+**Goal:** Build a simple Monday–Friday 08:00–17:00 occupancy schedule in code and still respect high-level overrides.
+
+Pattern:
+
+- Use a `ProgramObject` to compute a boolean `occupied` output.
+- Link `ProgramObject.out` → `BooleanSchedule.in`.
+
+Effects:
+
+- While `in` is non-null, the ProgramObject fully controls the schedule.
+- Clearing `in` hands control back to the configured weekly + calendar events.
+- Operators can still use:
+  - Calendar holidays
+  - Default schedule
+  - Parent / Child patterns
+
+
 
 ---
 
@@ -140,7 +119,7 @@ This is the recommended way to override a schedule.
 
 | Slot Name     | Type             | Purpose                                |
 | ------------- | ---------------- | -------------------------------------- |
-| `enable`      | `BStatusBoolean` | Master enable flag                     |
+| `enable`      | `BStatusBoolean` | Parent enable flag                     |
 | `occupiedOut` | `BStatusBoolean` | The value written to the schedule `In` |
 | `statusTrace` | `BStatusString`  | Debug output                           |
 
@@ -156,91 +135,90 @@ The schedule will show:
 
 ---
 
-# 💻 ProgramObject Code (Clean Vibe-Coder Format)
-
-### *No imports. No headers. No boilerplate. Just paste into Source.*
-
-> **This version follows your rule:**
-> ❌ No imports
-> ❌ No class header
-> ✔️ Only fields + methods inside ProgramImpl
-> ✔️ Workbench creates getters/setters automatically
+# 💻 ProgramObject Code 
 
 ```java
-////////////////////////////////////////////////////////////
-// Class-level state
-////////////////////////////////////////////////////////////
-
+// ======================================
+// 1. Class-Level Variables
+// ======================================
 private Clock.Ticket ticket = null;
 
 // Run every 60 seconds
 private static final int EXEC_PERIOD_SEC = 60;
 
-// Office hours (local station time)
-private static final int START_HOUR = 8;   // 8:00 AM
-private static final int END_HOUR   = 17;  // 5:00 PM (end exclusive)
+// Office hours (local station time) 
+// 8:00 AM to 5:00 PM
+private static final int START_HOUR = 8;    
+private static final int END_HOUR   = 17;   
 
-
-////////////////////////////////////////////////////////////
-// Lifecycle
-////////////////////////////////////////////////////////////
+// ======================================
+// 2. Lifecycle Methods (Start/Stop)
+// ======================================
 
 public void onStart() throws Exception {
+    // This runs once when the component starts.
+    // We must start the timer here!
     updateTimer();
-    getStatusTrace().setValue("8–5 weekly schedule ProgramObject started.");
 }
 
+public void onStop() throws Exception {
+    // This runs when the component is disabled or the station stops.
+    // We must kill the timer so it doesn't run in the background forever.
+    if (ticket != null) {
+        ticket.cancel();
+        ticket = null;
+    }
+}
+
+// ======================================
+// 3. Main Logic
+// ======================================
+
 public void onExecute() throws Exception {
+    // Schedule the next run
     updateTimer();
 
-    // If disabled → return NULL / FALSE
+    // Safety Check: If disabled, return NULL
     if (!safeBool(getEnable())) {
         getOccupiedOut().setValue(false);
         getOccupiedOut().setStatus(BStatus.NULL);
-        getStatusTrace().setValue("Disabled — output forced NULL/false");
+        getStatusTrace().setValue("Disabled — output forced NULL");
         return;
     }
 
-    // Current station time
-    BAbsTime now = Clock.time();
-    BDateTime dt = now.getDateTime(BRelTime.ZERO);
-    BDate date   = dt.getDate();
-    BTime time   = dt.getTime();
+    // Get Current Time using Java Calendar
+    java.util.Calendar cal = java.util.Calendar.getInstance();
+    
+    // Java Calendar: Sunday=1, Monday=2, ... Saturday=7
+    int dow = cal.get(java.util.Calendar.DAY_OF_WEEK);
+    int hour = cal.get(java.util.Calendar.HOUR_OF_DAY); // 0-23
+    int minute = cal.get(java.util.Calendar.MINUTE);
 
-    int dow      = date.getDayOfWeek(); // 1=Mon ... 7=Sun
-    int hour     = time.getHour();
-    int minute   = time.getMinute();
+    // Logic: Is it a Weekday? (Mon=2 through Fri=6)
+    boolean isWeekday = (dow >= java.util.Calendar.MONDAY && dow <= java.util.Calendar.FRIDAY);
 
-    boolean isWeekday   = (dow >= 1 && dow <= 5);
-    boolean inHourRange = 
-           (hour > START_HOUR && hour < END_HOUR)
-        || (hour == START_HOUR)
-        || (hour == END_HOUR && minute == 0);
+    // Logic: Is it within hours?
+    boolean inHourRange = (hour >= START_HOUR && hour < END_HOUR);
 
+    // Combine logic
     boolean occ = isWeekday && inHourRange;
 
+    // Set Outputs
     getOccupiedOut().setValue(occ);
     getOccupiedOut().setStatus(BStatus.ok);
 
     getStatusTrace().setValue(
-        "Now=" + dt.toString() + 
-        " DOW=" + dow + 
-        " occ=" + occ +
-        " (M–F " + START_HOUR + ":00–" + END_HOUR + ":00)"
+        "Day=" + dow + 
+        " Hr=" + hour + 
+        " Occ=" + occ
     );
 }
 
-public void onStop() throws Exception {
-    if (ticket != null) ticket.cancel();
-    ticket = null;
-    getStatusTrace().setValue("ProgramObject stopped.");
-}
+// ======================================
+// 4. Helper Methods
+// ======================================
 
-
-////////////////////////////////////////////////////////////
-// Helpers
-////////////////////////////////////////////////////////////
-
+// This was the missing method causing your error!
 private void updateTimer() {
     if (ticket != null) ticket.cancel();
     ticket = Clock.schedule(
@@ -251,16 +229,10 @@ private void updateTimer() {
     );
 }
 
-// Safe Boolean extraction
 private boolean safeBool(BStatusBoolean b) {
-    try {
-        if (b == null || b.isNull()) return false;
-        if (!b.getStatus().isOk())  return false;
-        return b.getValue();
-    }
-    catch (Exception e) {
-        return false;
-    }
+    if (b == null) return false;
+    if (!b.getStatus().isOk()) return false;
+    return b.getValue();
 }
 ```
 

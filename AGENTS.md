@@ -499,33 +499,177 @@ You **must** return your response as a series of fenced code blocks in this exac
 
 -----
 
-## 8\. 🚀 Example Prompts (Agent-Facing)
+## 8\.  Using `fault` as an exception-handling pattern
 
-These are examples of valid tasks you may receive.
+For algorithm blocks, **status is our exception channel**. Instead of throwing Java exceptions, we surface problems through:
 
-**Holiday Fetcher (Nager.Date)**
+- `BStatus.fault` on key outputs
+- A dedicated `faultFlag` boolean
+- A human-readable `statusTrace` string
 
-> Slots: `countryCode` (BStatusString, writable), `refreshIntervalSeconds` (BStatusNumeric, writable), `updateNow` (BStatusBoolean, writable), `apiResponse` (BStatusString), `calendarOrd` (BOrd).
-> Task: Implement a time-driven (Pattern B) and `updateNow`-triggered (Pattern A) agent. On execute, fetch public holidays for {thisYear, nextYear} from `https://date.nager.at/api/v3/PublicHolidays/{year}/{cc}`. Normalize `countryCode` (e.g., `UK→GB`). Resolve `calendarOrd`, clear its special events, and add all fetched holidays. Set `apiResponse` with result. Clamp intervals and auto-reset `updateNow=false`.
+This keeps the ProgramObject stable while still making it obvious something is wrong. :contentReference[oaicite:0]{index=0}
 
-**Generic iCal Importer**
+#### Canonical “fault-aware math block” pattern
 
-> Slots: `icsUrl` (BStatusString, writable), `refreshIntervalSeconds` (BStatusNumeric, writable), `updateNow` (BStatusBoolean, writable), `calendarOrd` (BOrd), `apiResponse` (BStatusString).
-> Task: On `updateNow` (Pattern A), GET the `.ics` file from `icsUrl`. Parse all VEVENT blocks. Extract `DTSTART`, `DTEND`, and `SUMMARY`. Import these as special events into the `calendarOrd` target. De-duplicate by UID if available. Clamp max events to 1000. Set concise status.
+**Slot expectations**
 
------
+- `enable` → `BStatusBoolean` (master enable)
+- `inValue` → `BStatusNumeric` (input)
+- `faultIn` → `BStatusBoolean` (manual fault flag)
+- `outValue` → `BStatusNumeric` (result)
+- `outFaultFlag` → `BStatusBoolean` (TRUE when in fault)
+- `statusTrace` → `BStatusString` (debug text)
 
-## 9\. ✅ Pre-Flight Checklist (Review Before Responding)
+**Method bodies**
 
-  - [ ] **No Forbidden Code:** No `import`, `package`, or `class` definitions.
-  - [ ] **Method Bodies Only:** Code is correctly formatted in the 4 required blocks.
-  - [ ] **Slot Conformity:** All `getSlotName()` calls match the human's provided slot table *exactly*.
-  - [ ] **Status-Guards:** All slot reads (`.getValue()`) are protected by a status check (`.getStatus().isOk()`).
-  - [ ] **ORDs Resolved Safely:** All `BOrd`s are resolved with null-checking and type-checking.
-  - [ ] **No Blocking:** No `Thread.sleep()` or `while(true)`. Uses Pattern A or B.
-  - [ ] **Safe Intervals:** All user-provided intervals (`refreshIntervalSeconds`, etc.) are clamped.
-  - [ ] **Safe Triggers:** `updateNow` trigger (Pattern A) is reset in a `finally` block.
-  - [ ] **Safe Timers:** `Clock.Ticket` (Pattern B) is created in `onStart`/`onExecute` and cancelled in `onStop`.
-  - [When (v) in (a) or (b),]
-  - [ ] **Exception-Proof:** All `onExecute` logic is wrapped in `try...catch`.
-  - [ ] **Clear Status:** `apiResponse` (or equivalent) is set with a concise "OK" or "ERROR:" message.
+```java
+// ==========================
+// Class-level state
+// ==========================
+Clock.Ticket ticket;
+private static final int EXEC_PERIOD_SEC = 5; // run every 5 seconds
+
+// ==========================
+// Lifecycle
+// ==========================
+public void onStart() throws Exception
+{
+  // Initialize outputs as NULL so downstream logic knows it's not ready yet
+  nullOutputs("Fault demo block started.");
+  updateTimer();
+}
+
+public void onExecute() throws Exception
+{
+  try
+  {
+    updateTimer();
+
+    // --- 0. Master enable guard ---
+    if (!safeBool(getEnable()))
+    {
+      nullOutputs("Disabled via 'enable' flag.");
+      return;
+    }
+
+    // --- 1. Handle unwired numeric input (optional) ---
+    ensureNumericWiredOrNull("inValue", getInValue());
+
+    BStatus inStatus    = getInValue().getStatus();
+    boolean manualFault = safeBool(getFaultIn());
+
+    // --- 2. If input is NULL, force outputs NULL + raise fault flag ---
+    if (inStatus.isNull())
+    {
+      getOutValue().setValue(0);
+      getOutValue().setStatus(BStatus.nullStatus);
+
+      getOutFaultFlag().setValue(true);
+      getOutFaultFlag().setStatus(BStatus.ok);
+
+      getStatusTrace().setValue("inValue is NULL (unwired or cleared) → outputs forced NULL, faultFlag=TRUE.");
+      return;
+    }
+
+    // --- 3. If input itself is not OK, treat that as a fault source ---
+    boolean upstreamFault = !inStatus.isOk();
+
+    // --- 4. Normal math: double the value ---
+    double inVal = getInValue().getValue();
+    double result = inVal * 2.0;
+
+    getOutValue().setValue(result);
+
+    // --- 5. Decide final fault state ---
+    boolean effectiveFault = manualFault || upstreamFault;
+
+    if (effectiveFault)
+    {
+      // Mark the numeric as "fault" so it shows yellow {fault}
+      getOutValue().setStatus(BStatus.fault);
+
+      getOutFaultFlag().setValue(true);
+      getOutFaultFlag().setStatus(BStatus.ok);
+
+      String reason = manualFault ? "manual faultIn=TRUE" : "upstream input status not OK";
+      getStatusTrace().setValue("FAULT: " + reason + " | in=" + inVal + " → out=" + result);
+    }
+    else
+    {
+      getOutValue().setStatus(BStatus.ok);
+
+      getOutFaultFlag().setValue(false);
+      getOutFaultFlag().setStatus(BStatus.ok);
+
+      getStatusTrace().setValue("OK: inValue=" + inVal + " → outValue=" + result);
+    }
+  }
+  catch (Exception e)
+  {
+    // AGENTS rule: never let exceptions bubble out of onExecute
+    getOutValue().setStatus(BStatus.nullStatus);
+    getOutFaultFlag().setStatus(BStatus.nullStatus);
+    getStatusTrace().setValue("Error in fault demo block: " + e.toString());
+  }
+}
+
+public void onStop() throws Exception
+{
+  if (ticket != null)
+  {
+    ticket.cancel();
+    ticket = null;
+  }
+  nullOutputs("Fault demo block stopped.");
+}
+
+// ==========================
+// Helpers
+// ==========================
+private void updateTimer()
+{
+  if (ticket != null) ticket.cancel();
+  ticket = Clock.schedule(
+      getComponent(),
+      BRelTime.makeSeconds(EXEC_PERIOD_SEC),
+      BProgram.execute,
+      null
+  );
+}
+
+/** Treat any non-OK or NULL boolean as false */
+private boolean safeBool(BStatusBoolean b)
+{
+  if (b == null) return false;
+  if (!b.getStatus().isOk()) return false;
+  return b.getValue();
+}
+
+/** If slot is unwired, mark it NULL so downstream logic can see it */
+private void ensureNumericWiredOrNull(String slotName, BStatusNumeric point)
+{
+  try
+  {
+    if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0)
+    {
+      point.setValue(0);
+      point.setStatus(BStatus.nullStatus);
+    }
+  }
+  catch (Exception e)
+  {
+    // ignore – safest thing is to leave status as-is
+  }
+}
+
+/** Convenience: clear outputs + set trace */
+private void nullOutputs(String trace)
+{
+  getOutValue().setValue(0);
+  getOutValue().setStatus(BStatus.nullStatus);
+
+  getOutFaultFlag().setValue(false);
+  getOutFaultFlag().setStatus(BStatus.nullStatus);
+
+  getStatusTrace().setValue(trace);
+}
