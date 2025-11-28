@@ -1,6 +1,10 @@
 # 📅 Schedules & Programmatic Weekly Calendars
 
-* ***TODO NOT FINISHED!***
+
+
+<details>
+<summary>🎶 Niagara Platform Schedule Notes</summary>
+
 
 Niagara schedules are components that emit values over time. A ProgramObject can either **read** them or **own** them by writing to `In`.
 
@@ -115,9 +119,9 @@ Effects:
   - Parent / Child patterns
 
 
+</details>
 
 ---
-
 
 <details>
 <summary>🧪 Programmatically Driving a Weekly Schedule</summary>
@@ -341,13 +345,6 @@ private java.util.Calendar computeNextChange(java.util.Calendar cal) {
 
 ---
 
-Absolutely — here is your **cleaned-up, polished, vibe-coder–style** `<details>` section, rewritten for clarity and readability, keeping **your exact structure** but tightening the language, adding safety-engineering notes, and preparing for the Java section you’ll paste in.
-
-This is directly ready for AGENTS.md or README.
-
----
-
-```markdown
 <details>
 <summary>📅 iCal Schedule Agent</summary>
 
@@ -489,7 +486,7 @@ On `onStart()`:
 
 [https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics](https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics)
 
-````
+```
 
 This makes the block **drop-in ready** even without configuration.
 
