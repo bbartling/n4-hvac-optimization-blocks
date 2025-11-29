@@ -61,7 +61,7 @@ To keep this README concise, the detailed tutorials and algorithm implementation
 - [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and polynomial regression.
 - [**Demand‑Side Management**](README_DEMAND_SIDE_MANAGEMENT.md) — OpenADR client and PNNL‑inspired intelligent load shedding.
 - [**Astronomical Clock**](README_ASTRONOMICAL_CLOCK.md) — Uses Station time and site coordinates to calculate the sun's Azimuth (compass direction) and Elevation (height in the sky).
-- [**Niagara Schedules**](README_SCHEDULING.md) — for Niagara Scheduleing including future icalender integeration.
+- [**Niagara Schedules**](README_SCHEDULING.md) — for Niagara Scheduleing including ***a NEW icalender integeration*** in a `ProgramObject`!
 - [**Niagara AX Notes**](NIAGARA_AX_NOTES.md) — notes on creating `ProgramObjects` in legacy Niagara AX (earlier Java-based versions).
 
 

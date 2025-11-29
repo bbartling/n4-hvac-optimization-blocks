@@ -5,7 +5,7 @@
 
 Its goal is to ensure that all generated code is **safe, efficient, robust, and compliant** with the Niagara Framework's execution model. This guide defines the non-negotiable rules, canonical patterns, and operational context required for code generation.
 
------
+---
 
 ## 📚 Supporting Documentation
 
@@ -26,11 +26,11 @@ Before generating code, familiarize yourself with the available logic patterns a
 - [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and polynomial regression.
 - [**Demand‑Side Management**](README_DEMAND_SIDE_MANAGEMENT.md) — OpenADR client and PNNL‑inspired intelligent load shedding.
 - [**Astronomical Clock**](README_ASTRONOMICAL_CLOCK.md) — Uses Station time and site coordinates to calculate the sun's Azimuth (compass direction) and Elevation (height in the sky).
-- [**Niagara Schedules**](README_SCHEDULING.md) — for Niagara Scheduleing including future icalender integeration.
+- [**Niagara Schedules**](README_SCHEDULING.md) — for Niagara Scheduleing including icalender integeration.
 - [**Niagara AX Notes**](NIAGARA_AX_NOTES.md) — notes on creating `ProgramObjects` in legacy Niagara AX (earlier Java-based versions).
 
 
------
+---
 
 ## 1\. 🎯 Core Mission & Agent Contract
 
@@ -51,7 +51,7 @@ Given a **slot table** and a **task description**, you will produce **only** the
 2.  **Helpers Block**: An optional fourth block, `// Helpers`, for any private helper methods or `private static final` constants.
 3.  **No other code**: No package declarations, no imports, no class headers, no field declarations, and no getters/setters.
 
------
+---
 
 ## 2\. ❗ Core Directives & Invariants (Non-Negotiable)
 
@@ -103,7 +103,7 @@ These rules are absolute. Violation can lead to component failure, thread starva
       * If an error occurs, **log it** (if possible) and **set a status string** (e.g., `getApiResponse()`) with a concise error message.
       * **Rationale:** An uncaught exception in `onStart`, `onExecute`, or `onStop` will place the component into a fault state. This often requires a manual component/station restart to clear.
 
------
+---
 
 ## 3\. ⚙️ Understanding the Niagara Environment
 
@@ -171,7 +171,7 @@ public class ProgramImpl extends ProgramBase {
 }
 ```
 
------
+---
 
 ## 4\. ✍️ Code Generation Standards & Patterns
 
@@ -279,7 +279,7 @@ private int executionCounter = 0;
 // private static Clock.Ticket timerTicket; // DANGEROUS!
 ```
 
------
+---
 
 ## 5\. ⏱️ Execution & Scheduling Patterns
 
@@ -404,7 +404,7 @@ private void scheduleNextRun() {
 }
 ```
 
------
+---
 
 ## 6\. 🛡️ Robust Operations & Guardrails
 
@@ -450,7 +450,7 @@ Use this "Golden Pattern" inside `onExecute` for maximum safety.
 }
 ```
 
------
+---
 
 ## 7\. 📤 Final Output Specification
 
@@ -502,7 +502,7 @@ You **must** return your response as a series of fenced code blocks in this exac
 }
 ```
 
------
+---
 
 ## 8\.  Using `fault` as an exception-handling pattern
 
@@ -512,7 +512,7 @@ For algorithm blocks, **status is our exception channel**. Instead of throwing J
 - A dedicated `faultFlag` boolean
 - A human-readable `statusTrace` string
 
-This keeps the ProgramObject stable while still making it obvious something is wrong. :contentReference[oaicite:0]{index=0}
+This keeps the ProgramObject stable while still making it obvious something is wrong.
 
 #### Canonical “fault-aware math block” pattern
 
@@ -678,3 +678,4 @@ private void nullOutputs(String trace)
 
   getStatusTrace().setValue(trace);
 }
+```

@@ -345,44 +345,303 @@ private java.util.Calendar computeNextChange(java.util.Calendar cal) {
 
 ---
 
+
 <details>
-<summary>📅 iCal Schedule Agent</summary>
+<summary>📅 iCal Schedule Block (Multi-Zone, Cloud-Driven Scheduling)</summary>
 
-This ProgramObject turns a remote **iCalendar (.ics) feed** into a live Boolean
-schedule plus “next event” metadata used for **optimal start**, **holiday mode**,
-and **cloud-driven BAS scheduling**.
+This block converts a standard **iCalendar (.ics)** URL into a **multi-zone occupancy schedule** inside Niagara.
+You can map **up to 10 BAS zones** to event names in Google Calendar (or Outlook, Apple Calendar, SchoolDude, etc.), and the block will compute:
 
-It exposes:
+* Zone occupied / unoccupied
+* Next change time
+* Next value at that time
+* A human-readable `statusTrace`
+* Diagnostic information for troubleshooting
+* Optional console logs
 
-- `occupiedOut` → **BooleanSchedule.in** (true when *any* event is active)
-- `statusTrace` → human-readable debug string  
-  `StationTime / EventState / EventName / NextChange / NextValue / ParsedEvents`
-- Optimal-start signals:
-  - `scheduleNextValue` → occupancy at the **next change edge** (true/false)
-  - `scheduleNextEventTime` → Java **milliseconds timestamp** for that edge
-
-Under the hood the agent runs with two distinct loops:
+All scheduling is evaluated in **station local time**, not cloud server timezones.
 
 ---
 
-## 🐢 Slow loop – Fetch & parse ICS (network)
+# 🧠 1. What is iCal, for BAS Developers?
+
+iCalendar (**iCal**, extension `.ics`) is the world’s standard for exchanging calendar events.
+Every major calendar tool uses it:
+
+* Google Calendar
+* Outlook / Office 365
+* Apple Calendar
+* School calendars
+* Public events / holiday feeds
+
+### **The important BAS-friendly description:**
+
+> **An iCal feed is just a plain-text file served by HTTP GET.
+> No POST. No API tokens. No JSON.
+> You download text and interpret the events.**
+
+This single file contains many lines like:
+
+```
+BEGIN:VEVENT
+DTSTART:20251201T140000Z
+DTEND:20251201T150000Z
+SUMMARY:gym
+END:VEVENT
+```
+
+A BAS does not need the full RFC spec — the block only needs the handful of fields used to express:
+
+* start time
+* end time
+* event name
+* recurring events
+
+---
+
+# 🌐 2. How the BAS Uses an iCal URL
+
+You give the ProgramObject your `.ics` URL:
+
+```
+https://calendar.google.com/calendar/ical/.../basic.ics
+```
+
+The Niagara station simply performs:
+
+```
+HTTP GET https://...
+```
+
+and receives **text/calendar** content.
+
+There is **no REST POST**, no bidirectional communication.
+The block *pulls* text → parses it → creates a cached event list.
+
+---
+
+# 🏫 3. The Real World Use Case: School or Office Schedules
+
+Below is your actual example month:
+(Events like "gym", "offices", "classrooms", "cafe" repeating daily)
+
+And the event configuration screen that generates an iCal payload:
+
+Finally, the actual iCal URL shown in Google calendar settings:
+
+These events become *zone-level BAS occupancy*.
+
+---
+
+# 🧩 4. Block Overview (10 Zones)
+
+The block contains slots for **10 independent zone name mappings**, like:
+
+* gym
+* offices
+* classrooms
+* cafe
+* etc.
+
+Each event in the calendar (SUMMARY:…) is matched against these names **case-insensitive**.
+
+Output slots are produced per zone:
+
+| For each zone   | Example         | Meaning                                  |
+| --------------- | --------------- | ---------------------------------------- |
+| `zoneNOcc`      | `zone1Occ`      | Whether the zone is currently occupied   |
+| `zoneNNextVal`  | `zone1NextVal`  | The next occupancy value (true/false)    |
+| `zoneNNextTime` | `zone1NextTime` | Java-millis timestamp of the next change |
+
+There are **30 zone outputs** total.
+
+---
+
+# 🏎 5. Two Internal Loops
+
+### 🐢 **Slow Loop** — ICS Fetching
 
 Runs only when:
-- `updateNow` is pressed, **or**
-- `icsFetchPeriodSeconds` has expired, **or**
-- event cache is empty on startup.
 
-This loop:
+* `updateNow` is pressed
+* the fetch period expires
+* station first starts
+* the event cache is empty
 
-- Downloads the `.ics` file  
-- Parses all `BEGIN:VEVENT` blocks  
-- Builds a fresh `eventCache` list (typically a few hundred all-day + timed events)  
-- Replaces the old cache to eliminate memory creep  
-- Updates:
-  - `lastFetchTs` (human-readable time)
-  - `eventsAdded`
-  - `statusTrace`
-  - console logs when `logToConsole` is enabled
+Slow loop does:
+
+* GET the `.ics` file
+* Parse all VEVENT blocks
+* Expand recurring rules
+* Store a safe 45-day window
+* Log debug info
+* Update `lastFetchTs`
+
+### ⚡ **Fast Loop** — Schedule Evaluation
+
+Runs every **10 seconds**, with no network activity.
+
+Evaluates:
+
+* Station Time
+* Every event
+* Every configured zone
+
+Writes:
+
+* `zoneNOcc`
+* `zoneNNextVal`
+* `zoneNNextTime`
+* `statusTrace`
+
+This makes the schedule **responsive and low-CPU** even on a JACE.
+
+---
+
+# 🛠 6. Slot Table (Clean, Updated)
+
+Below is the simplified and cleaned-up slot table:
+
+| Slot                  | Type           | Writable | Purpose                                     |
+| --------------------- | -------------- | -------- | ------------------------------------------- |
+| enable                | BStatusBoolean | YES      | Master enable; when false, all outputs Null |
+| testFault             | BStatusBoolean | YES      | Force all outputs to Fault (test mode)      |
+| icsUrl                | BStatusString  | YES      | iCal `.ics` URL                             |
+| icsFetchPeriodSeconds | BStatusNumeric | YES      | Slow loop download period                   |
+| updateNow             | BStatusBoolean | YES      | One-shot manual fetch trigger               |
+| logToConsole          | BStatusBoolean | YES      | Print all events to Application Director    |
+| statusTrace           | BStatusString  | NO       | Human-friendly live state                   |
+| zoneName1…zoneName10  | BStatusString  | YES      | Event names linked to zones                 |
+| zoneNOcc              | BStatusBoolean | NO       | Current occupancy for zone N                |
+| zoneNNextVal          | BStatusBoolean | NO       | Next occupancy value for zone N             |
+| zoneNNextTime         | BStatusNumeric | NO       | Millis timestamp for next change            |
+
+This gives operators **full transparency**.
+
+---
+
+# 🧰 7. How to Wire It in Niagara
+
+Typical pattern:
+
+```
+iCalBlock.zone1Occ → HVAC_SCHEDULE1.in
+iCalBlock.zone2Occ → HVAC_SCHEDULE2.in
+…
+```
+
+Or link multiple zones into an AHU-level occupancy selector:
+
+```
+(Zone1Occ OR Zone2Occ OR Zone3Occ) → AHU_Occupied
+```
+
+The `NextTime` and `NextValue` outputs can drive:
+
+* **optimal start blocks**
+* **early-close logic**
+* **preheat/pre-cool predictors**
+* **GEB / load-shaping strategies**
+
+---
+
+# 🔍 8. Troubleshooting Guide
+
+### **❌ The BAS shows everything as NULL**
+
+Likely causes:
+
+* `enable = false`
+* All 10 zone names are empty
+* ICS URL is empty
+* ICS fetch failed (check `statusTrace`)
+
+### **❌ All outputs show FAULT**
+
+Cause:
+
+* `testFault = true`
+* ICS download error
+* ICS not reachable
+
+### **❌ Times are off by 1–2 hours**
+
+Usually caused by:
+
+* Google Calendar user in different timezone
+* But block forces local station timezone → safe behavior
+* Look at `formatLocal()` in `statusTrace`
+
+### **❌ Repeating events not expanding**
+
+Check:
+
+* RRULE has FREQ=WEEKLY
+* Does not hit safety rule of >500 expanded events
+
+### **❌ Events not matching zones**
+
+Check:
+
+* Event SUMMARY matches zone name exactly (case-insensitive)
+* Example: SUMMARY: gym → zoneName1 = gym
+
+---
+
+# 📘 9. Basic Tutorial (for Beginners)
+
+### **Step 1 — Make a Google Calendar**
+
+Add events like:
+
+* 6am gym
+* 8am offices
+* 10am classrooms
+
+### **Step 2 — Get the iCal URL**
+
+Google Calendar → Settings → “Secret address in iCal format”
+
+### **Step 3 — Paste URL into the block**
+
+Slot: `icsUrl`
+
+### **Step 4 — Enter zone names**
+
+Example:
+
+| zoneName1 | gym |
+| zoneName2 | offices |
+| zoneName3 | classrooms |
+| zoneName4 | cafe |
+
+### **Step 5 — Link outputs to your BAS logic**
+
+Link zone occupancy to your AHU/VAV/Schedule.
+
+### **Step 6 — Watch `statusTrace`**
+
+Shows:
+
+```
+Time=2025-12-01 06:01 | ActiveZones=2 | CachedEvents=120
+```
+
+---
+
+# 🎯 10. Why This Block Is Powerful
+
+* Integrates **cloud calendars → BAS control**
+* Allows teachers / admins to control rooms by updating a calendar
+* Works on JACE / Supervisor
+* No cloud API keys
+* Pure GET text — ultra-safe, ultra-lightweight
+* Totally vendor-neutral
+* Works with occupancy prediction / optimal start
+
+And with your new 10-zone implementation, it’s the most capable iCal scheduling block in the BAS world.
+
+
 
 ---
 
@@ -396,167 +655,13 @@ This loop:
 
 ---
 
-## ⚡ Fast loop – Evaluate schedule (no network)
 
-Runs every `EXEC_PERIOD_SEC` seconds (default: **10s**).
-
-It compares **Station Time** to the cached events:
-
-- If `now` is between `startMillis` ≤ `now` < `endMillis`, then:
-  - `occupiedOut = true`
-  - `eventActive = true`
-  - `nextEvent` = current event name(s)
-- Determines the **next change edge**:
-  - unoccupied → occupied (next event start)
-  - occupied → unoccupied (current event end)
-- Writes:
-  - `occupiedOut`
-  - `scheduleNextEventTime` (Java millis)
-  - `scheduleNextValue` (true/false)
-  - `statusTrace` (single, human-friendly debug line)
-
-Because the fast loop never touches the network, outputs update **instantly**
-when an event starts/stops—even if the ICS is fetched only once per hour.
-
----
-
-## 🧩 Slots
-
-Create these slots on your ProgramObject:
-
-| Slot Name                 | Type             | Writable | Flags | Notes |
-|---------------------------|------------------|----------|--------|-------|
-| `enable`                  | `BStatusBoolean` | ✅        | `sL`   | Master enable; when false, all outputs go `NULL`. |
-| `occupiedOut`             | `BStatusBoolean` | ❌        | `rs`   | **Output** to `BooleanSchedule.in`. |
-| `statusTrace`             | `BStatusString`  | ❌        | `rs`   | One-line debug of state + next change. |
-| `icsUrl`                  | `BStatusString`  | ✅        | `f`    | HTTPS URL of `.ics`. Defaults to Google Holidays if empty. |
-| `icsFetchPeriodSeconds`   | `BStatusNumeric` | ✅        | `f`    | Slow loop fetch period. Defaults to **3600 seconds**. |
-| `updateNow`               | `BStatusBoolean` | ✅        | `sX`   | Manual one-shot fetch trigger. Auto-resets. |
-| `scheduleNextValue`       | `BStatusBoolean` | ❌        | `rs`   | Occupancy value at the next change boundary. |
-| `scheduleNextEventTime`   | `BStatusNumeric` | ❌        | `rs`   | Java millis timestamp of next change. |
-| `lastFetchTs`             | `BStatusString`  | ❌        | `rs`   | Timestamp of last successful ICS fetch. |
-| `logToConsole`            | `BStatusBoolean` | ✅        | `s`    | Enables debug output to Application Director. |
-
-**Basic wiring pattern:**
-
-```
-
-iCalAgent.occupiedOut → BooleanSchedule.in
-BooleanSchedule.out → Downstream AHU/VAV logic
-
-```
-
-**Optimal-start wiring:**
-
-```
-
-iCalAgent.scheduleNextValue      → OptimalStart.scheduleNextValue
-iCalAgent.scheduleNextEventTime  → OptimalStart.scheduleNextEventTime
-
-```
-
----
-
-## 📋 Application Director Logs (when `logToConsole = true`)
-
-A sample of the ICS parse output:
-
-```
-
-[IcalScheduleAgent] ... BEGIN:VEVENT
-[IcalScheduleAgent]     DTSTART: Tue Jul 04 00:00:00 CDT 2028 (ALL-DAY)
-[IcalScheduleAgent]     DTEND:   Wed Jul 05 00:00:00 CDT 2028
-[IcalScheduleAgent]     SUMMARY: Independence Day
-[IcalScheduleAgent] ... adding event: Independence Day | start=Tue Jul 04 00:00:00 CDT 2028 | end=Wed Jul 05 00:00:00 CDT 2028 | allDay=true
-
-```
-
-These logs are intentionally lightweight and safe for Supervisor/JACE usage.
-
----
-
-## ⚙️ Defaults (auto-healing on startup)
-
-On `onStart()`:
-
-- If `icsFetchPeriodSeconds` is `NULL` or invalid → set to **3600 sec**
-- If `icsUrl` is empty → defaults to public Google US Holidays:
-
-```
-
-[https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics](https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics)
-
-```
-
-This makes the block **drop-in ready** even without configuration.
-
----
-
-## 🛡️ Safety Engineering
-
-This agent includes several critical real-world protections:
-
-### 1️⃣ 45-Day Horizon  
-Only events within “**now → now + 45 days**” are expanded.  
-Prevents gaps on long weekends/holidays and ensures optimal start always has a next-change edge.
-
-### 2️⃣ Circuit Breaker (max 500 expanded events)  
-If a user accidentally creates bad recurring rules (e.g., “repeat every minute”), the .ics could explode to **60k+ events**.
-
-The agent limits expansion:
-
-```java
-if (safetyCounter > 500) break;
-````
-
-Protects JACE memory and avoids lockups.
-
-### 3️⃣ Wall-Clock Time (Floating Time)
-
-ICS timezone identifiers are intentionally **ignored**.
-All events run in **Station Time**, preventing DST drift and timezone mismatch between:
-
-* Google/Outlook cloud servers
-* Local JACE timezone settings
-
-This prevents the classic “7am becomes 9am” error.
-
-### 4️⃣ Fault Handling
-
-If anything fails during parsing or network fetch:
-
-* `occupiedOut` becomes **null or false** safely
-* `scheduleNextValue` / `scheduleNextEventTime` are cleared
-* `statusTrace` shows the fault string
-* Agent auto-recovers on next successful fetch
-
----
-
-## 🔁 Loop Behavior Summary
-
-Every `onExecute()`:
-
-1. Keeps the 10-second heartbeat
-2. Conditionally re-fetches the ICS feed
-3. Evaluates the cached event list
-4. Produces new outputs immediately
-5. Updates the `statusTrace`
-
-Because heavy parsing happens rarely, runtime CPU usage on a JACE is negligible.
-
----
-
-
-### 💻 Program Source (full Java)
-
-> Workbench auto-generates the class header and getters/setters; paste **only**
-> the code below into the **Program Source** section.
 
 ```java
 
 ////////////////////////////////////////////////////////////////
-// Program Source — iCal-Driven Boolean Schedule Replacement
-// Version: Recurrence-Aware with Conditional Logging
+// Program Source — iCal Pure Zone Agent (10 Zones)
+// Version: Production Safety Edition (Test Fault + Nulling)
 ////////////////////////////////////////////////////////////////
 
 // ==========================
@@ -568,7 +673,7 @@ class IcalEvent {
   long endMillis;
   String summary;
   boolean isAllDay;
-  String rrule; // Stores the raw recurrence rule
+  String rrule;
 
   IcalEvent(long s, long e, String sum, boolean ad, String rr) {
     startMillis = s;
@@ -584,7 +689,6 @@ class ParsedDate {
   boolean isAllDay;
   ParsedDate(long m, boolean ad) { millis = m; isAllDay = ad; }
 }
-
 
 // ==========================
 // Class-Level State
@@ -613,10 +717,9 @@ public void onStart() throws Exception
   fmtAllDay = new java.text.SimpleDateFormat("yyyyMMdd");
   fmtAllDay.setTimeZone(java.util.TimeZone.getDefault());
 
-  // Apply defaults if slots are empty
   applyDefaultConfig();
 
-  getStatusTrace().setValue("iCal Schedule Agent Started");
+  getStatusTrace().setValue("iCal Zone Agent Started");
   updateTimer();
 }
 
@@ -630,18 +733,26 @@ public void onExecute() throws Exception
   updateTimer();
 
   try {
-    // ❌ If disabled: return NULL
+    // 1. SAFETY CHECK: Enable
+    // If disabled, force EVERYTHING to Null (release control)
     if (!safeBool(getEnable())) {
-      forceNullOutputs("Disabled");
+      forceNullOutputs("Disabled (Enable=false)");
+      return;
+    }
+
+    // 2. SAFETY CHECK: Manual Test Fault
+    // If operator is testing failure modes, force EVERYTHING to Fault (Yellow)
+    if (safeBool(getTestFault())) {
+      forceFaultOutputs("Manual Test Fault Triggered");
       return;
     }
 
     long now = System.currentTimeMillis();
 
     // ==========================================================
-    // 1) SLOW LOOP — ICS DOWNLOAD
+    // 3) SLOW LOOP — ICS DOWNLOAD
     // ==========================================================
-    double fetchPeriod = 300; // default 5-minute fetch
+    double fetchPeriod = 3600; 
     if (getIcsFetchPeriodSeconds().getStatus().isOk()) {
       fetchPeriod = Math.max(30, getIcsFetchPeriodSeconds().getValue());
     }
@@ -659,7 +770,7 @@ public void onExecute() throws Exception
     }
 
     // ==========================================================
-    // 2) FAST LOOP — EVALUATE CURRENT & NEXT EVENT
+    // 4) FAST LOOP — EVALUATE ZONES
     // ==========================================================
     evaluateSchedule(now);
 
@@ -699,7 +810,7 @@ private void updateTimer()
 
 
 // ==========================
-// ICS Fetcher (with Logging & Recurrence)
+// ICS Fetcher
 // ==========================
 
 private void fetchIcs()
@@ -709,7 +820,6 @@ private void fetchIcs()
     urlStr = getIcsUrl().getValue().trim();
   }
 
-  // Fallback to Google Holidays if empty (as per original code)
   if (urlStr.length() == 0) return; 
 
   java.util.List rawEvents = new java.util.ArrayList();
@@ -722,8 +832,6 @@ private void fetchIcs()
     conn = (java.net.HttpURLConnection) url.openConnection();
     conn.setConnectTimeout(4000);
     conn.setReadTimeout(8000);
-    
-    // Google Calendar private address often rejects HEAD, use GET
     conn.setRequestMethod("GET"); 
 
     int code = conn.getResponseCode();
@@ -755,19 +863,16 @@ private void fetchIcs()
         dtStart = -1L;
         dtEnd = -1L;
         isAllDay = false;
-        log("... BEGIN:VEVENT");
         continue;
       }
 
       if (line.equals("END:VEVENT")) {
         if (dtStart != -1L) {
           if (dtEnd == -1L) {
-            // Default durations if DTEND missing
             dtEnd = isAllDay ? dtStart + 86400000L : dtStart + 3600000L;
           }
-          // Store raw event
           rawEvents.add(new IcalEvent(dtStart, dtEnd, summary, isAllDay, rrule));
-          log("... found raw: " + summary + " | RRULE: " + (rrule != null ? "YES" : "NO"));
+          log("Raw Event: " + summary + " (" + (rrule != null ? "Recurring" : "Single") + ")");
         }
         inEvent = false;
         continue;
@@ -776,12 +881,7 @@ private void fetchIcs()
       if (!inEvent) continue;
 
       if (line.startsWith("SUMMARY:")) summary = line.substring(8).trim();
-      
-      if (line.startsWith("RRULE:")) {
-        rrule = line.substring(6).trim(); 
-        log("    RRULE: " + rrule);
-      }
-
+      if (line.startsWith("RRULE:")) rrule = line.substring(6).trim(); 
       if (line.startsWith("DTSTART")) {
         ParsedDate p = parseDate(line);
         if (p != null) { dtStart = p.millis; isAllDay = p.isAllDay; }
@@ -806,6 +906,8 @@ private void fetchIcs()
   } catch (Exception e) {
     String err = "Fetch error: " + e.toString();
     getStatusTrace().setValue(err);
+    // If fetch fails, we trigger FAULT outputs so system knows data is stale/bad
+    forceFaultOutputs(err);
     log(err);
   } finally {
     try { if (reader != null) reader.close(); } catch(Exception e){}
@@ -814,28 +916,22 @@ private void fetchIcs()
 }
 
 // ==========================
-// Recurrence Expander
+// Recurrence Logic
 // ==========================
 
 private java.util.List expandRecurrences(java.util.List rawEvents) {
     java.util.List expanded = new java.util.ArrayList();
     long now = System.currentTimeMillis();
-    // Look ahead 45 days (limit memory usage)
     long horizon = now + (45L * 86400000L); 
     int safetyCounter = 0;
     
     for (int i=0; i<rawEvents.size(); i++) {
         IcalEvent ev = (IcalEvent) rawEvents.get(i);
+        expanded.add(ev); 
         
-        // Always add the original instance
-        expanded.add(ev);
-        
-        // Only handle simple WEEKLY recurrence (M-F 8-5 pattern)
         if (ev.rrule != null && ev.rrule.contains("FREQ=WEEKLY")) {
-            
             long duration = ev.endMillis - ev.startMillis;
             
-            // 1. Determine days of week (MO,TU,WE...)
             java.util.List days = new java.util.ArrayList();
             if (ev.rrule.contains("BYDAY=")) {
                 String byDay = ev.rrule.split("BYDAY=")[1].split(";")[0];
@@ -848,41 +944,32 @@ private java.util.List expandRecurrences(java.util.List rawEvents) {
                 if (byDay.contains("SA")) days.add(Integer.valueOf(java.util.Calendar.SATURDAY));
             }
             
-            // 2. Step forward day by day until horizon
             java.util.Calendar ptr = java.util.Calendar.getInstance();
             ptr.setTimeInMillis(ev.startMillis);
             
-            // Prevent infinite loops if start is way in past, jump to 'now' minus 1 day
             if (ptr.getTimeInMillis() < now - 86400000L) {
                 ptr.setTimeInMillis(now - 86400000L);
             }
 
             while (ptr.getTimeInMillis() < horizon) {
                 ptr.add(java.util.Calendar.DAY_OF_YEAR, 1);
-                
                 int dow = ptr.get(java.util.Calendar.DAY_OF_WEEK);
                 boolean match = false;
                 
-                // If BYDAY exists, check if today matches
                 if (days.size() > 0) {
                     for(int d=0; d<days.size(); d++) {
                         if (((Integer)days.get(d)).intValue() == dow) match = true;
                     }
-                } else {
-                    // No BYDAY? It repeats every 7 days (Simple logic)
-                    match = true; 
-                }
+                } else { match = true; }
                 
                 if (match) {
                     long newStart = ptr.getTimeInMillis();
                     long newEnd = newStart + duration;
-                    // Log the creation of the ghost event
-                    log("   -> Creating recurrence: " + new java.util.Date(newStart));
                     expanded.add(new IcalEvent(newStart, newEnd, ev.summary, ev.isAllDay, null));
                     
                     safetyCounter++;
                     if (safetyCounter > 500) {
-                        log("WARN: Hit recurrence limit (500) - stopping expansion.");
+                        log("WARN: Recurrence limit hit (500).");
                         break; 
                     }
                 }
@@ -894,98 +981,118 @@ private java.util.List expandRecurrences(java.util.List rawEvents) {
 
 
 // ==========================
-// Evaluation
+// Pure Multi-Zone Evaluation
 // ==========================
 
 private void evaluateSchedule(long now)
 {
-  boolean occNow = false;
-  String currentNames = "";
+  // 1. Snapshot Zone Config (Slots 1-10)
+  String[] zoneCfg = new String[10];
+  zoneCfg[0] = safeString(getZoneName1());
+  zoneCfg[1] = safeString(getZoneName2());
+  zoneCfg[2] = safeString(getZoneName3());
+  zoneCfg[3] = safeString(getZoneName4());
+  zoneCfg[4] = safeString(getZoneName5());
+  zoneCfg[5] = safeString(getZoneName6());
+  zoneCfg[6] = safeString(getZoneName7());
+  zoneCfg[7] = safeString(getZoneName8());
+  zoneCfg[8] = safeString(getZoneName9());
+  zoneCfg[9] = safeString(getZoneName10());
 
-  long nextStart = Long.MAX_VALUE;
-  long nextEnd   = Long.MAX_VALUE;
+  // 2. Initialize State Arrays
+  boolean[] zOcc = new boolean[10];
+  long[] zNextStart = new long[10];
+  long[] zNextEnd = new long[10];
+  int activeZoneCount = 0;
+  
+  for(int k=0; k<10; k++) {
+    zNextStart[k] = Long.MAX_VALUE;
+    zNextEnd[k]   = Long.MAX_VALUE;
+    zOcc[k] = false;
+  }
 
-  // --- Scan all events ---
-  // Note: List iteration is fast for <1000 items
+  // 3. SCAN EVENTS
   for (int i=0; i<eventCache.size(); i++) {
     IcalEvent ev = (IcalEvent) eventCache.get(i);
     boolean nowIn = (now >= ev.startMillis && now < ev.endMillis);
 
-    if (nowIn) {
-      occNow = true;
-      if (currentNames.length() > 0) currentNames += ", ";
-      currentNames += ev.summary;
-
-      if (ev.endMillis < nextEnd) {
-        nextEnd = ev.endMillis;
-      }
+    for (int z=0; z<10; z++) {
+       // Only process if zone name is configured
+       if (zoneCfg[z] != null && ev.summary.equalsIgnoreCase(zoneCfg[z])) {
+           if (nowIn) {
+               zOcc[z] = true;
+               if (ev.endMillis < zNextEnd[z]) zNextEnd[z] = ev.endMillis;
+           } else {
+               if (ev.startMillis > now && ev.startMillis < zNextStart[z]) {
+                   zNextStart[z] = ev.startMillis;
+               }
+           }
+       }
     }
-    else {
-      if (ev.startMillis > now && ev.startMillis < nextStart) {
-        nextStart = ev.startMillis;
-      }
-    }
   }
 
-  // --- Determine next change edge ---
-  long    nextChange = -1L;
-  boolean nextValue  = occNow;
+  // 4. Count active zones for Trace
+  for(int z=0; z<10; z++) { if(zOcc[z]) activeZoneCount++; }
 
-  if (!occNow && nextStart != Long.MAX_VALUE) {
-    // currently unoccupied, next change is becoming occupied
-    nextChange = nextStart;
-    nextValue  = true;
-  }
-  else if (occNow && nextEnd != Long.MAX_VALUE) {
-    // currently occupied, next change is becoming unoccupied
-    nextChange = nextEnd;
-    nextValue  = false;
-  }
+  // 5. Compute & Write Zone Outputs
+  writeZoneOut(0, zoneCfg[0], zOcc, zNextStart, zNextEnd, getZone1Occ(), getZone1NextVal(), getZone1NextTime());
+  writeZoneOut(1, zoneCfg[1], zOcc, zNextStart, zNextEnd, getZone2Occ(), getZone2NextVal(), getZone2NextTime());
+  writeZoneOut(2, zoneCfg[2], zOcc, zNextStart, zNextEnd, getZone3Occ(), getZone3NextVal(), getZone3NextTime());
+  writeZoneOut(3, zoneCfg[3], zOcc, zNextStart, zNextEnd, getZone4Occ(), getZone4NextVal(), getZone4NextTime());
+  writeZoneOut(4, zoneCfg[4], zOcc, zNextStart, zNextEnd, getZone5Occ(), getZone5NextVal(), getZone5NextTime());
+  writeZoneOut(5, zoneCfg[5], zOcc, zNextStart, zNextEnd, getZone6Occ(), getZone6NextVal(), getZone6NextTime());
+  writeZoneOut(6, zoneCfg[6], zOcc, zNextStart, zNextEnd, getZone7Occ(), getZone7NextVal(), getZone7NextTime());
+  writeZoneOut(7, zoneCfg[7], zOcc, zNextStart, zNextEnd, getZone8Occ(), getZone8NextVal(), getZone8NextTime());
+  writeZoneOut(8, zoneCfg[8], zOcc, zNextStart, zNextEnd, getZone9Occ(), getZone9NextVal(), getZone9NextTime());
+  writeZoneOut(9, zoneCfg[9], zOcc, zNextStart, zNextEnd, getZone10Occ(), getZone10NextVal(), getZone10NextTime());
 
-  // ------------ Primary Outputs ------------
-  getOccupiedOut().setValue(occNow);
-  getOccupiedOut().setStatus(BStatus.ok);
-
-  if (nextChange > 0L) {
-    getScheduleNextEventTime().setValue((double) nextChange);
-    getScheduleNextEventTime().setStatus(BStatus.ok);
-
-    getScheduleNextValue().setValue(nextValue);
-    getScheduleNextValue().setStatus(BStatus.ok);
-  }
-  else {
-    getScheduleNextEventTime().setValue(0.0);
-    getScheduleNextEventTime().setStatus(BStatus.nullStatus);
-
-    getScheduleNextValue().setValue(false);
-    getScheduleNextValue().setStatus(BStatus.nullStatus);
-  }
-
-  // ------------ StatusTrace (single line) ------------
+  // 6. Trace
   String nowStr  = formatLocal(new java.util.Date(now));
-  String nextStr = (nextChange > 0L)
-      ? formatLocal(new java.util.Date(nextChange))
-      : "none";
-
-  String activeStr = occNow ? "ACTIVE" : "inactive";
-
-  String eventNameStr =
-      (currentNames != null && currentNames.length() > 0)
-          ? currentNames
-          : "none";
-
-  int parsedCount = eventCache.size();
-
-  String trace =
-      "StationTime=" + nowStr +
-      " | EventState=" + activeStr +
-      " | EventName=" + eventNameStr +
-      " | NextChange=" + nextStr +
-      " | NextValue=" + nextValue +
-      " | ParsedEvents=" + parsedCount;
+  String trace = "Time=" + nowStr + " | ActiveZones=" + activeZoneCount + " | CachedEvents=" + eventCache.size();
 
   getStatusTrace().setValue(trace);
   getStatusTrace().setStatus(BStatus.ok);
+}
+
+// Helper to write a single zone's data. 
+// If cfgName is null, force outputs to NULL.
+private void writeZoneOut(int idx, String cfgName, boolean[] zOcc, long[] zStart, long[] zEnd, 
+                          BStatusBoolean occSlot, BStatusBoolean nextValSlot, BStatusNumeric nextTimeSlot) 
+{
+    // If Zone Name is empty/null, mark outputs as NULL
+    if (cfgName == null) {
+        occSlot.setValue(false);        occSlot.setStatus(BStatus.nullStatus);
+        nextValSlot.setValue(false);    nextValSlot.setStatus(BStatus.nullStatus);
+        nextTimeSlot.setValue(0.0);     nextTimeSlot.setStatus(BStatus.nullStatus);
+        return;
+    }
+
+    boolean occ = zOcc[idx];
+    long change = -1L;
+    boolean nextVal = occ;
+    
+    if (!occ && zStart[idx] != Long.MAX_VALUE) {
+        change = zStart[idx];
+        nextVal = true;
+    } else if (occ && zEnd[idx] != Long.MAX_VALUE) {
+        change = zEnd[idx];
+        nextVal = false;
+    }
+    
+    occSlot.setValue(occ);
+    occSlot.setStatus(BStatus.ok);
+    
+    if (change > 0L) {
+        nextTimeSlot.setValue((double) change);
+        nextTimeSlot.setStatus(BStatus.ok);
+        nextValSlot.setValue(nextVal);
+        nextValSlot.setStatus(BStatus.ok);
+    } else {
+        nextTimeSlot.setValue(0.0);
+        nextTimeSlot.setStatus(BStatus.nullStatus);
+        nextValSlot.setValue(false);
+        nextValSlot.setStatus(BStatus.nullStatus);
+    }
 }
 
 
@@ -993,57 +1100,116 @@ private void evaluateSchedule(long now)
 // Helpers
 // ==========================
 
-// Safe Boolean Helper
-private boolean safeBool(BStatusBoolean b)
-{
+private boolean safeBool(BStatusBoolean b) {
   return b != null && b.getStatus().isOk() && b.getValue();
 }
 
-// Logging Helper - CHECKS SLOT FIRST
-private void log(String msg)
-{
-  try {
-    if (getLogToConsole() != null &&
-        getLogToConsole().getStatus().isOk() &&
-        getLogToConsole().getValue())
-    {
-      System.out.println("[IcalScheduleAgent] " + msg);
+private String safeString(BStatusString s) {
+    if (s != null && s.getStatus().isOk() && s.getValue() != null) {
+        String v = s.getValue().trim();
+        return (v.length() > 0) ? v : null;
     }
-  } catch (Exception ignore) {
-    // never let logging break the block
-  }
+    return null;
 }
 
-private void forceNullOutputs(String msg)
-{
-  getOccupiedOut().setValue(false);
-  getOccupiedOut().setStatus(BStatus.nullStatus);
+private void log(String msg) {
+  try {
+    if (getLogToConsole() != null && getLogToConsole().getStatus().isOk() && getLogToConsole().getValue()) {
+      System.out.println("[IcalZoneAgent] " + msg);
+    }
+  } catch (Exception ignore) {}
+}
 
-  getScheduleNextEventTime().setValue(0.0);
-  getScheduleNextEventTime().setStatus(BStatus.nullStatus);
-
-  getScheduleNextValue().setValue(false);
-  getScheduleNextValue().setStatus(BStatus.nullStatus);
-
+private void forceNullOutputs(String msg) {
   getStatusTrace().setValue(msg);
+  // Force all 30 slots to NULL explicitly
+  // Zone 1
+  getZone1Occ().setValue(false); getZone1Occ().setStatus(BStatus.nullStatus);
+  getZone1NextVal().setValue(false); getZone1NextVal().setStatus(BStatus.nullStatus);
+  getZone1NextTime().setValue(0.0); getZone1NextTime().setStatus(BStatus.nullStatus);
+  // Zone 2
+  getZone2Occ().setValue(false); getZone2Occ().setStatus(BStatus.nullStatus);
+  getZone2NextVal().setValue(false); getZone2NextVal().setStatus(BStatus.nullStatus);
+  getZone2NextTime().setValue(0.0); getZone2NextTime().setStatus(BStatus.nullStatus);
+  // Zone 3
+  getZone3Occ().setValue(false); getZone3Occ().setStatus(BStatus.nullStatus);
+  getZone3NextVal().setValue(false); getZone3NextVal().setStatus(BStatus.nullStatus);
+  getZone3NextTime().setValue(0.0); getZone3NextTime().setStatus(BStatus.nullStatus);
+  // Zone 4
+  getZone4Occ().setValue(false); getZone4Occ().setStatus(BStatus.nullStatus);
+  getZone4NextVal().setValue(false); getZone4NextVal().setStatus(BStatus.nullStatus);
+  getZone4NextTime().setValue(0.0); getZone4NextTime().setStatus(BStatus.nullStatus);
+  // Zone 5
+  getZone5Occ().setValue(false); getZone5Occ().setStatus(BStatus.nullStatus);
+  getZone5NextVal().setValue(false); getZone5NextVal().setStatus(BStatus.nullStatus);
+  getZone5NextTime().setValue(0.0); getZone5NextTime().setStatus(BStatus.nullStatus);
+  // Zone 6
+  getZone6Occ().setValue(false); getZone6Occ().setStatus(BStatus.nullStatus);
+  getZone6NextVal().setValue(false); getZone6NextVal().setStatus(BStatus.nullStatus);
+  getZone6NextTime().setValue(0.0); getZone6NextTime().setStatus(BStatus.nullStatus);
+  // Zone 7
+  getZone7Occ().setValue(false); getZone7Occ().setStatus(BStatus.nullStatus);
+  getZone7NextVal().setValue(false); getZone7NextVal().setStatus(BStatus.nullStatus);
+  getZone7NextTime().setValue(0.0); getZone7NextTime().setStatus(BStatus.nullStatus);
+  // Zone 8
+  getZone8Occ().setValue(false); getZone8Occ().setStatus(BStatus.nullStatus);
+  getZone8NextVal().setValue(false); getZone8NextVal().setStatus(BStatus.nullStatus);
+  getZone8NextTime().setValue(0.0); getZone8NextTime().setStatus(BStatus.nullStatus);
+  // Zone 9
+  getZone9Occ().setValue(false); getZone9Occ().setStatus(BStatus.nullStatus);
+  getZone9NextVal().setValue(false); getZone9NextVal().setStatus(BStatus.nullStatus);
+  getZone9NextTime().setValue(0.0); getZone9NextTime().setStatus(BStatus.nullStatus);
+  // Zone 10
+  getZone10Occ().setValue(false); getZone10Occ().setStatus(BStatus.nullStatus);
+  getZone10NextVal().setValue(false); getZone10NextVal().setStatus(BStatus.nullStatus);
+  getZone10NextTime().setValue(0.0); getZone10NextTime().setStatus(BStatus.nullStatus);
 }
 
-private void forceFaultOutputs(String msg)
-{
-  getOccupiedOut().setValue(false);
-  getOccupiedOut().setStatus(BStatus.fault);
-
-  getScheduleNextEventTime().setValue(0.0);
-  getScheduleNextEventTime().setStatus(BStatus.fault);
-
-  getScheduleNextValue().setValue(false);
-  getScheduleNextValue().setStatus(BStatus.fault);
-
+private void forceFaultOutputs(String msg) {
   getStatusTrace().setValue(msg);
+  // Force all 30 slots to FAULT status explicitly
+  getZone1Occ().setStatus(BStatus.fault);
+  getZone1NextVal().setStatus(BStatus.fault);
+  getZone1NextTime().setStatus(BStatus.fault);
+
+  getZone2Occ().setStatus(BStatus.fault);
+  getZone2NextVal().setStatus(BStatus.fault);
+  getZone2NextTime().setStatus(BStatus.fault);
+
+  getZone3Occ().setStatus(BStatus.fault);
+  getZone3NextVal().setStatus(BStatus.fault);
+  getZone3NextTime().setStatus(BStatus.fault);
+
+  getZone4Occ().setStatus(BStatus.fault);
+  getZone4NextVal().setStatus(BStatus.fault);
+  getZone4NextTime().setStatus(BStatus.fault);
+
+  getZone5Occ().setStatus(BStatus.fault);
+  getZone5NextVal().setStatus(BStatus.fault);
+  getZone5NextTime().setStatus(BStatus.fault);
+
+  getZone6Occ().setStatus(BStatus.fault);
+  getZone6NextVal().setStatus(BStatus.fault);
+  getZone6NextTime().setStatus(BStatus.fault);
+
+  getZone7Occ().setStatus(BStatus.fault);
+  getZone7NextVal().setStatus(BStatus.fault);
+  getZone7NextTime().setStatus(BStatus.fault);
+
+  getZone8Occ().setStatus(BStatus.fault);
+  getZone8NextVal().setStatus(BStatus.fault);
+  getZone8NextTime().setStatus(BStatus.fault);
+
+  getZone9Occ().setStatus(BStatus.fault);
+  getZone9NextVal().setStatus(BStatus.fault);
+  getZone9NextTime().setStatus(BStatus.fault);
+
+  getZone10Occ().setStatus(BStatus.fault);
+  getZone10NextVal().setStatus(BStatus.fault);
+  getZone10NextTime().setStatus(BStatus.fault);
 }
 
-private ParsedDate parseDate(String line)
-{
+private ParsedDate parseDate(String line) {
   try {
     if (line.contains("VALUE=DATE")) {
       int idx = line.lastIndexOf(":");
@@ -1060,56 +1226,39 @@ private ParsedDate parseDate(String line)
           java.util.Date d = fmtUtc.parse(v);
           return new ParsedDate(d.getTime(), false);
         } else {
-          java.text.SimpleDateFormat f =
-              new java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss");
+          java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyyMMdd'T'HHmmss");
           f.setTimeZone(java.util.TimeZone.getDefault());
           java.util.Date d = f.parse(v.substring(0,15));
           return new ParsedDate(d.getTime(), false);
         }
       }
     }
-  }
-  catch (Exception ignore) {}
+  } catch (Exception ignore) {}
   return null;
 }
 
-private String formatLocal(java.util.Date d)
-{
-  java.text.SimpleDateFormat f =
-      new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
+private String formatLocal(java.util.Date d) {
+  java.text.SimpleDateFormat f = new java.text.SimpleDateFormat("yyyy-MM-dd HH:mm");
   f.setTimeZone(java.util.TimeZone.getDefault());
   return f.format(d);
 }
 
-private void applyDefaultConfig()
-{
+private void applyDefaultConfig() {
   try {
-    boolean badPeriod =
-        (getIcsFetchPeriodSeconds() == null) ||
-        !getIcsFetchPeriodSeconds().getStatus().isOk() ||
-        getIcsFetchPeriodSeconds().getValue() <= 0.0;
-
+    boolean badPeriod = (getIcsFetchPeriodSeconds() == null) || !getIcsFetchPeriodSeconds().getStatus().isOk() || getIcsFetchPeriodSeconds().getValue() <= 0.0;
     if (badPeriod) {
       getIcsFetchPeriodSeconds().setValue(3600.0);
       getIcsFetchPeriodSeconds().setStatus(BStatus.ok);
     }
-  }
-  catch (Exception e) {}
-
+  } catch (Exception e) {}
   try {
     String url = null;
-    if (getIcsUrl() != null && getIcsUrl().getStatus().isOk()) {
-      url = getIcsUrl().getValue();
-    }
-
+    if (getIcsUrl() != null && getIcsUrl().getStatus().isOk()) url = getIcsUrl().getValue();
     if (url == null || url.trim().length() == 0) {
-      getIcsUrl().setValue(
-        "https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics"
-      );
+      getIcsUrl().setValue("https://calendar.google.com/calendar/ical/en.usa%23holiday%40group.v.calendar.google.com/public/basic.ics");
       getIcsUrl().setStatus(BStatus.ok);
     }
-  }
-  catch (Exception e) {}
+  } catch (Exception e) {}
 }
 
 ```
