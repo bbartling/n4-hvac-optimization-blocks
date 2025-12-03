@@ -71,12 +71,14 @@ Create these slots on your Program Object. Ensure **Flags** are set correctly so
 | `longitudeDeg` | `BStatusNumeric` | Config | `0.0` | **Required.** Site Longitude (e.g., -89.0). |
 | `azimuthOffsetDeg` | `BStatusNumeric` | Config | `0.0` | Rotates the building frame (0 = True North). |
 | `updateIntervalSeconds`| `BStatusNumeric` | Config | `60.0` | Calculation frequency (Clamped 10s–900s). |
+| `timeOffsetMs`| `BStatusNumeric` | Config | `0.0` | Epoch offset in milliseconds (simulation) |
+
 | **Outputs** | | | | |
 | `solarAzimuthDeg` | `BStatusNumeric` | Summary | *ReadOnly* | 0–360° (0=N, 90=E, 180=S, 270=W). |
 | `solarElevationDeg` | `BStatusNumeric` | Summary | *ReadOnly* | -90° to +90° (\>0 = Sun is UP). |
 | `isDaylight` | `BStatusBoolean` | Summary | *ReadOnly* | True when Elevation \> 0°. |
 | `statusTrace` | `BStatusString` | Summary | *ReadOnly* | Debug text (e.g., "Solar az=135.2..."). |
-
+| `nextDawnAzimuthDeg` | `BStatusString` | Summary | *ReadOnly* | Azimuth at next civil dawn (north-based). |
 
 <p align="center">
   <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/astroClockSnip.png"  alt="Astro Snip 1" width="550">
@@ -88,7 +90,21 @@ Create these slots on your Program Object. Ensure **Flags** are set correctly so
   <br><em>AX Prop Sheet View to input settings for block</em>
 </p>
 
------
+---
+
+## 🖼️ Additional Graphics to show azimuth data on charts
+
+<p align="center">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/astroClockSnipGraphic1.png"  alt="Astro Snip 1" width="550">
+  <br><em>Program Object wiring sheet</em>
+</p>
+
+<p align="center">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/astroClockSnipGraphic2.png" alt="Astro Snip 2" width="750">
+  <br><em>AX Prop Sheet View to input settings for block</em>
+</p>
+
+---
 
 ## 💻 Java Code
 
@@ -108,99 +124,29 @@ private Clock.Ticket ticket = null;
 // ======================================
 // Math & Utilities
 // ======================================
-
-/**
- * Core solar position math – returns [azimuthDeg, elevationDeg].
- */
-private double[] computeSolarPositionNow(double latitudeDeg, double longitudeDeg) {
-  // Local time + timezone
-  java.util.TimeZone tz = java.util.TimeZone.getDefault();
-  java.util.Calendar cal = java.util.Calendar.getInstance(tz);
-
-  int dayOfYear = cal.get(java.util.Calendar.DAY_OF_YEAR);
-  int hour      = cal.get(java.util.Calendar.HOUR_OF_DAY);
-  int minute    = cal.get(java.util.Calendar.MINUTE);
-  int second    = cal.get(java.util.Calendar.SECOND);
-
-  // Local minutes since midnight
-  double localMinutes = hour * 60.0 + minute + (second / 60.0);
-
-  // Time zone offset from UTC in hours (includes DST)
-  double tzOffsetHours = tz.getOffset(cal.getTimeInMillis()) / 3600000.0;
-
-  // Fractional year (gamma) in radians – NOAA style
-  double gamma = 2.0 * Math.PI / 365.0 *
-      (dayOfYear - 1 + (localMinutes - 720.0) / 1440.0);
-
-  // Equation of time in minutes
-  double eqTime =
-      229.18 * (0.000075
-          + 0.001868 * Math.cos(gamma)
-          - 0.032077 * Math.sin(gamma)
-          - 0.014615 * Math.cos(2.0 * gamma)
-          - 0.040849 * Math.sin(2.0 * gamma));
-
-  // Solar declination (radians)
-  double decl =
-      0.006918
-          - 0.399912 * Math.cos(gamma)
-          + 0.070257 * Math.sin(gamma)
-          - 0.006758 * Math.cos(2.0 * gamma)
-          + 0.000907 * Math.sin(2.0 * gamma)
-          - 0.002697 * Math.cos(3.0 * gamma)
-          + 0.00148  * Math.sin(3.0 * gamma);
-
-  // Time offset (minutes)
-  double timeOffset = eqTime + 4.0 * longitudeDeg - 60.0 * tzOffsetHours;
-
-  // True solar time (minutes)
-  double tst = localMinutes + timeOffset;
-  while (tst < 0.0)   tst += 1440.0;
-  while (tst >= 1440.0) tst -= 1440.0;
-
-  // Hour angle
-  double hourAngleDeg = tst / 4.0 - 180.0;
-  double hourAngle    = Math.toRadians(hourAngleDeg);
-
-  double latRad = Math.toRadians(latitudeDeg);
-
-  // Zenith
-  double cosZenith =
-      Math.sin(latRad) * Math.sin(decl)
-          + Math.cos(latRad) * Math.cos(decl) * Math.cos(hourAngle);
-
-  cosZenith = clamp(cosZenith, -1.0, 1.0);
-  double zenith = Math.acos(cosZenith);
-
-  // Elevation
-  double elevationRad = (Math.PI / 2.0) - zenith;
-  double elevationDeg = Math.toDegrees(elevationRad);
-
-  // Azimuth from North, eastward
-  double sinZenith = Math.sin(zenith);
-  double azimuthDeg;
-
-  if (sinZenith < 1e-6) {
-    // Sun at/near zenith or below horizon → azimuth undefined, pick 0°
-    azimuthDeg = 0.0;
-  } else {
-    double cosAz =
-        (Math.sin(latRad) * Math.cos(zenith) - Math.sin(decl)) /
-        (Math.cos(latRad) * sinZenith);
-
-    cosAz = clamp(cosAz, -1.0, 1.0);
-    double az = Math.acos(cosAz); // 0..π
-
-    // Disambiguate using hour angle: afternoon vs morning
-    if (hourAngle > 0.0) {
-      az = 2.0 * Math.PI - az;
-    }
-    azimuthDeg = Math.toDegrees(az);
-  }
-
-  return new double[] { normalizeDegrees(azimuthDeg), elevationDeg };
+private double clamp(double v, double min, double max) {
+  return Math.max(min, Math.min(v, max));
 }
-
+private double normalizeDegrees(double deg) {
+  double d = deg % 360.0;
+  if (d < 0.0) d += 360.0;
+  return d;
+}
+private double round1(double v) {
+  return Math.round(v * 10.0) / 10.0;
+}
+private double safeNumericOrNaN(BStatusNumeric num) {
+  if (num == null || !num.getStatus().isOk()) return Double.NaN;
+  return num.getValue();
+}
+private double safeNumericOrDefault(BStatusNumeric num, double fallback) {
+  if (num == null || !num.getStatus().isOk()) return fallback;
+  return num.getValue();
+}
+private boolean safeBool(BStatusBoolean b, boolean fallback) {
+  if (b == null || !b.getStatus().isOk()) return fallback;
+  return b.getValue();
+}
 private void updateStatus(String msg) {
   try {
     BAbsTime now = BAbsTime.now();
@@ -210,43 +156,211 @@ private void updateStatus(String msg) {
     if (s != null) s.setValue(full);
   } catch (Exception ignore) {}
 }
-
-private double safeNumericOrNaN(BStatusNumeric num) {
-  if (num == null || !num.getStatus().isOk()) return Double.NaN;
-  return num.getValue();
-}
-
-private double safeNumericOrDefault(BStatusNumeric num, double fallback) {
-  if (num == null || !num.getStatus().isOk()) return fallback;
-  return num.getValue();
-}
-
-private boolean safeBool(BStatusBoolean b, boolean fallback) {
-  if (b == null || !b.getStatus().isOk()) return fallback;
-  return b.getValue();
-}
-
 private void setOutputsNull(String reason) {
   try { getSolarAzimuthDeg().setStatus(BStatus.NULL); } catch (Exception e) {}
   try { getSolarElevationDeg().setStatus(BStatus.NULL); } catch (Exception e) {}
   try { getIsDaylight().setStatus(BStatus.NULL); } catch (Exception e) {}
+  try { getNextDawnAzimuthDeg().setStatus(BStatus.NULL); } catch (Exception e) {}
   updateStatus(reason);
 }
-
-private double clamp(double v, double min, double max) {
-  return Math.max(min, Math.min(v, max));
+private long resolveNowEpochMs() {
+  // Apply ms offset from slot (can be negative/positive)
+  long off = (long) safeNumericOrDefault(getTimeOffsetMs(), 0.0);
+  return System.currentTimeMillis() + off;
 }
 
-private double normalizeDegrees(double deg) {
-  double d = deg % 360.0;
-  if (d < 0.0) d += 360.0;
-  return d;
+
+// ======================================
+// Core Solar Position (NOAA-style)
+// Returns [azimuthDeg (clockwise from TRUE NORTH), elevationDeg]
+// ======================================
+private double[] computeSolarPositionAtEpoch(double latitudeDeg, double longitudeDeg, long epochMs) {
+  // Europe/London tz for Liverpool (UTC in winter, BST in summer)
+  java.util.TimeZone tz = java.util.TimeZone.getTimeZone("Europe/London");
+  java.util.Calendar cal = java.util.Calendar.getInstance(tz);
+  cal.setTimeInMillis(epochMs);
+
+
+  int dayOfYear = cal.get(java.util.Calendar.DAY_OF_YEAR);
+  int hour      = cal.get(java.util.Calendar.HOUR_OF_DAY);
+  int minute    = cal.get(java.util.Calendar.MINUTE);
+  int second    = cal.get(java.util.Calendar.SECOND);
+
+
+  double localMinutes  = hour * 60.0 + minute + (second / 60.0);
+  double tzOffsetHours = tz.getOffset(epochMs) / 3600000.0;
+
+
+  // Fractional year (gamma)
+  double gamma = 2.0 * Math.PI / 365.0 *
+      (dayOfYear - 1 + (localMinutes - 720.0) / 1440.0);
+
+
+  // Equation of time (minutes)
+  double eqTime =
+      229.18 * (0.000075
+          + 0.001868 * Math.cos(gamma)
+          - 0.032077 * Math.sin(gamma)
+          - 0.014615 * Math.cos(2.0 * gamma)
+          - 0.040849 * Math.sin(2.0 * gamma));
+
+
+  // Declination (radians)
+  double decl =
+      0.006918
+          - 0.399912 * Math.cos(gamma)
+          + 0.070257 * Math.sin(gamma)
+          - 0.006758 * Math.cos(2.0 * gamma)
+          + 0.000907 * Math.sin(2.0 * gamma)
+          - 0.002697 * Math.cos(3.0 * gamma)
+          + 0.001480 * Math.sin(3.0 * gamma);
+
+
+  // Time offset (minutes); NOTE longitudeDeg is +EAST, tzOffsetHours is hours from UTC
+  double timeOffset = eqTime + 4.0 * longitudeDeg - 60.0 * tzOffsetHours;
+
+
+  // True Solar Time (minutes), wrap 0..1440
+  double tst = localMinutes + timeOffset;
+  while (tst < 0.0) tst += 1440.0;
+  while (tst >= 1440.0) tst -= 1440.0;
+
+
+  // Hour angle
+  double hourAngleDeg = tst / 4.0 - 180.0;
+  double hourAngle    = Math.toRadians(hourAngleDeg);
+
+
+  // Zenith
+  double latRad = Math.toRadians(latitudeDeg);
+  double cosZenith =
+      Math.sin(latRad) * Math.sin(decl)
+          + Math.cos(latRad) * Math.cos(decl) * Math.cos(hourAngle);
+
+
+  cosZenith = clamp(cosZenith, -1.0, 1.0);
+  double zenith = Math.acos(cosZenith);
+
+
+  // Elevation
+  double elevationRad = (Math.PI / 2.0) - zenith;
+  double elevationDeg = Math.toDegrees(elevationRad);
+
+
+  // Azimuth robust via atan2, then convert to NORTH-based, clockwise
+  double sinZenith = Math.sin(zenith);
+  double azimuthDeg;
+  if (sinZenith < 1e-6) {
+    azimuthDeg = 0.0; // undefined at zenith; pick 0 for stability
+  } else {
+    // PV-style south-based azimuth:
+    // az_south = atan2( sin(H), cos(H)*sin(lat) - tan(dec)*cos(lat) )
+    double num   = Math.sin(hourAngle);
+    double denom = Math.cos(hourAngle) * Math.sin(latRad) - Math.tan(decl) * Math.cos(latRad);
+    double azSouthRad = Math.atan2(num, denom);
+
+
+    // Convert South-based → North-based (NOAA/NREL convention): add 180°
+    azimuthDeg = normalizeDegrees(Math.toDegrees(azSouthRad) + 180.0);
+  }
+
+
+  return new double[] { azimuthDeg, elevationDeg };
 }
 
-private double round1(double v) {
-  return Math.round(v * 10.0) / 10.0;
+
+// Helper: elevation only
+private double elevationAtEpochMs(double latitudeDeg, double longitudeDeg, long epochMs) {
+  return computeSolarPositionAtEpoch(latitudeDeg, longitudeDeg, epochMs)[1];
 }
 
+
+// ======================================
+// Next Civil Dawn Finder (Sun elevation = -6° ascending)
+// Returns dawn epochMs or -1 if not found in 00:00..12:00
+// ======================================
+private long findCivilDawnEpochMs(double latitudeDeg, double longitudeDeg, long midnightLocalEpochMs) {
+  final double threshold = -6.0;           // civil dawn
+  final long   step      = 10L * 60L * 1000L;  // coarse 10 min
+  final long   end       = midnightLocalEpochMs + 12L * 60L * 60L * 1000L; // noon window
+
+
+  long low = midnightLocalEpochMs;
+  double eLow = elevationAtEpochMs(latitudeDeg, longitudeDeg, low);
+
+
+  for (long t = low + step; t <= end; t += step) {
+    double eHigh = elevationAtEpochMs(latitudeDeg, longitudeDeg, t);
+    // look for crossing from below to above threshold
+    if (eLow < threshold && eHigh >= threshold) {
+      // bisection refine to ~1 minute
+      long a = t - step;
+      long b = t;
+      while ((b - a) > 60L * 1000L) {
+        long m = (a + b) / 2L;
+        double em = elevationAtEpochMs(latitudeDeg, longitudeDeg, m);
+        if (em < threshold) a = m; else b = m;
+      }
+      return b; // first time elevation >= threshold
+    }
+    eLow = eHigh;
+  }
+  return -1L;
+}
+
+
+// Build local midnight epoch for a given day offset (0=today, +1=tomorrow)
+private long localMidnightEpochMs(java.util.TimeZone tz, long baseEpochMs, int dayOffset) {
+  java.util.Calendar cal = java.util.Calendar.getInstance(tz);
+  cal.setTimeInMillis(baseEpochMs);
+  // move to requested day (today/tomorrow) and clamp to midnight
+  cal.add(java.util.Calendar.DAY_OF_YEAR, dayOffset);
+  cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
+  cal.set(java.util.Calendar.MINUTE, 0);
+  cal.set(java.util.Calendar.SECOND, 0);
+  cal.set(java.util.Calendar.MILLISECOND, 0);
+  return cal.getTimeInMillis();
+}
+
+
+// Compute next dawn azimuth (north-based, clockwise); returns NaN if not found
+private double computeNextDawnAzimuth(double latitudeDeg, double longitudeDeg, long nowEpochMs) {
+  java.util.TimeZone tz = java.util.TimeZone.getTimeZone("Europe/London");
+
+
+  long todayMidnight = localMidnightEpochMs(tz, nowEpochMs, 0);
+  long dawnToday     = findCivilDawnEpochMs(latitudeDeg, longitudeDeg, todayMidnight);
+
+
+  long targetDawn = dawnToday;
+
+
+  if (dawnToday == -1L) {
+    // fallback: try tomorrow
+    long tomorrowMidnight = localMidnightEpochMs(tz, nowEpochMs, 1);
+    long dawnTomorrow     = findCivilDawnEpochMs(latitudeDeg, longitudeDeg, tomorrowMidnight);
+    targetDawn = dawnTomorrow;
+  } else {
+    // If dawn already passed today, use tomorrow's
+    if (nowEpochMs > dawnToday) {
+      long tomorrowMidnight = localMidnightEpochMs(tz, nowEpochMs, 1);
+      long dawnTomorrow     = findCivilDawnEpochMs(latitudeDeg, longitudeDeg, tomorrowMidnight);
+      targetDawn = dawnTomorrow;
+    }
+  }
+
+
+  if (targetDawn == -1L) return Double.NaN;
+
+
+  // Azimuth at dawn (north-based, clockwise)
+  return computeSolarPositionAtEpoch(latitudeDeg, longitudeDeg, targetDawn)[0];
+}
+
+
+// ======================================
+// Lifecycle Methods
+// ======================================
 private void scheduleNext() {
   try {
     if (ticket != null) { ticket.cancel(); ticket = null; }
@@ -264,71 +378,97 @@ private void scheduleNext() {
   }
 }
 
-// ======================================
-// Lifecycle Methods
-// ======================================
 
 public void onStart() throws Exception {
   try {
-    // --- DEFAULTS: CHICAGO, IL ---
-    // If slots are NULL (purple/empty), set these values.
-    // Note: If slots are 0.00 {ok}, right-click and 'Set Null' to trigger this.
-    getLatitudeDeg().setValue(41.88);
-    getLongitudeDeg().setValue(-87.63);
-    
-    // Other defaults
+    // Defaults: Liverpool, UK
+    getLatitudeDeg().setValue(53.41);
+    getLongitudeDeg().setValue(-2.99);
+
+
+    // Behavior
     getEnable().setValue(true);
     getAzimuthOffsetDeg().setValue(0.0);
     getUpdateIntervalSeconds().setValue(60.0);
+
+
+    // New: ms epoch offset (default 0)
+    getTimeOffsetMs().setValue(0.0);
+
+
+    // New: next dawn azimuth output starts NULL until first compute
+    getNextDawnAzimuthDeg().setStatus(BStatus.NULL);
   } catch (Exception ignore) {}
 
-  updateStatus("SolarPosition block initialized.");
+
+  updateStatus("SolarPosition block initialized (Liverpool defaults, Europe/London tz).");
   scheduleNext();
 }
 
-public void onExecute() throws Exception {
-  scheduleNext(); // Maintain cadence
 
-  boolean enabled = safeBool(getEnable(), true);
-  if (!enabled) {
+public void onExecute() throws Exception {
+  scheduleNext(); // heartbeat
+
+
+  if (!safeBool(getEnable(), true)) {
     setOutputsNull("Disabled by 'enable' input.");
     return;
   }
 
-  double latDeg = safeNumericOrNaN(getLatitudeDeg());
-  double lonDeg = safeNumericOrNaN(getLongitudeDeg());
+
+  double latDeg    = safeNumericOrNaN(getLatitudeDeg());
+  double lonDeg    = safeNumericOrNaN(getLongitudeDeg());
   double offsetDeg = safeNumericOrDefault(getAzimuthOffsetDeg(), 0.0);
+
 
   if (Double.isNaN(latDeg) || Double.isNaN(lonDeg)) {
     setOutputsNull("Latitude/Longitude not set or NULL.");
     return;
   }
 
-  double[] pos = computeSolarPositionNow(latDeg, lonDeg);
-  double azimuthDeg  = normalizeDegrees(pos[0] + offsetDeg);
+
+  // Current position using (now + timeOffsetMs)
+  long nowEpoch = resolveNowEpochMs();
+  double[] pos  = computeSolarPositionAtEpoch(latDeg, lonDeg, nowEpoch);
+  double azimuthDeg   = normalizeDegrees(pos[0] + offsetDeg);
   double elevationDeg = pos[1];
-  boolean daylight = elevationDeg > 0.0;
+  boolean daylight    = elevationDeg > 0.0;
+
 
   try {
     getSolarAzimuthDeg().setValue(azimuthDeg);
     getSolarAzimuthDeg().setStatus(BStatus.ok);
-    
+
+
     getSolarElevationDeg().setValue(elevationDeg);
     getSolarElevationDeg().setStatus(BStatus.ok);
-    
+
+
     getIsDaylight().setValue(daylight);
     getIsDaylight().setStatus(BStatus.ok);
   } catch (Exception ignore) {}
 
-  // *** TRACE UPDATE ***
-  // Includes Lat/Lon in the status message
-  String msg = "Loc=" + round1(latDeg) + "/" + round1(lonDeg) + 
-               " : Az=" + round1(azimuthDeg) + 
-               "°, El=" + round1(elevationDeg) + 
+
+  // Compute next civil dawn azimuth (north-based, clockwise)
+  double dawnAz = computeNextDawnAzimuth(latDeg, lonDeg, nowEpoch);
+  try {
+    if (Double.isNaN(dawnAz)) {
+      getNextDawnAzimuthDeg().setStatus(BStatus.NULL);
+    } else {
+      getNextDawnAzimuthDeg().setValue(dawnAz);
+      getNextDawnAzimuthDeg().setStatus(BStatus.ok);
+    }
+  } catch (Exception ignore) {}
+
+
+  String msg = "Loc=" + round1(latDeg) + "/" + round1(lonDeg) +
+               " : Az=" + round1(azimuthDeg) +
+               "°, El=" + round1(elevationDeg) +
+               "°, NextDawnAz=" + (Double.isNaN(dawnAz) ? "null" : round1(dawnAz)) +
                "°, Day=" + daylight;
-               
   updateStatus(msg);
 }
+
 
 public void onStop() throws Exception {
   if (ticket != null) { ticket.cancel(); ticket = null; }
