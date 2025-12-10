@@ -764,7 +764,7 @@ The Trim & Respond algorithm continuously adjusts the SAT setpoint upward (“tr
 
 ---
 
-### 📘 Guideline 36 – Table 5.16.2.2 Trim & Respond Variables
+### 📘 Guideline 36 – Trim & Respond Variables
 
 | Variable | Description | Value / Niagara Mapping |
 |-----------|--------------|--------------------------|
@@ -782,7 +782,7 @@ The Trim & Respond algorithm continuously adjusts the SAT setpoint upward (“tr
 
 ---
 
-### 🌡️ Example Configuration (from G36 Figure 5.16.2.2)
+### 🌡️ Example Configuration
 
 | Parameter | Typical Value | Description |
 |------------|----------------|-------------|
@@ -1060,3 +1060,872 @@ double interpolate(double currentX, double x1, double y1,
 </details>
 
 
+<details>
+<summary>🍃 AHU/FCU → Central Plant Request Counter (Heating + Cooling)</summary>
+
+For **each AHU/FCU**, build a small “Plant Reset Request Generator” `ProgramObject` that can:
+
+* Generate **CHW reset requests** (for chilled-water plant trim & respond)
+* Generate **HW reset requests** (for boiler HWST trim & respond)
+
+Both request ladders follow the same Guideline-36 style as the VAV box:
+integer **0–3** requests, with persistence timers, hysteresis on valve
+position, and optional fan-gating.
+
+Crucially, this AHU block is designed to be **coil-agnostic**:
+
+* If the **cooling coil** is not present (no CHW valve / cooling SAT SP wired),
+  the **CHW logic is bypassed** → `chwResetRequests = 0`
+* If the **heating coil** is not present (no HW valve / heating SAT SP wired),
+  the **HW logic is bypassed** → `hwResetRequests = 0`
+
+This lets one ProgramObject serve:
+
+* Heat-only AHUs  
+* Cool-only AHUs  
+* AHUs with **both** coils  
+* FCUs / DOAS units that only have one active coil
+
+
+### Slot Map (per AHU/FCU)
+
+#### Inputs
+
+| Slot Name        | Type             | Notes                                                                 |
+|------------------|------------------|-----------------------------------------------------------------------|
+| `sat`            | `BStatusNumeric` | Supply (discharge) air temperature off coils (°F or °C)              |
+| `coolSatSp`      | `BStatusNumeric` | Cooling SAT setpoint (used for CHW requests). Optional.             |
+| `heatSatSp`      | `BStatusNumeric` | Heating SAT setpoint (used for HW requests). Optional.              |
+| `chwValvePct`    | `BStatusNumeric` | CHW valve position (%) – 0–100. Optional (cool-only).               |
+| `hwValvePct`     | `BStatusNumeric` | HW valve position (%) – 0–100. Optional (heat-only).                |
+| `fanAtMaxCool`   | `BStatusBoolean` | Optional fan-gating for CHW requests (e.g. “fan at max cool speed”). |
+| `fanAtMaxHeat`   | `BStatusBoolean` | Optional fan-gating for HW requests (e.g. “fan at max heat speed”).  |
+
+> **Important:**  
+> If `coolSatSp` *and* `chwValvePct` are NULL/unwired → the **CHW ladder is disabled**.  
+> If `heatSatSp` *and* `hwValvePct` are NULL/unwired → the **HW ladder is disabled**.
+
+#### Outputs
+
+| Slot Name          | Type             | Notes                                           |
+|--------------------|------------------|-------------------------------------------------|
+| `chwResetRequests` | `BStatusNumeric` | 0…3 integer CHW reset requests                  |
+| `hwResetRequests`  | `BStatusNumeric` | 0…3 integer HW reset requests                   |
+| `coolStatusTrace`  | `BStatusString`  | Debug trace for cooling / CHW ladder            |
+| `heatStatusTrace`  | `BStatusString`  | Debug trace for heating / HW ladder             |
+
+
+### Algorithms
+
+#### Cooling / CHW Reset Requests (per AHU)
+
+Same ladder you described from the CHW plant section:
+
+* If `SAT ≥ coolSatSp + 10°F` for **5 min** → `3` CHW reset requests  
+* Else if `SAT ≥ coolSatSp + 5°F` for **5 min** → `2` CHW reset requests  
+* Else if `chwValvePct ≥ 95%` (latched until `< 85%`) → `1` CHW reset request  
+* Else → `0` CHW reset requests  
+
+Optional fan gating:
+
+* If `fanAtMaxCool == false` (and wired) → **suppress all CHW requests**, reset timers
+
+If the **cooling coil is not present**, identified by both `coolSatSp`
+and `chwValvePct` being NULL/unwired, then:
+
+* Timers are cleared
+* `chwResetRequests = 0`
+* `coolStatusTrace` tells you “cooling coil not present / not wired”
+
+#### Heating / HW Reset Requests (per AHU)
+
+Mirror image for heating:
+
+* If `SAT ≤ heatSatSp − 30°F` for **5 min** → `3` HW reset requests  
+* Else if `SAT ≤ heatSatSp − 15°F` for **5 min** → `2` HW reset requests  
+* Else if `hwValvePct ≥ 95%` (latched until `< 85%`) → `1` HW reset request  
+* Else → `0` HW reset requests  
+
+Optional fan gating:
+
+* If `fanAtMaxHeat == false` (and wired) → **suppress all HW requests**, reset timers
+
+If the **heating coil is not present**, identified by both `heatSatSp`
+and `hwValvePct` being NULL/unwired, then:
+
+* Timers are cleared
+* `hwResetRequests = 0`
+* `heatStatusTrace` tells you “heating coil not present / not wired”
+
+
+### Java Code – AHU/FCU Heating + Cooling Request Counter
+
+> Niagara auto-generates headers/imports/getters/setters.  
+> Paste **only** the methods below into the Program’s **Source** editor.
+
+```java
+////////////////////////////////////////////////////////////////
+// Class-level fields
+////////////////////////////////////////////////////////////////
+
+Clock.Ticket ticket;
+
+private static final int EXEC_PERIOD_SEC = 10;    // Run every 10 s
+private static final int PERSIST_SEC     = 300;   // 5 min persistence
+
+// Cooling thresholds (°F)
+private static final double COOL_ERR_3REQ_F   = 10.0;  // SAT ≥ SP + 10°F
+private static final double COOL_ERR_2REQ_F   = 5.0;   // SAT ≥ SP + 5°F
+private static final double CHW_VALVE_ON_PCT  = 95.0;
+private static final double CHW_VALVE_OFF_PCT = 85.0;
+
+// Heating thresholds (°F)
+// Use positive "overcool" diff = (heatSatSp - SAT)
+private static final double HEAT_ERR_3REQ_F   = 30.0;  // SAT ≤ SP - 30°F
+private static final double HEAT_ERR_2REQ_F   = 15.0;  // SAT ≤ SP - 15°F
+private static final double HW_VALVE_ON_PCT   = 95.0;
+private static final double HW_VALVE_OFF_PCT  = 85.0;
+
+// Cooling timers / latch
+int    coolHigh10Sec = 0;
+int    coolHigh5Sec  = 0;
+boolean chwValveLatched = false;
+
+// Heating timers / latch
+int    heatLow30Sec = 0;
+int    heatLow15Sec = 0;
+boolean hwValveLatched = false;
+
+////////////////////////////////////////////////////////////////
+// Lifecycle
+////////////////////////////////////////////////////////////////
+
+public void onStart() throws Exception {
+    updateTimer();
+}
+
+public void onStop() throws Exception {
+    if (ticket != null) ticket.cancel();
+}
+
+public BComponent getProgram() {
+    return (BComponent) getComponent();
+}
+
+void updateTimer() {
+    if (ticket != null) ticket.cancel();
+    ticket = Clock.schedule(getProgram(), BRelTime.makeSeconds(EXEC_PERIOD_SEC),
+                            BProgram.execute, null);
+}
+
+////////////////////////////////////////////////////////////////
+// Helpers
+////////////////////////////////////////////////////////////////
+
+boolean isNumericValid(BStatusNumeric slot) {
+    return slot != null && slot.getStatus().isOk();
+}
+
+double numericOrDefault(BStatusNumeric slot, double defVal) {
+    return (slot != null && slot.getStatus().isOk()) ? slot.getValue() : defVal;
+}
+
+boolean boolOrDefault(BStatusBoolean slot, boolean defVal) {
+    return (slot != null && slot.getStatus().isOk()) ? slot.getValue() : defVal;
+}
+
+String boolStatus(BStatusBoolean b) {
+    if (b == null || !b.getStatus().isOk()) return "NULL";
+    return Boolean.toString(b.getValue());
+}
+
+int clampInt(int v, int lo, int hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+////////////////////////////////////////////////////////////////
+// Main execute
+////////////////////////////////////////////////////////////////
+
+public void execute() throws Exception {
+    // Shared SAT
+    double sat = numericOrDefault(getSat(), 55.0);
+
+    // Inputs
+    BStatusNumeric coolSpSlot = getCoolSatSp();
+    BStatusNumeric heatSpSlot = getHeatSatSp();
+    BStatusNumeric chwVlvSlot = getChwValvePct();
+    BStatusNumeric hwVlvSlot  = getHwValvePct();
+    BStatusBoolean fanCoolSlot = getFanAtMaxCool();
+    BStatusBoolean fanHeatSlot = getFanAtMaxHeat();
+
+    // Coil presence detection
+    boolean hasCoolingCoil = isNumericValid(coolSpSlot) || isNumericValid(chwVlvSlot);
+    boolean hasHeatingCoil = isNumericValid(heatSpSlot) || isNumericValid(hwVlvSlot);
+
+    // Optional fan gating:
+    // - If wired → use its value
+    // - If unwired → default true (no gating)
+    boolean fanAtMaxCool = boolOrDefault(fanCoolSlot, true);
+    boolean fanAtMaxHeat = boolOrDefault(fanHeatSlot, true);
+
+    int chwReq = 0;
+    int hwReq  = 0;
+
+    ////////////////////////////////////////////////////////////
+    // COOLING / CHW REQUESTS
+    ////////////////////////////////////////////////////////////
+    String coolTrace;
+
+    if (!hasCoolingCoil) {
+        // No cooling coil wired → fully bypass CHW logic
+        coolHigh10Sec = 0;
+        coolHigh5Sec  = 0;
+        chwValveLatched = false;
+        chwReq = 0;
+        coolTrace = "Cooling coil not present/not wired → CHW reset requests = 0.";
+    }
+    else if (!fanAtMaxCool && fanCoolSlot != null && fanCoolSlot.getStatus().isOk()) {
+        // Fan gating is wired AND false → suppress CHW requests
+        coolHigh10Sec = 0;
+        coolHigh5Sec  = 0;
+        chwValveLatched = false;
+        chwReq = 0;
+        coolTrace = "fanAtMaxCool = FALSE → suppress CHW reset requests (0).";
+    }
+    else {
+        double coolSp = numericOrDefault(coolSpSlot, sat); // avoid big err if SP missing
+        double chwVlv = numericOrDefault(chwVlvSlot, 0.0);
+
+        // Cooling error: SAT - SP (positive = too warm)
+        double coolErr = sat - coolSp;
+
+        // Persistence timers
+        if (coolErr >= COOL_ERR_3REQ_F) {
+            coolHigh10Sec += EXEC_PERIOD_SEC;
+            coolHigh5Sec  += EXEC_PERIOD_SEC;
+        } else if (coolErr >= COOL_ERR_2REQ_F) {
+            coolHigh10Sec = 0;
+            coolHigh5Sec  += EXEC_PERIOD_SEC;
+        } else {
+            coolHigh10Sec = 0;
+            coolHigh5Sec  = 0;
+        }
+
+        boolean coolHigh10 = (coolHigh10Sec >= PERSIST_SEC);
+        boolean coolHigh5  = (coolHigh5Sec  >= PERSIST_SEC);
+
+        // Valve latch
+        if (chwVlv >= CHW_VALVE_ON_PCT) {
+            chwValveLatched = true;
+        } else if (chwVlv < CHW_VALVE_OFF_PCT) {
+            chwValveLatched = false;
+        }
+
+        // Request ladder
+        if (coolHigh10) {
+            chwReq = 3;
+            coolTrace = "SAT ≥ coolSp + 10°F for ≥5 min → 3 CHW reset requests.";
+        } else if (coolHigh5) {
+            chwReq = 2;
+            coolTrace = "SAT ≥ coolSp + 5°F for ≥5 min → 2 CHW reset requests.";
+        } else if (chwValveLatched) {
+            chwReq = 1;
+            coolTrace = "CHW valve ≥ 95% (latched until < 85%) → 1 CHW reset request.";
+        } else {
+            chwReq = 0;
+            coolTrace = "Within cooling band and CHW valve < 95% → 0 CHW reset requests.";
+        }
+
+        coolTrace += " [sat=" + sat + "°F, coolSp=" + coolSp + "°F, err="
+                   + (sat - coolSp) + "°F, chwVlv=" + chwVlv + "%, fanAtMaxCool="
+                   + boolStatus(fanCoolSlot) + "]";
+    }
+
+    chwReq = clampInt(chwReq, 0, 3);
+    getChwResetRequests().setValue(chwReq);
+    getCoolStatusTrace().setValue(coolTrace);
+
+    ////////////////////////////////////////////////////////////
+    // HEATING / HW REQUESTS
+    ////////////////////////////////////////////////////////////
+    String heatTrace;
+
+    if (!hasHeatingCoil) {
+        // No heating coil wired → fully bypass HW logic
+        heatLow30Sec = 0;
+        heatLow15Sec = 0;
+        hwValveLatched = false;
+        hwReq = 0;
+        heatTrace = "Heating coil not present/not wired → HW reset requests = 0.";
+    }
+    else if (!fanAtMaxHeat && fanHeatSlot != null && fanHeatSlot.getStatus().isOk()) {
+        // Fan gating is wired AND false → suppress HW requests
+        heatLow30Sec = 0;
+        heatLow15Sec = 0;
+        hwValveLatched = false;
+        hwReq = 0;
+        heatTrace = "fanAtMaxHeat = FALSE → suppress HW reset requests (0).";
+    }
+    else {
+        double heatSp = numericOrDefault(heatSpSlot, sat);
+        double hwVlv  = numericOrDefault(hwVlvSlot, 0.0);
+
+        // Heating error: SP - SAT (positive = too cold)
+        double heatErr = heatSp - sat;
+
+        // Persistence timers
+        if (heatErr >= HEAT_ERR_3REQ_F) {
+            heatLow30Sec += EXEC_PERIOD_SEC;
+            heatLow15Sec += EXEC_PERIOD_SEC;
+        } else if (heatErr >= HEAT_ERR_2REQ_F) {
+            heatLow30Sec = 0;
+            heatLow15Sec += EXEC_PERIOD_SEC;
+        } else {
+            heatLow30Sec = 0;
+            heatLow15Sec = 0;
+        }
+
+        boolean heatLow30 = (heatLow30Sec >= PERSIST_SEC);
+        boolean heatLow15 = (heatLow15Sec >= PERSIST_SEC);
+
+        // Valve latch
+        if (hwVlv >= HW_VALVE_ON_PCT) {
+            hwValveLatched = true;
+        } else if (hwVlv < HW_VALVE_OFF_PCT) {
+            hwValveLatched = false;
+        }
+
+        // Request ladder
+        if (heatLow30) {
+            hwReq = 3;
+            heatTrace = "SAT ≤ heatSp - 30°F for ≥5 min → 3 HW reset requests.";
+        } else if (heatLow15) {
+            hwReq = 2;
+            heatTrace = "SAT ≤ heatSp - 15°F for ≥5 min → 2 HW reset requests.";
+        } else if (hwValveLatched) {
+            hwReq = 1;
+            heatTrace = "HW valve ≥ 95% (latched until < 85%) → 1 HW reset request.";
+        } else {
+            hwReq = 0;
+            heatTrace = "Within heating band and HW valve < 95% → 0 HW reset requests.";
+        }
+
+        heatTrace += " [sat=" + sat + "°F, heatSp=" + heatSp + "°F, err="
+                   + (heatSp - sat) + "°F, hwVlv=" + hwVlv + "%, fanAtMaxHeat="
+                   + boolStatus(fanHeatSlot) + "]";
+    }
+
+    hwReq = clampInt(hwReq, 0, 3);
+    getHwResetRequests().setValue(hwReq);
+    getHeatStatusTrace().setValue(heatTrace);
+}
+```
+
+</details>
+
+
+
+<details>
+<summary>🔥 NOT TESTED YET - Boiler HWST Trim & Respond Block (Trim & Respond)</summary>
+
+## 🔧 Slot Sheet 
+
+Create a ProgramObject with these slots (names can be tweaked, but keep them consistent with the code):
+
+### Inputs / Config
+
+| Slot Name           | Type             | Writable | Notes                                                        |
+| ------------------- | ---------------- | -------- | ------------------------------------------------------------ |
+| `enable`            | `BStatusBoolean` | Yes      | Master enable for the reset logic.                           |
+| `totalHwResetReq`   | `BStatusNumeric` | Yes      | Sum of all AHU hot-water reset requests (0…N).               |
+| `sp0`               | `BStatusNumeric` | Config   | Initial HWST setpoint (starting value).                      |
+| `spMin`             | `BStatusNumeric` | Config   | Minimum HWST (e.g., 90°F condensing, 155°F non-cond).        |
+| `spMax`             | `BStatusNumeric` | Config   | Maximum HWST (e.g., 180–190°F).                              |
+| `ignoredReq` (`I`)  | `BStatusNumeric` | Config   | Number of requests to ignore (GL-36 variable **I**).         |
+| `stepMinutes` (`T`) | `BStatusNumeric` | Config   | Time step between T&R actions (default 5 min).               |
+| `spTrim`            | `BStatusNumeric` | Config   | **SPtrim** – trim step (e.g., –2°F).                         |
+| `spRes`             | `BStatusNumeric` | Config   | **SPres** – respond step per effective request (e.g., +3°F). |
+| `spResMax`          | `BStatusNumeric` | Config   | **SPres-max** – max response per step (e.g., +7°F).          |
+
+*(You can add `tdMinutes` later if you want a GL-36 style delay **Td**; this first version keeps it simple.)*
+
+### Outputs
+
+| Slot Name     | Type             | Writable | Notes                                     |
+| ------------- | ---------------- | -------- | ----------------------------------------- |
+| `hwstSpOut`   | `BStatusNumeric` | No       | Final HWST setpoint to send to boiler(s). |
+| `activeR`     | `BStatusNumeric` | No       | Clamped, effective `R` used by the loop.  |
+| `statusTrace` | `BStatusString`  | No       | Human-readable trace of last T&R action.  |
+
+---
+
+## 💻 Java Code – Boiler HWST T&R (Plant Block)
+
+> Niagara auto-generates headers/imports/getters/setters.
+> Paste **only** the code below into the Program’s **Source** editor.
+
+```java
+////////////////////////////////////////////////////////////
+// Class-level fields
+////////////////////////////////////////////////////////////
+
+Clock.Ticket ticket;
+
+long lastStepMillis = 0L;
+boolean wasEnabled = false;
+
+////////////////////////////////////////////////////////////
+// Lifecycle
+////////////////////////////////////////////////////////////
+
+public void onStart() throws Exception {
+  // Initialize last step time
+  lastStepMillis = System.currentTimeMillis();
+
+  // Set sensible GL-36-style defaults if config slots are NULL
+  ensureDefault(getSpTrim(),   -2.0);  // °F per step down
+  ensureDefault(getSpRes(),     3.0);  // °F per request up
+  ensureDefault(getSpResMax(),  7.0);  // °F per step max up
+  ensureDefault(getStepMinutes(), 5.0); // T = 5 minutes
+  ensureDefault(getIgnoredReq(), 0.0);  // I = 0 by default
+
+  // HWST bounds – adjust to your plant type
+  // (90°F for condensing/hybrid SPmin, 155°F for non-condensing per G36) 
+  ensureDefault(getSpMin(),  120.0);     
+  ensureDefault(getSpMax(),  180.0);     
+  ensureDefault(getSp0(),    150.0);     
+
+  // Initialize output SP
+  double initSp = safeNumeric(getHwstSpOut(), getSp0(), getSpMin(), getSpMax());
+  getHwstSpOut().setValue(initSp);
+  getStatusTrace().setValue("Boiler HWST T&R started. Init SP = " + round1(initSp));
+  getActiveR().setValue(0.0);
+
+  updateTimer();
+}
+
+public void onExecute() throws Exception {
+  updateTimer();
+
+  boolean enabled = safeBool(getEnable());
+  long now = System.currentTimeMillis();
+
+  // If just transitioned to enabled, reset the step timer
+  if (enabled && !wasEnabled) {
+    lastStepMillis = now;
+    getStatusTrace().setValue("T&R enabled; waiting for first step.");
+  }
+  wasEnabled = enabled;
+
+  // If disabled, hold SP at sp0 (or last good) and exit
+  if (!enabled) {
+    double holdSp = safeNumeric(getHwstSpOut(), getSp0(), getSpMin(), getSpMax());
+    getHwstSpOut().setValue(holdSp);
+    getStatusTrace().setValue("T&R disabled → holding SP = " + round1(holdSp));
+    return;
+  }
+
+  // Step timing
+  int stepMin = (int) clampDouble(
+      safeNumeric(getStepMinutes(), null, null, null),
+      1.0, 60.0
+  );
+  long stepMs = stepMin * 60L * 1000L;
+
+  if ((now - lastStepMillis) < stepMs) {
+    // Not time yet – just exit quietly
+    return;
+  }
+  lastStepMillis = now;
+
+  // Read total requests R and clamp to a sane range
+  int R = (int) clampDouble(
+      getTotalHwResetReq().getStatus().isOk() ? getTotalHwResetReq().getValue() : 0.0,
+      0.0, 999.0
+  );
+
+  int I = (int) clampDouble(
+      getIgnoredReq().getStatus().isOk() ? getIgnoredReq().getValue() : 0.0,
+      0.0, 50.0
+  );
+
+  getActiveR().setValue(R);
+
+  double spMin  = getSpMin().getStatus().isOk() ? getSpMin().getValue() : 120.0;
+  double spMax  = getSpMax().getStatus().isOk() ? getSpMax().getValue() : 180.0;
+  double spTrim = getSpTrim().getStatus().isOk() ? getSpTrim().getValue() : -2.0;
+  double spRes  = getSpRes().getStatus().isOk()  ? getSpRes().getValue()  :  3.0;
+  double spResMax = getSpResMax().getStatus().isOk() ? getSpResMax().getValue() : 7.0;
+
+  double currentSp = safeNumeric(getHwstSpOut(), getSp0(), getSpMin(), getSpMax());
+  double newSp = currentSp;
+
+  StringBuilder trace = new StringBuilder();
+  trace.append("R=").append(R).append(", I=").append(I)
+       .append(", oldSP=").append(round1(currentSp)).append(" → ");
+
+  if (R > I) {
+    // Respond UP: SP += min( SPres * (R−I), SPres-max )
+    int effR = R - I;
+    double rawResp = spRes * effR;
+    double limitedResp = (spResMax > 0.0)
+        ? Math.min(rawResp, spResMax)
+        : rawResp;
+
+    newSp = currentSp + limitedResp;
+    trace.append("Respond ↑ by ").append(round1(limitedResp));
+  }
+  else if (R == 0) {
+    // Trim DOWN: SP += SPtrim (typically negative)
+    newSp = currentSp + spTrim;
+    trace.append("Trim ").append(spTrim < 0 ? "↓" : "↑")
+         .append(" by ").append(round1(spTrim));
+  }
+  else {
+    // 0 < R ≤ I → hold
+    trace.append("Hold (0 < R ≤ I)");
+  }
+
+  // Clamp to SPmin/SPmax
+  newSp = clampDouble(newSp, spMin, spMax);
+  getHwstSpOut().setValue(newSp);
+
+  trace.append(" → newSP=").append(round1(newSp))
+       .append(" [spMin=").append(round1(spMin))
+       .append(", spMax=").append(round1(spMax)).append("]");
+
+  getStatusTrace().setValue(trace.toString());
+}
+
+public void onStop() throws Exception {
+  if (ticket != null) {
+    ticket.cancel();
+  }
+  getStatusTrace().setValue("Boiler HWST T&R stopped.");
+}
+
+////////////////////////////////////////////////////////////
+// Helpers
+////////////////////////////////////////////////////////////
+
+void updateTimer() {
+  if (ticket != null) {
+    ticket.cancel();
+  }
+  // Execute every 60 s, internal logic only acts every stepMinutes
+  ticket = Clock.schedule(
+      getComponent(),
+      BRelTime.makeSeconds(60),
+      BProgram.execute,
+      null
+  );
+}
+
+boolean safeBool(BStatusBoolean b) {
+  try {
+    return b.getStatus().isOk() && b.getValue();
+  } catch (Exception e) {
+    return false;
+  }
+}
+
+/**
+ * If primary is bad/NULL, fall back to sp0, then midpoint(spMin, spMax).
+ */
+double safeNumeric(BStatusNumeric primary,
+                   BStatusNumeric sp0,
+                   BStatusNumeric spMinSlot,
+                   BStatusNumeric spMaxSlot) {
+  if (primary != null && primary.getStatus().isOk()) {
+    return primary.getValue();
+  }
+
+  if (sp0 != null && sp0.getStatus().isOk()) {
+    return sp0.getValue();
+  }
+
+  double lo = 120.0;
+  double hi = 180.0;
+
+  if (spMinSlot != null && spMinSlot.getStatus().isOk()) {
+    lo = spMinSlot.getValue();
+  }
+  if (spMaxSlot != null && spMaxSlot.getStatus().isOk()) {
+    hi = spMaxSlot.getValue();
+  }
+  if (hi < lo) {
+    double tmp = lo;
+    lo = hi;
+    hi = tmp;
+  }
+  return (lo + hi) / 2.0;
+}
+
+void ensureDefault(BStatusNumeric slot, double defVal) {
+  if (slot == null) return;
+  if (!slot.getStatus().isOk()) {
+    slot.setValue(defVal);
+  }
+}
+
+double clampDouble(double v, double lo, double hi) {
+  if (!Double.isFinite(v)) return lo;
+  if (lo > hi) {
+    double tmp = lo;
+    lo = hi;
+    hi = tmp;
+  }
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+double round1(double v) {
+  return Math.round(v * 10.0) / 10.0;
+}
+```
+
+
+</details>
+
+
+<details>
+<summary>🥶 NOT TESTED YET - Chilled Water Trim & Respond Block (Trim & Respond)</summary>
+
+
+## 2️⃣ ProgramObject: CHW Plant Trim & Respond (DP + CHWST)
+
+Now we mimic the **plant reset loop** you quoted:
+
+From the G36 CHW Plant Reset section: 
+
+* A single T&R loop outputs **0–100%**.
+* **0–50%** of that output is mapped to **CHW pump DP setpoint** (min → max).
+* **50–100%** is mapped to **CHWST setpoint** (max → min).
+* T&R parameters:
+
+  * `SP0 = 100 %`
+  * `SPmin = 0 %`
+  * `SPmax = 100 %`
+  * `Td = 15 min`
+  * `T = 5 min`
+  * `I = 2` ignored requests
+  * `R = Cooling CHWST Reset Requests` (your summed requests)
+  * `SPtrim = –2 %`
+  * `SPres = +3 %`
+  * `SPres-max = +7 %`
+
+### Slot Map (Plant Reset Block)
+
+**Inputs**
+
+* `plantEnabled` – plant enable / run status – `BStatusBoolean`
+* `totalChwResetRequests` – sum of all AHU/FCU CHW reset requests – `BStatusNumeric`
+* `SP0` – Initial loop output (%) – `BStatusNumeric` (default 100)
+* `SPmin` – Min loop output (%) – `BStatusNumeric` (default 0)
+* `SPmax` – Max loop output (%) – `BStatusNumeric` (default 100)
+* `TdMinutes` – Delay before T&R starts (default 15)
+* `TMinutes` – T&R evaluation interval (default 5)
+* `Ignore` – number of ignored requests (I = 2)
+* `SPtrim` – trim amount per interval (default –2)
+* `SPres` – respond amount per request (default +3)
+* `SPresMax` – max respond per interval (default +7)
+* `chwDpMin` – minimum CHW pump DP setpoint (e.g. 30 ft or kPa)
+* `chwDpMax` – maximum CHW pump DP setpoint
+* `chwstMin` – minimum CHW supply temp (coldest)
+* `chwstMax` – maximum CHW supply temp (warmest)
+
+**Outputs**
+
+* `plantResetOut` – 0…100 % loop output – `BStatusNumeric`
+* `chwDpSpOut` – CHW pump DP setpoint – `BStatusNumeric`
+* `chwstSpOut` – CHWST setpoint – `BStatusNumeric`
+* `statusTrace` – `BStatusString`
+
+---
+
+### Java Code – CHW Plant T&R Reset
+
+```java
+////////////////////////////////////////////////////////////////
+// Class-level fields
+////////////////////////////////////////////////////////////////
+
+Clock.Ticket ticket;
+
+private static final int EXEC_PERIOD_SEC = 10;
+
+// Internal
+double loopSp = 100.0;   // 0–100 % reset loop output
+long plantEnableTimestamp = 0L;
+long lastUpdateTimestamp  = 0L;
+
+////////////////////////////////////////////////////////////////
+// Lifecycle
+////////////////////////////////////////////////////////////////
+
+public void onStart() throws Exception {
+    // Initialize SP from slot
+    loopSp = numericOrDefault(getSP0(), 100.0);
+    updateTimer();
+}
+
+public void onStop() throws Exception {
+    if (ticket != null) ticket.cancel();
+}
+
+public BComponent getProgram() {
+    return (BComponent) getComponent();
+}
+
+void updateTimer() {
+    if (ticket != null) ticket.cancel();
+    ticket = Clock.schedule(getProgram(), BRelTime.makeSeconds(EXEC_PERIOD_SEC),
+                            BProgram.execute, null);
+}
+
+////////////////////////////////////////////////////////////////
+// Helpers
+////////////////////////////////////////////////////////////////
+
+double numericOrDefault(BStatusNumeric slot, double defVal) {
+    return slot.getStatus().isOk() ? slot.getValue() : defVal;
+}
+
+boolean boolOrFalse(BStatusBoolean slot) {
+    return slot.getStatus().isOk() && slot.getValue();
+}
+
+double clamp(double v, double lo, double hi) {
+    return Math.max(lo, Math.min(v, hi));
+}
+
+int minutesToSecondsSafe(BStatusNumeric minsSlot, int defMin) {
+    double m = defMin;
+    if (minsSlot.getStatus().isOk()) {
+        m = minsSlot.getValue();
+    }
+    m = clamp(m, 0.0, 240.0);   // 0–4 hours
+    return (int)Math.round(m * 60.0);
+}
+
+double round1(double v) {
+    return Math.round(v * 10.0) / 10.0;
+}
+
+////////////////////////////////////////////////////////////////
+// Main execute
+////////////////////////////////////////////////////////////////
+
+public void execute() throws Exception {
+    long nowMs = Clock.time().getMillis();
+
+    // Inputs
+    boolean plantEnabled = boolOrFalse(getPlantEnabled());
+    double totalReq = numericOrDefault(getTotalChwResetRequests(), 0.0);
+
+    // T&R params (with defaults from G36)
+    double spMin    = numericOrDefault(getSPmin(), 0.0);
+    double spMax    = numericOrDefault(getSPmax(), 100.0);
+    double spTrim   = numericOrDefault(getSPtrim(), -2.0);  // trim (usually negative)
+    double spRes    = numericOrDefault(getSPres(), 3.0);    // respond per req (positive)
+    double spResMax = numericOrDefault(getSPresMax(), 7.0); // max respond per interval
+    double ignore   = numericOrDefault(getIgnore(), 2.0);   // I
+
+    int TdSec = minutesToSecondsSafe(getTdMinutes(), 15);
+    int TSec  = minutesToSecondsSafe(getTMinutes(), 5);
+
+    // Plant enable tracking
+    if (!plantEnabled) {
+        plantEnableTimestamp = 0L;
+        lastUpdateTimestamp  = 0L;
+        // You might choose to hold last loopSp or snap to SP0 here
+    } else if (plantEnableTimestamp == 0L) {
+        plantEnableTimestamp = nowMs;
+        lastUpdateTimestamp  = 0L;
+    }
+
+    String trace;
+
+    // If plant not enabled, just map outputs from current loopSp for visibility
+    if (!plantEnabled) {
+        trace = "Plant disabled → holding last reset output (" + round1(loopSp) + " %).";
+    } else {
+        long enabledSec = (nowMs - plantEnableTimestamp) / 1000;
+
+        // Wait Td before first update
+        if (enabledSec < TdSec) {
+            trace = "Td delay active (" + enabledSec + "/" + TdSec + " s) → holding SP = "
+                    + round1(loopSp) + " %.";
+        } else {
+            long sinceLastUpdateSec = (nowMs - lastUpdateTimestamp) / 1000;
+
+            if (lastUpdateTimestamp == 0L || sinceLastUpdateSec >= TSec) {
+                // === Trim & Respond update ===
+                double effectiveReq = Math.max(0.0, totalReq - ignore);
+
+                double respondThisStep = spRes * effectiveReq;
+                if (respondThisStep > spResMax) {
+                    respondThisStep = spResMax;
+                }
+
+                double delta;
+                if (effectiveReq <= 0.0) {
+                    // No effective requests → trim
+                    delta = spTrim;
+                } else {
+                    // Some requests → respond
+                    delta = respondThisStep;
+                }
+
+                loopSp = clamp(loopSp + delta, spMin, spMax);
+                lastUpdateTimestamp = nowMs;
+
+                trace = "T&R update: totalReq=" + totalReq
+                        + " (ignore=" + ignore + ", eff=" + effectiveReq + ")"
+                        + ", delta=" + round1(delta)
+                        + " → loopSp=" + round1(loopSp) + " %.";
+            } else {
+                trace = "Waiting for next T interval (" + sinceLastUpdateSec + "/" + TSec
+                        + " s) → loopSp=" + round1(loopSp) + " %.";
+            }
+        }
+    }
+
+    // ========= Map loopSp → DP SP and CHWST SP =========
+    double dpMin   = numericOrDefault(getChwDpMin(), 50.0);
+    double dpMax   = numericOrDefault(getChwDpMax(), 90.0);
+    double chwstMin = numericOrDefault(getChwstMin(), 42.0);
+    double chwstMax = numericOrDefault(getChwstMax(), 48.0);
+
+    double dpSp;
+    double chwstSp;
+
+    if (loopSp <= 50.0) {
+        // Stage 1: DP reset only (0–50 %)
+        double frac = loopSp / 50.0; // 0–1
+        dpSp = dpMin + frac * (dpMax - dpMin);
+        chwstSp = chwstMax; // no temp reset yet
+        trace += "  Stage 1 (DP only): dpSp=" + round1(dpSp) + ", chwstSp=" + round1(chwstSp);
+    } else {
+        // Stage 2: DP at max; CHWST reset (50–100 %)
+        dpSp = dpMax;
+        double frac = (loopSp - 50.0) / 50.0; // 0–1
+        // Map 0→chwstMax, 1→chwstMin
+        chwstSp = chwstMax + frac * (chwstMin - chwstMax);
+        trace += "  Stage 2 (CHWST reset): dpSp=" + round1(dpSp) + ", chwstSp=" + round1(chwstSp);
+    }
+
+    // Write outputs
+    getPlantResetOut().setValue(loopSp);
+    getChwDpSpOut().setValue(dpSp);
+    getChwstSpOut().setValue(chwstSp);
+    getStatusTrace().setValue(trace);
+}
+```
+
+
+</details>
