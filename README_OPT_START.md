@@ -7,6 +7,12 @@ The quadratic model further below draws on PNNL's research for the `Model 1` usi
 * **Optimal Start Control for ACs and HPs (PNNL)** — `pdf/Optimal Start Control for ACs and HPs.pdf`
     👉 [https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf)
 
+
+Check for demonstrations on Vibe Coding on 📺
+🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
+
+**See also a New December 2025 [YouTube playlist](https://www.youtube.com/playlist?list=PLlNmfKmNxm1tOa8P7aBhj0zf34AIlS4CQ) on diving into optimal start/stop math and algorithms, built from daily lessons created with AI.**
+
 ---
 
 ### ⚠️ **IMPORTANT — Best Practice for Exception Handling in ProgramObjects**

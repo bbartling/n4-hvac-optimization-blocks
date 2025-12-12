@@ -13,6 +13,8 @@ Also, feel free to skip the tutorials entirely and jump right into the [**Prebui
 Check for demonstrations on Vibe Coding on 📺
 🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
 
+**See also a New December 2025 [YouTube playlist](https://www.youtube.com/playlist?list=PLlNmfKmNxm1tOa8P7aBhj0zf34AIlS4CQ) on diving into optimal start/stop math and algorithms, built from daily lessons created with AI.**
+
 ---
 
 <details>
