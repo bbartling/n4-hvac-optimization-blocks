@@ -11,7 +11,8 @@ The quadratic model further below draws on PNNL's research for the `Model 1` usi
 Check for demonstrations on Vibe Coding on 📺
 🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
 
-**See also a New December 2025 [YouTube playlist](https://www.youtube.com/playlist?list=PLlNmfKmNxm1tOa8P7aBhj0zf34AIlS4CQ) on diving into optimal start/stop math and algorithms, built from daily lessons created with AI.**
+
+Check out the **new December 2025** [YouTube playlist](https://www.youtube.com/playlist?list=PLlNmfKmNxm1tOa8P7aBhj0zf34AIlS4CQ) on optimal start/stop math and algorithms, built from short daily AI-generated lessons, plus the complete [open-source GitHub repository](https://github.com/bbartling/hvac-optimal-start-math-playground) featuring Python examples and in-depth explorations of PNNL optimal start research.
 
 ---
 
