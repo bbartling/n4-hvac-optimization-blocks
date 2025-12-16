@@ -560,37 +560,57 @@ The logic continuously adjusts the fan’s static pressure setpoint based on dam
 
 
 ```java
+
 /**
  * Duct Static Pressure Trim & Respond Program
- * Version 5 - Final Robust Version.
- * This program resets duct static pressure based on VAV damper requests,
- * inspired by ASHRAE Guideline 36 and the Normal Framework implementation.
- * This version ensures the output setpoint is ALWAYS driven to a known state
- * in every possible logic path within onExecute().
+ * Version 5.2 - Strict Status Semantics + Soft-Reboot on Bad Data (NO algorithm changes).
+ *
+ * Policy Updates (Status/Sanity ONLY):
+ *  - If fanRunCmd is anything but {ok} -> SOFT REBOOT:
+ *      * drive SP0
+ *      * set output status = fault
+ *      * reset internal timers/state (startup delay + cadence)
+ *      * statusTrace explains why
+ *  - If totalRequests is anything but {ok} when core logic is due -> SOFT REBOOT:
+ *      * drive SP0
+ *      * set output status = fault
+ *      * reset internal timers/state (startup delay + cadence)
+ *      * statusTrace explains why
+ *  - Output status is set back to {ok} ONLY after a successful Trim/Respond step
+ *    (i.e., R is valid, newSetpoint is computed and written).
+ *
+ * Maintained:
+ *  - State machine, cadence timing, startup delay timing, trim/respond math.
  */
 
-// ===== Class-level state =====
+////////////////////////////////////////////////////////////
+// Class-level state
+////////////////////////////////////////////////////////////
+
 Clock.Ticket ticket;
 
 long lastMainLogicRunMs = 0;   // enforces UpdateMinutes cadence
 long fanOnStableSinceMs = 0;   // enforces StartUpDelayMinutes true-for window
 boolean lastFanRun = false;    // edge detect for fan ON
 
-// ===== onStart =====
+////////////////////////////////////////////////////////////
+// onStart
+////////////////////////////////////////////////////////////
+
 public void onStart() throws Exception {
-    // Initialize state variables and start the timer.
-    // The onExecute() method is responsible for all output driving.
     getStatusTrace().setValue("sp-trim-and-respond: program started.");
     lastMainLogicRunMs = 0;
     fanOnStableSinceMs = 0;
     lastFanRun = false;
-
     updateTimer(); // 10s heartbeat
 }
 
-// ===== onExecute (Main logic loop) =====
+////////////////////////////////////////////////////////////
+// onExecute (Main logic loop)
+////////////////////////////////////////////////////////////
+
 public void onExecute() throws Exception {
-    updateTimer(); // Reschedule the next execution
+    updateTimer();
     long now = System.currentTimeMillis();
 
     // ---- Null-wire checker (inputs only) ----
@@ -608,70 +628,91 @@ public void onExecute() throws Exception {
     double SPres    = numericOrDefault(getSPres(), 0.04);
     double SPResMax = numericOrDefault(getSPResMax(), 0.08);
 
-    boolean fanRun = getFanRunCmd().getStatus().isOk() && getFanRunCmd().getValue();
+    // Determine current SP (fallback to SP0 if output isn't Ok)
     double currentSp = getDischargeAirPressureSp().getStatus().isOk()
         ? getDischargeAirPressureSp().getValue()
         : SP0;
 
+    // ------------------------------------------------------------
+    // REQUIRED INPUT #1: fanRunCmd must be {ok}
+    // If not ok -> soft reboot to SP0 and restart state machine.
+    // ------------------------------------------------------------
+    if (!getFanRunCmd().getStatus().isOk()) {
+        softRebootToSP0(now, SP0, SPmin, SPmax, "fanRunCmd not Ok");
+        return;
+    }
+
+    boolean fanRun = getFanRunCmd().getValue();
+
     // --- State 1: Fan is OFF ---
-    // Unconditionally drive the output to the initial setpoint (SP0).
+    // Drive SP0. DO NOT clear status to OK here (strict semantics).
     if (!fanRun) {
         double sp0 = clamp(SP0, SPmin, SPmax);
         getDischargeAirPressureSp().setValue(sp0);
 
-        if (lastFanRun) { // Log only on the transition from ON to OFF
+        if (lastFanRun) {
             getStatusTrace().setValue("Fan OFF -> driving SP0 = " + round3(sp0));
             getLastActionTs().setValue(new java.util.Date(now).toString());
         }
-        
-        fanOnStableSinceMs = 0; // Reset startup timer
-        lastFanRun = false;     // Set state for next edge detection
+
+        fanOnStableSinceMs = 0;
+        lastFanRun = false;
         return;
     }
 
     // --- State 2: Fan just turned ON (Edge Detection) ---
-    // Explicitly set the setpoint to SP0 to begin the startup delay period.
+    // Begin startup delay window. Drive SP0. DO NOT clear status to OK here.
     if (!lastFanRun && fanRun) {
         fanOnStableSinceMs = now;
         lastFanRun = true;
+
         double sp0 = clamp(SP0, SPmin, SPmax);
-        getDischargeAirPressureSp().setValue(sp0); // Explicitly drive output
+        getDischargeAirPressureSp().setValue(sp0);
+
         getStatusTrace().setValue("Fan ON -> holding SP0 during startup delay...");
         getLastActionTs().setValue(new java.util.Date(now).toString());
         return;
     }
-    
+
     // Ensure fan state is correct for the current cycle
     lastFanRun = true;
 
     // --- State 3: Fan is ON, but waiting for startup delay to complete ---
+    // Hold SP0. DO NOT clear status to OK here.
     boolean isStartupDelayMet = (now - fanOnStableSinceMs) / 1000 >= TdSec;
     if (!isStartupDelayMet) {
         long remaining = TdSec - ((now - fanOnStableSinceMs) / 1000);
+
         double sp0 = clamp(SP0, SPmin, SPmax);
-        getDischargeAirPressureSp().setValue(sp0); // Explicitly hold output at SP0
+        getDischargeAirPressureSp().setValue(sp0);
+
         getStatusTrace().setValue("Waiting Td (" + remaining + "s left)... SP=" + round3(sp0));
         return;
     }
-    
+
     // --- State 4: Waiting for T&R update cadence ---
     boolean isUpdateCadenceMet = (lastMainLogicRunMs == 0) || ((now - lastMainLogicRunMs) / 1000 >= TSec);
     if (!isUpdateCadenceMet) {
-        // It is safe to return here, as the previous T&R cycle already set the value.
-        // The status trace is not updated to prevent log spam.
+        // Safe return; previous cycle already set output
         return;
     }
 
     // --- State 5: Run Core Trim & Respond Logic ---
+    // ------------------------------------------------------------
+    // REQUIRED INPUT #2: totalRequests must be {ok} when core logic is due
+    // If not ok -> soft reboot to SP0 and restart state machine.
+    // ------------------------------------------------------------
     if (!getTotalRequests().getStatus().isOk()) {
-        getStatusTrace().setValue("Missing totalRequests -> no T&R action this cycle.");
+        softRebootToSP0(now, SP0, SPmin, SPmax, "totalRequests not Ok");
         return;
     }
+
     double R = getTotalRequests().getValue();
 
     double newSetpoint;
     String action;
 
+    // ===== CORE TRIM/RESPOND (UNCHANGED) =====
     if (R <= Ignore) {
         action = "trim";
         newSetpoint = clamp(currentSp + SPtrim, SPmin, SPmax);
@@ -680,23 +721,34 @@ public void onExecute() throws Exception {
         double respondAmount = Math.min(SPres * (R - Ignore), SPResMax);
         newSetpoint = clamp(currentSp + respondAmount, SPmin, SPmax);
     }
+    // =======================================
 
+    // Successful T&R step: write value and ONLY NOW clear status to OK.
     getDischargeAirPressureSp().setValue(newSetpoint);
+    getDischargeAirPressureSp().setStatus(BStatus.ok);
+
     lastMainLogicRunMs = now;
 
-    String detail = "R=" + round3(R) + " -> " + action.toUpperCase() + " SP: " + round3(currentSp) + " -> " + round3(newSetpoint);
+    String detail = "R=" + round3(R) + " -> " + action.toUpperCase() +
+                    " SP: " + round3(currentSp) + " -> " + round3(newSetpoint);
     getStatusTrace().setValue(detail);
     getLastActionTs().setValue(new java.util.Date(now).toString());
 }
 
-// ===== onStop =====
+////////////////////////////////////////////////////////////
+// onStop
+////////////////////////////////////////////////////////////
+
 public void onStop() throws Exception {
     if (ticket != null) {
         ticket.cancel();
     }
 }
 
-// ===== Helper Methods =====
+////////////////////////////////////////////////////////////
+// Helper Methods
+////////////////////////////////////////////////////////////
+
 void updateTimer() {
     if (ticket != null) {
         ticket.cancel();
@@ -704,20 +756,48 @@ void updateTimer() {
     ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
 }
 
+/**
+ * Soft reboot behavior:
+ *  - Drive SP0
+ *  - Mark output FAULT
+ *  - Reset all internal timers/state so startup delay and cadence restart cleanly
+ *  - Message goes to statusTrace (not BStatus)
+ */
+void softRebootToSP0(long now, double SP0, double SPmin, double SPmax, String reason) {
+    double sp0 = clamp(SP0, SPmin, SPmax);
+
+    getDischargeAirPressureSp().setValue(sp0);
+    getDischargeAirPressureSp().setStatus(BStatus.fault);
+
+    // Reset internal state (true "reboot")
+    lastMainLogicRunMs = 0;
+    fanOnStableSinceMs = 0;
+    lastFanRun = false;
+
+    getStatusTrace().setValue("RESTART: " + reason + " -> driving SP0=" + round3(sp0) + " and re-running startup delay.");
+    getLastActionTs().setValue(new java.util.Date(now).toString());
+}
+
 void ensureNumericWiredOrNull(String slotName, BStatusNumeric point) {
     try {
-        if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
+        Slot slot = getComponent().getSlot(slotName);
+        if (slot == null) return;
+        BLink[] links = getComponent().getLinks(slot);
+        if (links == null || links.length == 0) {
             point.setValue(0);
-            point.setStatus(BStatus.NULL);
+            point.setStatus(BStatus.NULL); // if this fails in your Niagara build, use BStatus.nullStatus
         }
     } catch (Exception e) { /* ignore */ }
 }
 
 void ensureBooleanWiredOrNull(String slotName, BStatusBoolean point) {
     try {
-        if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
+        Slot slot = getComponent().getSlot(slotName);
+        if (slot == null) return;
+        BLink[] links = getComponent().getLinks(slot);
+        if (links == null || links.length == 0) {
             point.setValue(false);
-            point.setStatus(BStatus.NULL);
+            point.setStatus(BStatus.NULL); // if this fails in your Niagara build, use BStatus.nullStatus
         }
     } catch (Exception e) { /* ignore */ }
 }
@@ -728,7 +808,7 @@ double clamp(double v, double lo, double hi) {
 
 int minutesToSecondsSafe(BStatusNumeric minsSlot, int defMin) {
     double m = defMin;
-    if (minsSlot.getStatus().isOk()) {
+    if (minsSlot != null && minsSlot.getStatus().isOk()) {
         m = minsSlot.getValue();
     }
     m = Math.max(0.0, Math.min(m, 240.0)); // Clamp 0–240 min
@@ -736,7 +816,10 @@ int minutesToSecondsSafe(BStatusNumeric minsSlot, int defMin) {
 }
 
 double numericOrDefault(BStatusNumeric slot, double defVal) {
-    return slot.getStatus().isOk() ? slot.getValue() : defVal;
+    if (slot != null && slot.getStatus().isOk()) {
+        return slot.getValue();
+    }
+    return defVal;
 }
 
 double round3(double v) {
@@ -754,7 +837,7 @@ double round3(double v) {
 ![SAT Reset Snip](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/ahuLeaveTempBlockSnip.png)
 
 
-This ProgramObject implements **ASHRAE Guideline 36 – Section 5.16.2.2 Trim & Respond**, which governs how the **AHU Supply Air Temperature (SAT)** setpoint resets based on cooling requests from zones served by the AHU.
+This ProgramObject implements **ASHRAE Guideline 36 – Trim & Respond**, which governs how the **AHU Supply Air Temperature (SAT)** setpoint resets based on cooling requests from zones served by the AHU.
 
 The Trim & Respond algorithm continuously adjusts the SAT setpoint upward (“trim”) or downward (“respond”) depending on the number of active cooling requests, keeping supply air temperature as high as possible while still satisfying zone loads.
 
@@ -825,12 +908,40 @@ The **diamond** in the G36 reference figure represents the target SAT (“T-max�
 
 
 ```java
+
 /**
  * AHU Supply Air Temperature (SAT) Trim & Respond Program
- * Version 8 - FIX - Corrected Fan OFF logic to reset setpoint and tMaxState to SP0.
- * This program resets the SAT setpoint based on zone requests and outside air temp,
- * inspired by ASHRAE Guideline 36.
+ * Version 8.1 - Strict Status Semantics + Soft-Reboot on Bad Data (NO algorithm changes).
+ *
+ * Adds (Status/Sanity ONLY):
+ *  - If fanRunCmd is anything but {ok} -> SOFT REBOOT:
+ *      * drive SP0 (and reset tMaxState to SP0)
+ *      * set output status = fault
+ *      * reset internal timers/state (startup delay + cadence)
+ *      * statusTrace explains why
+ *  - If outsideAirTemp is anything but {ok} -> SOFT REBOOT:
+ *      * drive SP0 (and reset tMaxState to SP0)
+ *      * set output status = fault
+ *      * reset internal timers/state (startup delay + cadence)
+ *      * statusTrace explains why
+ *  - If totalRequests is anything but {ok} when core logic is due -> SOFT REBOOT:
+ *      * drive SP0 (and reset tMaxState to SP0)
+ *      * set output status = fault
+ *      * reset internal timers/state (startup delay + cadence)
+ *      * statusTrace explains why
+ *  - Output status is set back to {ok} ONLY after a successful Trim/Respond step
+ *    (i.e., R is valid, tMaxState updated, newSetpoint computed and written).
+ *
+ * Maintained:
+ *  - State machine, cadence timing, startup delay timing
+ *  - Interpolation shape/limits
+ *  - Trim/respond math on tMaxState
+ *  - Fan OFF behavior resetting SP and tMaxState to SP0 (your v8 fix remains)
  */
+
+////////////////////////////////////////////////////////////
+// Class-level state
+////////////////////////////////////////////////////////////
 
 // ===== Class-level state =====
 Clock.Ticket ticket;
@@ -840,9 +951,11 @@ long fanOnStableSinceMs = 0;   // enforces StartUpDelayMinutes true-for window
 boolean lastFanRun = false;    // edge detect for fan ON
 private double tMaxState = 70.0; // Private variable to hold tMax state
 
-// ===== onStart =====
+////////////////////////////////////////////////////////////
+// onStart
+////////////////////////////////////////////////////////////
+
 public void onStart() throws Exception {
-    // Initialize state variables and start the timer.
     getStatusTrace().setValue("sat-trim-and-respond: program started.");
     lastMainLogicRunMs = 0;
     fanOnStableSinceMs = 0;
@@ -857,9 +970,12 @@ public void onStart() throws Exception {
     updateTimer(); // 10s heartbeat
 }
 
-// ===== onExecute (Main logic loop) =====
+////////////////////////////////////////////////////////////
+// onExecute (Main logic loop)
+////////////////////////////////////////////////////////////
+
 public void onExecute() throws Exception {
-    updateTimer(); // Reschedule the next execution
+    updateTimer();
     long now = System.currentTimeMillis();
 
     // ---- Null-wire checker (inputs only) ----
@@ -879,33 +995,47 @@ public void onExecute() throws Exception {
     double respVal   = numericOrDefault(getSPres(), -0.3);                 // SPres
     double respMax   = numericOrDefault(getSPResMax(), -1.0);              // SPres-max
 
-    boolean fanRun = getFanRunCmd().getStatus().isOk() && getFanRunCmd().getValue();
-    double oat = getOutsideAirTemp().getStatus().isOk()
-                 ? getOutsideAirTemp().getValue()
-                 : minOAT;
+    // Compute SP0 using your existing fallback logic (SP0 -> SPmax -> maxSAT)
+    double sp0 = numericOrDefault(getSP0(),
+                   numericOrDefault(getSPmax(), maxSAT));
+    sp0 = clamp(sp0, minSAT, maxSAT);
 
+    // Determine current SP (fallback to maxSAT if output isn't Ok)
     double currentSp = getDischargeAirTempSp().getStatus().isOk()
                        ? getDischargeAirTempSp().getValue()
                        : maxSAT;
 
+    // ------------------------------------------------------------
+    // REQUIRED INPUT #1: fanRunCmd must be {ok}
+    // If not ok -> soft reboot to SP0 and restart state machine.
+    // ------------------------------------------------------------
+    if (!getFanRunCmd().getStatus().isOk()) {
+        softRebootToSP0(now, sp0, minSAT, maxSAT, "fanRunCmd not Ok");
+        return;
+    }
+
+    // ------------------------------------------------------------
+    // REQUIRED INPUT #2: outsideAirTemp must be {ok}
+    // If not ok -> soft reboot to SP0 and restart state machine.
+    // (We do NOT attempt to "fake" OAT if you want strict semantics)
+    // ------------------------------------------------------------
+    if (!getOutsideAirTemp().getStatus().isOk()) {
+        softRebootToSP0(now, sp0, minSAT, maxSAT, "outsideAirTemp not Ok");
+        return;
+    }
+
+    boolean fanRun = getFanRunCmd().getValue();
+    double oat = getOutsideAirTemp().getValue();
+
     // --- State 1: Fan is OFF ---
+    // (Your v8 FIX remains: reset both internal state and output SP to SP0)
+    // Strict semantics: DO NOT clear status to OK here.
     if (!fanRun) {
-        // --- FIX START ---
-        // On fan OFF, reset both the internal state (tMaxState) and the
-        // output setpoint (DischargeAirTempSp) back to the initial setpoint (SP0).
-        double sp0 = numericOrDefault(getSP0(),
-                       numericOrDefault(getSPmax(), maxSAT));
-        
-        this.tMaxState = clamp(sp0, minSAT, maxSAT); // Reset internal state to SP0
-        getDischargeAirTempSp().setValue(this.tMaxState); // Set output directly to SP0
-        // --- FIX END ---
+        this.tMaxState = clamp(sp0, minSAT, maxSAT);
+        getDischargeAirTempSp().setValue(this.tMaxState);
 
-
-        if (lastFanRun) { // Log only on the transition from ON to OFF
-            // --- FIX START ---
-            // Updated status trace to reflect the change
+        if (lastFanRun) {
             getStatusTrace().setValue("Fan OFF -> resetting SP to SP0 = " + round1(this.tMaxState));
-            // --- FIX END ---
             getLastActionTs().setValue(new java.util.Date(now).toString());
         }
 
@@ -915,19 +1045,18 @@ public void onExecute() throws Exception {
     }
 
     // --- State 2: Fan just turned ON (Edge Detection) ---
+    // Begin startup delay window. Reinitialize tMaxState from SP0.
+    // Strict semantics: DO NOT clear status to OK here.
     if (!lastFanRun && fanRun) {
         fanOnStableSinceMs = now;
         lastFanRun = true;
 
-        // On fan start, reinitialize T-max from SP0 (fall back to SPmax if needed)
-        // This logic was already correct and uses the value we just set in State 1.
-        double sp0 = numericOrDefault(getSP0(),
-                       numericOrDefault(getSPmax(), maxSAT));
         this.tMaxState = clamp(sp0, minSAT, maxSAT);
 
         double newSetpoint = interpolate(oat, minOAT, this.tMaxState,
                                          maxOAT, minSAT, minSAT, maxSAT);
         getDischargeAirTempSp().setValue(newSetpoint);
+
         getStatusTrace().setValue("Fan ON -> holding initial SP during startup delay...");
         getLastActionTs().setValue(new java.util.Date(now).toString());
         return;
@@ -936,12 +1065,15 @@ public void onExecute() throws Exception {
     lastFanRun = true;
 
     // --- State 3: Fan is ON, but waiting for startup delay ---
+    // Strict semantics: DO NOT clear status to OK here.
     boolean isStartupDelayMet = (now - fanOnStableSinceMs) / 1000 >= TdSec;
     if (!isStartupDelayMet) {
         long remaining = TdSec - ((now - fanOnStableSinceMs) / 1000);
+
         double newSetpoint = interpolate(oat, minOAT, this.tMaxState,
                                          maxOAT, minSAT, minSAT, maxSAT);
         getDischargeAirTempSp().setValue(newSetpoint);
+
         getStatusTrace().setValue("Waiting Td (" + remaining + "s left)... SP=" + round1(newSetpoint));
         return;
     }
@@ -954,12 +1086,18 @@ public void onExecute() throws Exception {
     }
 
     // --- State 5: Run Core Trim & Respond Logic ---
+    // ------------------------------------------------------------
+    // REQUIRED INPUT #3: totalRequests must be {ok} when core logic is due
+    // If not ok -> soft reboot to SP0 and restart state machine.
+    // ------------------------------------------------------------
     if (!getTotalRequests().getStatus().isOk()) {
-        getStatusTrace().setValue("Missing totalRequests -> no T&R action this cycle.");
+        softRebootToSP0(now, sp0, minSAT, maxSAT, "totalRequests not Ok");
         return;
     }
+
     double R = getTotalRequests().getValue();   // G36 R
 
+    // ===== CORE TRIM/RESPOND (UNCHANGED) =====
     String action;
     if (R <= Ignore) {
         action = "trim";
@@ -970,10 +1108,15 @@ public void onExecute() throws Exception {
         double respondAmount = Math.max(respVal * (R - Ignore), respMax);
         this.tMaxState = clamp(this.tMaxState + respondAmount, minSAT, maxSAT);
     }
+    // =======================================
 
     double newSetpoint = interpolate(oat, minOAT, this.tMaxState,
                                      maxOAT, minSAT, minSAT, maxSAT);
     getDischargeAirTempSp().setValue(newSetpoint);
+
+    // Successful T&R step: ONLY NOW clear status to OK.
+    getDischargeAirTempSp().setStatus(BStatus.ok);
+
     lastMainLogicRunMs = now;
 
     String detail = "R=" + round1(R) + " -> " + action.toUpperCase()
@@ -983,24 +1126,56 @@ public void onExecute() throws Exception {
     getLastActionTs().setValue(new java.util.Date(now).toString());
 }
 
-// ===== onStop =====
+////////////////////////////////////////////////////////////
+// onStop
+////////////////////////////////////////////////////////////
+
 public void onStop() throws Exception {
     if (ticket != null) {
         ticket.cancel();
     }
 }
 
-// ===== Helper Methods (unchanged) =====
+////////////////////////////////////////////////////////////
+// Helper Methods (algorithm unchanged)
+////////////////////////////////////////////////////////////
+
 void updateTimer() {
     if (ticket != null) ticket.cancel();
     ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(10), BProgram.execute, null);
+}
+
+/**
+ * Soft reboot behavior:
+ *  - Drive SP0 directly (and reset tMaxState to SP0)
+ *  - Mark output FAULT
+ *  - Reset all internal timers/state so startup delay and cadence restart cleanly
+ *  - Message goes to statusTrace (not BStatus)
+ */
+void softRebootToSP0(long now, double sp0, double minSAT, double maxSAT, String reason) {
+    double safeSp0 = clamp(sp0, minSAT, maxSAT);
+
+    // Reset internal state to SP0
+    this.tMaxState = safeSp0;
+
+    // Drive safe output and flag fault
+    getDischargeAirTempSp().setValue(safeSp0);
+    getDischargeAirTempSp().setStatus(BStatus.fault);
+
+    // Reset internal timing/state (true "reboot")
+    lastMainLogicRunMs = 0;
+    fanOnStableSinceMs = 0;
+    lastFanRun = false;
+
+    getStatusTrace().setValue("RESTART: " + reason + " -> driving SP0=" + round1(safeSp0) + " and re-running startup delay.");
+    getLastActionTs().setValue(new java.util.Date(now).toString());
 }
 
 void ensureNumericWiredOrNull(String slotName, BStatusNumeric point) {
     try {
         if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
             point.setValue(0);
-            point.setStatus(BStatus.NULL);
+            point.setStatus(BStatus.NULL); // if this fails in your Niagara build, use BStatus.nullStatus
         }
     } catch (Exception e) { /* ignore */ }
 }
@@ -1009,7 +1184,7 @@ void ensureBooleanWiredOrNull(String slotName, BStatusBoolean point) {
     try {
         if (getComponent().getLinks(getComponent().getSlot(slotName)).length == 0) {
             point.setValue(false);
-            point.setStatus(BStatus.NULL);
+            point.setStatus(BStatus.NULL); // if this fails in your Niagara build, use BStatus.nullStatus
         }
     } catch (Exception e) { /* ignore */ }
 }
@@ -1051,13 +1226,14 @@ double interpolate(double currentX, double x1, double y1,
 
     return clamp(result, finalMin, finalMax);
 }
+
 ```
 
 </details>
 
 
 <details>
-<summary>🍃 AHU/FCU → Central Plant Request Counter (Heating + Cooling)</summary>
+<summary>🍃 NOT TESTED YET - AHU/FCU → Central Plant Request Counter (Heating + Cooling)</summary>
 
 For **each AHU/FCU**, build a small “Plant Reset Request Generator” `ProgramObject` that can:
 
