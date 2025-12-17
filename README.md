@@ -57,9 +57,8 @@ To keep this README concise, the detailed tutorials and algorithm implementation
 
 - [**AGENTS.md**](AGENTS.md) — most importantly provides the AI model context and internal notes that guide how ChatGPT or other LLMs interpret this repository, generate Niagara logic, and assist in creating new `ProgramObject`s.
 - [**Beginner Tutorials**](README_BEGINNER_TUTORIALS.md) — step‑by‑step examples and general algorithm blocks.
-- [**GL36 Air Side Trim & Respond**](README_TRIM_RESPOND.md) — variable definitions tutorial, VAV box requests, and trim‑respond resets.
-- **GL36 Air Side FDD** — coming soon! TODO.
-- [**GL36 Central Plant**](README_GL36.md) — chiller plant enable logic, AHU fault detection, and other GL36‑compliant strategies.
+- [**GL36 Trim & Respond**](README_TRIM_RESPOND.md) — prebuilt wiresheets for AHU Trim & Respond (T&R), chiller plant, and boiler plant trim-and-respond logic.
+- [**GL36 Fault Detection**](README_GL36_FDD.md) — fault detection as defined by ASHRAE Guideline 36-2021 for AHUs and central plant systems.
 - [**Non‑GL36 & Advanced Logic**](README_NON_GL36.md) — simplified resets and per‑chiller rotator for systems outside Guideline 36.
 - [**APIs & Web Requests**](README_APIS.md) — examples for calling weather, holiday and iCalendar APIs or integrating external data science machine learning models running in docker containers.
 - [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and polynomial regression.
