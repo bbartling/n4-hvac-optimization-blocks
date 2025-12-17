@@ -640,22 +640,33 @@ This captures how systems heat or cool quickly at first but slow down as they ap
 /*
  * =================================================================
  * Optimal Start/Stop Self-Tuning Block
- * REWRITE (v4) - Quadratic Model 1 - WITH ERROR LOGGING SLOTS
+ * REWRITE (v5) - Quadratic Model 1 - WITH EMA COEFFICIENT SMOOTHING
  *
- * This version implements the quadratic model from the PNNL paper:
- * t_opt = alpha_a * (deltaT^2) + alpha_b
+ * Implements PNNL-style quadratic Model 1:
+ *   t_opt = alpha_1,a * (ΔT^2) + alpha_1,b
  *
- * It learns the 'alpha_a' and 'alpha_b' parameters and stores
- * them in private member variables (not slots).
+ * Learning / Self-Tuning Behavior:
+ * - After each completed warmup/cooldown run, we record (t, ΔT).
+ * - We compute "today's" coefficients (a_new, b_new) via OLS regression
+ *   on the retained history for HEAT and COOL separately.
+ * - Instead of overwriting coefficients (which can jump around day-to-day),
+ *   we apply an Exponential Moving Average (EMA) update:
+ *     a_est = a_est + EMA_ALPHA * (a_new - a_est)
+ *     b_est = b_est + EMA_ALPHA * (b_new - b_est)
+ *   This stabilizes tuning while still adapting over time.
  *
- * RENAMED SLOTS for clarity:
+ * Storage:
+ * - Learned coefficients are stored in private member variables
+ *   (not slots): learned_alpha_a_heat/cool, learned_alpha_b_heat/cool
+ *
+ * Slot Naming (clarity improvements):
  * - minutesToSetpoint -> minutesToSetpointPredicted
  * - warmupTimeMinutes -> currentRunElapsedMinutes
  *
- * ADDED SLOTS for performance tracking:
- * - lastRunPredictedMinutes
- * - lastRunActualMinutes
- * - lastRunErrorMinutes
+ * Performance / Error Tracking Slots:
+ * - lastRunPredictedMinutes  (snapshot at start)
+ * - lastRunActualMinutes     (final elapsed minutes at stop)
+ * - lastRunErrorMinutes      (predicted - actual)
  * =================================================================
  */
 
@@ -703,6 +714,11 @@ private double learned_alpha_b_cool = DEFAULT_ALPHA_B;
 // Two separate lists to store performance history for each mode.
 private java.util.List<PerformanceRecord> heatHistory = new java.util.ArrayList<>();
 private java.util.List<PerformanceRecord> coolHistory = new java.util.ArrayList<>();
+
+// EMA smoothing factor for Day 13 behavior.
+// 0.0 = never adapt, 1.0 = jump straight to today's regression
+private static final double EMA_ALPHA = 0.2;
+
 
 /**
  * Called once when the program starts. Initializes defaults.
@@ -987,10 +1003,24 @@ private void updateModel() {
     double[] coolAlphas = computeRegressionForMode("COOL");
     
     // Store in private member variables
-    this.learned_alpha_a_heat = heatAlphas[0]; // alpha_a
-    this.learned_alpha_b_heat = heatAlphas[1]; // alpha_b
-    this.learned_alpha_a_cool = coolAlphas[0]; // alpha_a
-    this.learned_alpha_b_cool = coolAlphas[1]; // alpha_b
+    double a_new_heat = heatAlphas[0];
+    double b_new_heat = heatAlphas[1];
+    double a_new_cool = coolAlphas[0];
+    double b_new_cool = coolAlphas[1];
+    
+    // Blend (EMA) instead of overwrite
+    this.learned_alpha_a_heat = emaUpdate(this.learned_alpha_a_heat, a_new_heat, EMA_ALPHA);
+    this.learned_alpha_b_heat = emaUpdate(this.learned_alpha_b_heat, b_new_heat, EMA_ALPHA);
+    
+    this.learned_alpha_a_cool = emaUpdate(this.learned_alpha_a_cool, a_new_cool, EMA_ALPHA);
+    this.learned_alpha_b_cool = emaUpdate(this.learned_alpha_b_cool, b_new_cool, EMA_ALPHA);
+    
+    // Optional safety clamps (keep your current philosophy)
+    if (this.learned_alpha_a_heat < 0) this.learned_alpha_a_heat = DEFAULT_ALPHA_A;
+    if (this.learned_alpha_b_heat < 0) this.learned_alpha_b_heat = 0.0;
+    
+    if (this.learned_alpha_a_cool < 0) this.learned_alpha_a_cool = DEFAULT_ALPHA_A;
+    if (this.learned_alpha_b_cool < 0) this.learned_alpha_b_cool = 0.0;
 
     // --- 2. Update EXISTING Reference Rate Slots (Visible) ---
     double avgHeatRate = computeAverageRate(heatHistory);
@@ -1209,6 +1239,10 @@ private void updateHistoryLog() {
 
 private void updateCurrentHistoryRecordCount() {
     setCurrentHistoryRecordCount(new BStatusNumeric(heatHistory.size() + coolHistory.size()));
+}
+
+private double emaUpdate(double prev, double observed, double alpha) {
+    return prev + alpha * (observed - prev);
 }
 
 private void updateTimer() {
