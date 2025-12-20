@@ -530,7 +530,14 @@ $$
 * If today is **milder** than the baseline day (closer to `T_ref_heat`), the predicted runtime decreases.
 * Cooling works the same way, but uses a high-temperature design reference `T_ref_cool`.
 
-If OAT becomes unavailable or unreliable, the block automatically falls back to the **Linear Degree-Per-Minute** model (ΔT ÷ learned rate), so it always remains usable even with a bad sensor.
+If OAT becomes unavailable or unreliable, the block automatically falls back to the **Linear Degree-Per-Minute** model (ΔT ÷ learned rate), so it always remains usable even with a bad sensor. Ultimately the model becomes:
+
+$$
+t_{\text{today}} =
+\frac{\Delta T}{R_{\text{mode}}}
+\frac{|T_{\text{ref}}-OAT_{\text{base}}|}{|T_{\text{ref}}-OAT_{\text{today}}|}
+$$
+
 
 ---
 
