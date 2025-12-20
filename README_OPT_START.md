@@ -522,14 +522,8 @@ The **Model 2** block builds on the same self-tuning linear behavior but adds an
 
 
 $$
-t_{\text{today}}
-=
-t_{\text{base}}
-\cdot
-\frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}
-     {\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
+t_{\text{today}} = t_{\text{base}} \cdot \frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}{\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
 $$
-
 
 
 * If today is **colder** than the baseline heating day (further from `T_ref_heat`), the predicted runtime increases.
