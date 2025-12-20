@@ -527,14 +527,13 @@ $$
 t_{\text{today}}
 =
 t_{\text{base}}
-\cdot
+
 \frac{
 |T_{\text{ref}}-OAT_{\text{base}}|
 }{
 |T_{\text{ref}}-OAT_{\text{today}}|
 }
 $$
-
 
 
 * If today is **colder** than the baseline heating day (further from `T_ref_heat`), the predicted runtime increases.
