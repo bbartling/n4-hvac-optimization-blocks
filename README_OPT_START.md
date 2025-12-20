@@ -91,8 +91,6 @@ Both are updated only when a run is “good enough” to be considered learning-
 
 > Just like Model 2, `currentModelPredictMinutes` is forced to **0.0** when the zone is already within tolerance, so the block doesn’t start equipment unnecessarily.
 
----
-
 
 <details>
 <summary>💻 Java Code Quadratic Model</summary>
@@ -527,13 +525,11 @@ $$
 t_{\text{today}}
 =
 t_{\text{base}}
-
-\frac{
-|T_{\text{ref}}-OAT_{\text{base}}|
-}{
-|T_{\text{ref}}-OAT_{\text{today}}|
-}
+\cdot
+\frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}
+     {\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
 $$
+
 
 
 * If today is **colder** than the baseline heating day (further from `T_ref_heat`), the predicted runtime increases.
