@@ -29,23 +29,20 @@ Check out the **new December 2025** [YouTube playlist](https://www.youtube.com/p
 
 ### Quadratic Optimal Start Self-Tuning Block — PNNL Model 1
 
-The **Model 1 (Quadratic)** block assumes that recovery time grows **non-linearly** with how far the zone is from setpoint. Instead of a straight line, it fits a curve of the form:
+The **Model 1 (Quadratic)** block assumes that recovery time grows **non-linearly** with how far the zone is from setpoint. Instead of a straight line for long in minutes to takes for the zone to reach setpoint if data was plotted, it fits a curve of the form:
 
-[
-t_\text{run} = a \cdot (\Delta T)^2 + b
-]
 
-where:
+$$
+t(\Delta T)=a(\Delta T)^2+b
+$$
 
-* (\Delta T = |T_\text{setpoint} - T_\text{zone,start}|),
-* (a) and (b) are learned from actual warm-up / cool-down runs.
 
 This shape is especially useful for **interior zones** or **heavy exterior zones** where a small temperature error recovers quickly, but large temperature gaps take disproportionately longer than a simple linear model would suggest.
 
 Model 1 continuously updates its curve parameters by keeping a rolling history of completed runs (duration vs. ΔT), performing a quadratic regression, and then smoothing the result with an **Exponential Moving Average (EMA)** so the block reacts to recent behavior without throwing away its long-term memory.
 
-* For **heating**, it learns a pair ((a_\text{heat}, b_\text{heat})).
-* For **cooling**, it learns a pair ((a_\text{cool}, b_\text{cool})).
+* For **heating**, it learns or tunes a pair of `alpha` parameters `a_heat` and `a_heat`.
+* For **cooling**, it learns or tunes a pair of `alpha` parameters `a_cool` and `a_cool`.
 
 Both are updated only when a run is “good enough” to be considered learning-quality.
 
@@ -521,14 +518,28 @@ private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
 ---
 
 
-
 ### Linear Degree Per Minute Optimal Start Self-Tuning Block — PNNL Model 2
 
-The **Model 2** block builds on the same self-tuning linear behavior but adds an **outdoor-air temperature (OAT) scaling** step using the PNNL “Model 2” ratio. Instead of assuming that every morning behaves the same, it remembers how long a previous successful warm-up or cool-down took at a specific OAT (the *baseline*), then scales that runtime up or down depending on today’s OAT relative to a reference temperature (T_\text{ref}).
+The **Model 2** block builds on the same self-tuning linear behavior but adds an **outdoor-air temperature (OAT) scaling** step using the PNNL “Model 2” ratio. Instead of assuming that every morning behaves the same, it remembers how long a previous successful warm-up or cool-down took at a specific OAT (the *baseline*), then scales that runtime up or down depending on today’s OAT relative to a reference temperature `T_ref` for heating or cooling.
 
-* If today is **colder** than the baseline heating day (further from (T_\text{ref,heat})), the predicted runtime increases.
-* If today is **milder** than the baseline day (closer to (T_\text{ref,heat})), the predicted runtime decreases.
-* Cooling works the same way, but uses a high-temperature design reference (T_\text{ref,cool}).
+
+$$
+t_{\text{today}}
+=
+t_{\text{base}}
+\cdot
+\frac{
+|T_{\text{ref}}-OAT_{\text{base}}|
+}{
+|T_{\text{ref}}-OAT_{\text{today}}|
+}
+$$
+
+
+
+* If today is **colder** than the baseline heating day (further from `T_ref_heat`), the predicted runtime increases.
+* If today is **milder** than the baseline day (closer to `T_ref_heat`), the predicted runtime decreases.
+* Cooling works the same way, but uses a high-temperature design reference `T_ref_cool`.
 
 If OAT becomes unavailable or unreliable, the block automatically falls back to the **Linear Degree-Per-Minute** model (ΔT ÷ learned rate), so it always remains usable even with a bad sensor.
 

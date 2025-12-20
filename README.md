@@ -61,7 +61,7 @@ To keep this README concise, the detailed tutorials and algorithm implementation
 - [**GL36 Fault Detection**](README_GL36_FDD.md) — fault detection as defined by ASHRAE Guideline 36-2021 for AHUs and central plant systems.
 - [**Non‑GL36 AHU Resets**](README_NON_GL36.md) — simplified air-side setpoint resets, more simple than Guideline 36.
 - [**APIs & Web Requests**](README_APIS.md) — examples for calling weather, holiday and iCalendar APIs or integrating external data science machine learning models running in docker containers.
-- [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and polynomial regression.
+- [**Optimal Start Algorithms**](README_OPT_START.md) — adaptive-tuning optimal start algorithms based on PNNL research, incorporating both the linear degree-per-minute model and quadratic regression.
 - [**Demand‑Side Management**](README_DEMAND_SIDE_MANAGEMENT.md) — OpenADR client and PNNL‑inspired intelligent load shedding.
 - [**Astronomical Clock**](README_ASTRONOMICAL_CLOCK.md) — Uses Station time and site coordinates to calculate the sun's Azimuth (compass direction) and Elevation (height in the sky).
 - [**Niagara Schedules**](README_SCHEDULING.md) — for Niagara Scheduleing including ***a NEW icalender integeration*** in a `ProgramObject`!
