@@ -32,8 +32,9 @@ Check out the **new December 2025** [YouTube playlist](https://www.youtube.com/p
 The **Model 1 (Quadratic)** block assumes that recovery time grows **non-linearly** with how far the zone is from setpoint. Instead of a straight line for long in minutes to takes for the zone to reach setpoint if data was plotted, it fits a curve of the form:
 
 
+
 $$
-t_minutes = a \cdot (\Delta T)^2 + b
+t_{\text{minutes}} = a \cdot (\Delta T)^2 + b
 $$
 
 
@@ -98,6 +99,7 @@ Both are updated only when a run is “good enough” to be considered learning-
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
 ```java
+
 
 // PNNL Quadratic Model 1
 // ==========================================================
@@ -177,43 +179,58 @@ public void onStart() throws Exception {
 
 public void onExecute() throws Exception {
     try {
+        // 1) Heartbeat + Zone tolerance
         updateTimer();
         updateZoneAtTempTolerance();
 
-        // Handle History Clear
-        if (getClearHistoryNow().getValue()) {
+        // 2) Handle Factory Reset (new)
+        if (getResetBackToDefault().getStatus().isOk() &&
+            getResetBackToDefault().getValue()) {
+
+            resetQuadraticDefaults();
+            setResetBackToDefault(new BStatusBoolean(false));
+            debug("User requested factory reset. Quadratic model returned to defaults.");
+        }
+
+        // 3) Handle History Clear (legacy, but still useful)
+        if (getClearHistoryNow().getStatus().isOk() &&
+            getClearHistoryNow().getValue()) {
+
             heatHistory.clear();
             coolHistory.clear();
             setClearHistoryNow(new BStatusBoolean(false));
-            setFormattedStatusLog("History cleared.");
-            debug("User requested history clear. All records purged.");
+            setFormattedStatusLog("History cleared (records only; model coefficients preserved).");
+            debug("User requested history clear. All performance records purged.");
         }
 
-        // 3. ALWAYS Update Prediction 
+        // 4) ALWAYS Update Prediction (continuous Model 1 estimate)
         updateCurrentModelPrediction();
 
-        // --- MAIN STATE MACHINE ---
+        // 5) MAIN STATE MACHINE
         if (isOptimalStartRunning) {
             // STATE 1: ACTIVE LEARNING RUN
             monitorActiveRun();
             forceCommandTrue();
-            
+
         } else if (isHoldingForSchedule) {
-            // STATE 2: HOLDING PATTERN
+            // STATE 2: HOLDING PATTERN (Finished early, waiting for schedule)
             monitorHold();
             forceCommandTrue();
-            
+
         } else {
             // STATE 3: IDLE / MONITORING
             updateEquipmentStartCommand();
         }
+
     } catch (Exception e) {
         // ROBUST CRASH LOGGING
-        if (getPrintToConsoleLog().getValue()) {
+        if (getPrintToConsoleLog().getStatus().isOk() &&
+            getPrintToConsoleLog().getValue()) {
+
             System.out.println("[OptStart-Quad] CRASH in onExecute: " + e.getMessage());
             e.printStackTrace();
         }
-        getStatusLog().setValue("ERROR: Block crashed. Check Application Director.");
+        getStatusLog().setValue("ERROR: Block crashed in onExecute. Check Application Director.");
     }
 }
 
@@ -521,6 +538,23 @@ private void updateVisualRates() {
     }
 }
 
+private void resetQuadraticDefaults() {
+    heatHistory.clear();
+    coolHistory.clear();
+
+    learned_alpha_a_heat = 0.1;
+    learned_alpha_b_heat = 5.0;
+    learned_alpha_a_cool = 0.1;
+    learned_alpha_b_cool = 5.0;
+
+    setDegreesPerMinuteHeat(new BStatusNumeric(0.1));
+    setDegreesPerMinuteCool(new BStatusNumeric(0.1));
+
+    setFormattedStatusLog("Quadratic Model reset to factory defaults.");
+    debug("Factory Reset Performed for Quadratic Model 1.");
+}
+
+
 private void updateTimer() {
     if (ticket != null) ticket.cancel();
     ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(15), BProgram.execute, null);
@@ -551,14 +585,17 @@ private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
 
 The **Model 2** block builds on the same self-tuning linear behavior but adds an **outdoor-air temperature (OAT) scaling** step using the PNNL “Model 2” ratio. Instead of assuming that every morning behaves the same, it remembers how long a previous successful warm-up or cool-down took at a specific OAT (the *baseline*), then scales that runtime up or down depending on today’s OAT relative to a reference temperature `T_ref` for heating or cooling.
 
+Below in the equation `t_linear` is computed in minutes as the time in a linear degree per minute fashion which is tuned every algorithm run.
 
 $$
-t_{\text{today}} = t_{\text{base}}
-  \frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}
-       {\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
+t_linear = ΔT / learnedDegreesPerMinute
 $$
 
+Then per the PNNL paper we factor in outside air temperature as a ratio that is also tuned every tune. These are also tuned parameters after each run an are represented on the block for reference as `coolOatMinutesAdder` or `heatOatMinutesAdder` depending on the algorithm is in a heat or cooling mode.
 
+$$
+t_today = t_linear * ( |Tref − OATbase| / |Tref − OATtoday| )
+$$
 
 ---
 
