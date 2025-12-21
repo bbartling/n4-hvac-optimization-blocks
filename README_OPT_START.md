@@ -588,16 +588,23 @@ The **Model 2** block builds on the same self-tuning linear behavior but adds an
 Below, in the equation, `minutes_linear` is calculated using a linear degrees-per-minute approach that is continuously self-tuned on each learning run. The algorithm maintains separate performance records for **heating** and **cooling**, allowing it to refine both linear recovery rates over time.
 
 $$
-t_{\text{minutes_linear}} = ΔT / learnedDegreesPerMinute
+t_{\text{minutes,linear}} = \Delta T \,/\, \text{learnedDPM}
 $$
+
 
 
 Then, per the PNNL Model 2 definition, the outside air temperature is incorporated as a ratio that is also updated on each successful learning run to compute the final `minutes_total`. The additional time in minutes contributed by this ratio is likewise continuously tuned and exposed on the block for visibility as either `coolOatMinutesAdder` or `heatOatMinutesAdder`, depending on whether the algorithm is operating in cooling or heating mode.
 
 
 $$
-t_{\text{minutes_total}} = t_{\text{minutes_linear}} * ( |Tref − OATbase| / |Tref − OATtoday| )
+t_{\text{minutes,total}}
+=
+t_{\text{minutes,linear}}
+\cdot
+\frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}
+     {\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
 $$
+
 
 ---
 
