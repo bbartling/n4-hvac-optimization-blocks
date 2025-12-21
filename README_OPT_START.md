@@ -585,16 +585,18 @@ private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
 
 The **Model 2** block builds on the same self-tuning linear behavior but adds an **outdoor-air temperature (OAT) scaling** step using the PNNL “Model 2” ratio. Instead of assuming that every morning behaves the same, it remembers how long a previous successful warm-up or cool-down took at a specific OAT (the *baseline*), then scales that runtime up or down depending on today’s OAT relative to a reference temperature `T_ref` for heating or cooling.
 
-Below in the equation `t_linear` is computed in minutes as the time in a linear degree per minute fashion which is tuned every algorithm run.
+> Below, in the equation, `minutes_linear` is calculated using a linear degrees-per-minute approach that is continuously self-tuned on each learning run. The algorithm maintains separate performance records for **heating** and **cooling**, allowing it to refine both linear recovery rates over time.
 
 $$
-t_linear = ΔT / learnedDegreesPerMinute
+t_{\text{minutes_linear}} = ΔT / learnedDegreesPerMinute
 $$
 
-Then per the PNNL paper we factor in outside air temperature as a ratio that is also tuned every tune. These are also tuned parameters after each run an are represented on the block for reference as `coolOatMinutesAdder` or `heatOatMinutesAdder` depending on the algorithm is in a heat or cooling mode.
+
+> Then, per the PNNL Model 2 definition, the outside air temperature is incorporated as a ratio that is also updated on each successful learning run to compute the final `minutes_total`. The additional time in minutes contributed by this ratio is likewise continuously tuned and exposed on the block for visibility as either `coolOatMinutesAdder` or `heatOatMinutesAdder`, depending on whether the algorithm is operating in cooling or heating mode.
+
 
 $$
-t_today = t_linear * ( |Tref − OATbase| / |Tref − OATtoday| )
+t_{\text{minutes_total}} = t_{\text{minutes_linear}} * ( |Tref − OATbase| / |Tref − OATtoday| )
 $$
 
 ---
