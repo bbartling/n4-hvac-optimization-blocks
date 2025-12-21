@@ -596,7 +596,7 @@ Then, per the PNNL Model 2 definition, the outside air temperature is incorporat
 
 
 $$
-t_{\text{total}} = t_{\text{linear}}\frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}{\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
+t_{\text{total}} = t_{\text{linear}}+\frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}{\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
 $$
 
 
