@@ -33,7 +33,7 @@ The **Model 1 (Quadratic)** block assumes that recovery time grows **non-linearl
 
 
 $$
-t(\Delta T)=a(\Delta T)^2+b
+t_minutes = a \cdot (\Delta T)^2 + b
 $$
 
 
@@ -41,8 +41,8 @@ This shape is especially useful for **interior zones** or **heavy exterior zones
 
 Model 1 continuously updates its curve parameters by keeping a rolling history of completed runs (duration vs. ΔT), performing a quadratic regression, and then smoothing the result with an **Exponential Moving Average (EMA)** so the block reacts to recent behavior without throwing away its long-term memory.
 
-* For **heating**, it learns or tunes a pair of `alpha` parameters `a_heat` and `a_heat`.
-* For **cooling**, it learns or tunes a pair of `alpha` parameters `a_cool` and `a_cool`.
+* For **heating** if the `zoneTemp` prior to occupancy is less than `targetZoneTempSetpoint` - `tempTolerance`, the algorithm learns or tunes a pair of `alpha` math parameters `a_heat` and `a_heat` after each run.
+* For **cooling** if the `zoneTemp` prior to occupancy is greater than `targetZoneTempSetpoint` + `tempTolerance`, the algorithm learns or tunes a pair of `alpha` math parameters  `a_cool` and `a_cool` after each run.
 
 Both are updated only when a run is “good enough” to be considered learning-quality.
 
@@ -98,6 +98,8 @@ Both are updated only when a run is “good enough” to be considered learning-
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
 ```java
+
+// PNNL Quadratic Model 1
 // ==========================================================
 // MEMBER VARIABLES (State)
 // ==========================================================
@@ -112,6 +114,10 @@ static class PerformanceRecord {
         this.durationMinutes = t;
         this.deltaT = dT;
         this.mode = m;
+    }
+    
+    public String toString() {
+        return String.format("[%s] dT=%.1f, mins=%.1f", mode, deltaT, durationMinutes);
     }
 }
 
@@ -145,7 +151,7 @@ public void onStart() throws Exception {
     
     // 2. Init Outputs
     setIsRunning(new BStatusBoolean(false));
-    setCurrentModelPredictMinutes(new BStatusNumeric(getMaxMinutesAllowed().getValue())); // <--- RENAMED
+    setCurrentModelPredictMinutes(new BStatusNumeric(getMaxMinutesAllowed().getValue())); 
     
     // Init Reference Rate Slots (Visual only for Quad model)
     setDegreesPerMinuteHeat(new BStatusNumeric(0.1));
@@ -164,50 +170,67 @@ public void onStart() throws Exception {
     // 4. Init Logic
     setZoneAtTempTolerance(new BStatusBoolean(false));
     getStatusLog().setValue("[onStart] Quadratic Model 1 initialized.");
+    debug("Block Started. Default Params Loaded: A_heat=" + learned_alpha_a_heat + ", B_heat=" + learned_alpha_b_heat);
     
     updateTimer();
 }
 
 public void onExecute() throws Exception {
-    updateTimer();
-    updateZoneAtTempTolerance();
+    try {
+        updateTimer();
+        updateZoneAtTempTolerance();
 
-    // Handle History Clear
-    if (getClearHistoryNow().getValue()) {
-        heatHistory.clear();
-        coolHistory.clear();
-        setClearHistoryNow(new BStatusBoolean(false));
-        setFormattedStatusLog("History cleared.");
-    }
+        // Handle History Clear
+        if (getClearHistoryNow().getValue()) {
+            heatHistory.clear();
+            coolHistory.clear();
+            setClearHistoryNow(new BStatusBoolean(false));
+            setFormattedStatusLog("History cleared.");
+            debug("User requested history clear. All records purged.");
+        }
 
-    // 3. ALWAYS Update Prediction (Live view of "How long would it take if I started NOW?")
-    // This runs continuously every cycle.
-    updateCurrentModelPrediction();
+        // 3. ALWAYS Update Prediction 
+        updateCurrentModelPrediction();
 
-    // --- MAIN STATE MACHINE ---
-    if (isOptimalStartRunning) {
-        // STATE 1: ACTIVE LEARNING RUN
-        monitorActiveRun();
-        forceCommandTrue();
-        
-    } else if (isHoldingForSchedule) {
-        // STATE 2: HOLDING PATTERN (Finished Early)
-        monitorHold();
-        forceCommandTrue();
-        
-    } else {
-        // STATE 3: IDLE / MONITORING
-        updateEquipmentStartCommand();
+        // --- MAIN STATE MACHINE ---
+        if (isOptimalStartRunning) {
+            // STATE 1: ACTIVE LEARNING RUN
+            monitorActiveRun();
+            forceCommandTrue();
+            
+        } else if (isHoldingForSchedule) {
+            // STATE 2: HOLDING PATTERN
+            monitorHold();
+            forceCommandTrue();
+            
+        } else {
+            // STATE 3: IDLE / MONITORING
+            updateEquipmentStartCommand();
+        }
+    } catch (Exception e) {
+        // ROBUST CRASH LOGGING
+        if (getPrintToConsoleLog().getValue()) {
+            System.out.println("[OptStart-Quad] CRASH in onExecute: " + e.getMessage());
+            e.printStackTrace();
+        }
+        getStatusLog().setValue("ERROR: Block crashed. Check Application Director.");
     }
 }
 
 public void onStop() throws Exception {
     if (ticket != null) ticket.cancel();
+    debug("Block Stopped.");
 }
 
 // ==========================================================
 // LOGIC METHODS
 // ==========================================================
+
+private void debug(String msg) {
+    if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
+        System.out.println("[OptStart-Quad] " + msg);
+    }
+}
 
 private void forceCommandTrue() {
     getEquipmentStartCommand().setValue(true);
@@ -215,18 +238,13 @@ private void forceCommandTrue() {
     getCountdownToNullStatus().setValue(false);
 }
 
-/**
- * Calculates Quadratic prediction based on current Delta-T.
- * Matches the "continuous update" behavior of Model 2.
- */
 private void updateCurrentModelPrediction() {
-    // If at setpoint, prediction is 0 (System is satisfied)
+    // If at setpoint, prediction is 0 
     if (getZoneAtTempTolerance().getValue()) {
         setCurrentModelPredictMinutes(new BStatusNumeric(0.0));
         return;
     }
     
-    // Safety check for inputs
     if (!getZoneTemp().getStatus().isOk() || !getTargetZoneTempSetpoint().getStatus().isOk()) {
         return;
     }
@@ -244,7 +262,6 @@ private void updateCurrentModelPrediction() {
         estimated = (learned_alpha_a_cool * (delta * delta)) + learned_alpha_b_cool;
     }
 
-    // Clamp
     if (estimated < 0) estimated = 0;
     if (estimated > maxMins) estimated = maxMins;
     
@@ -263,6 +280,7 @@ private void updateEquipmentStartCommand() {
             getEquipmentStartCommand().setValue(false);
             getEquipmentStartCommand().setStatus(BStatus.NULL);
             getCountdownToNullStatus().setValue(false);
+            debug("Off-delay finished. Command released to NULL.");
         } else {
             getCountdownToNullStatus().setValue(true);
         }
@@ -284,11 +302,11 @@ private void updateEquipmentStartCommand() {
         double minsUntilEvent = (nextTime - now) / 60000.0;
         if (minsUntilEvent < 0) minsUntilEvent = 0;
 
-        // Use the continuous prediction we calculated above
         double neededMins = getCurrentModelPredictMinutes().getValue();
 
         // TRIGGER START
         if (neededMins >= minsUntilEvent) {
+            debug("Start Triggered! Need " + round1(neededMins) + " min, have " + round1(minsUntilEvent) + " min.");
             startOptimalStartSequence(nextTime); 
             forceCommandTrue();
         }
@@ -297,20 +315,20 @@ private void updateEquipmentStartCommand() {
             isOffDelayActive = true;
             offDelayStartTime = System.currentTimeMillis();
             getCountdownToNullStatus().setValue(true);
+            debug("Schedule unoccupied. Entering Off-Delay.");
         }
     }
 }
 
 private void startOptimalStartSequence(long nextEventTime) {
-    // If we are already satisfied, zero out and abort
     if (getZoneAtTempTolerance().getValue()) {
         setCurrentModelPredictMinutes(new BStatusNumeric(0.0));
         return;
     }
     
     // --- SNAPSHOT PREDICTION ---
-    // Capture the current prediction right at the start moment
-    setLastRunPredictedMinutes(new BStatusNumeric(getCurrentModelPredictMinutes().getValue()));
+    double pred = getCurrentModelPredictMinutes().getValue();
+    setLastRunPredictedMinutes(new BStatusNumeric(pred));
     
     // Init Run Stats
     setLastRunActualMinutes(new BStatusNumeric(0.0));
@@ -330,7 +348,8 @@ private void startOptimalStartSequence(long nextEventTime) {
         setOutdoorTempAtStart(new BStatusNumeric(getOutdoorAirTemp().getValue()));
     }
 
-    setFormattedStatusLog("[Start] Quad Model running. Need " + round1(getLastRunPredictedMinutes().getValue()) + " min.");
+    setFormattedStatusLog("[Start] Quad Model running. Need " + round1(pred) + " min.");
+    debug("Run Started. TargetEventTime=" + new java.util.Date(targetEventTime) + ", Predicted=" + round1(pred));
 }
 
 private void monitorActiveRun() {
@@ -361,17 +380,18 @@ private void monitorActiveRun() {
 }
 
 private void monitorHold() {
-    // We are holding Command=True until the schedule catches up.
     long now = System.currentTimeMillis();
     
     if (now >= targetEventTime) {
         isHoldingForSchedule = false;
         setFormattedStatusLog("Schedule Event Time reached. Releasing to BAS.");
+        debug("Hold Released: Event time arrived.");
     }
     
     if (getScheduleNextValue().getStatus().isOk() && !getScheduleNextValue().getValue()) {
         isHoldingForSchedule = false;
         setFormattedStatusLog("Schedule Next Value changed to Unoccupied. Aborting hold.");
+        debug("Hold Aborted: Schedule flipped to unoccupied.");
     }
 }
 
@@ -387,6 +407,9 @@ private void stopAndRecord(double actualMinutes, boolean success) {
     
     double pct = (actualMinutes > 0) ? (error / actualMinutes) * 100.0 : 0.0;
     setLastRunErrorPercent(new BStatusNumeric(pct));
+    
+    debug(String.format("Run Finished. Actual=%.1f, Pred=%.1f, Err=%.1f (%.1f%%). Success=%b", 
+          actualMinutes, predicted, error, pct, success));
     
     // 2. Learning
     double zoneStart = getZoneTempAtStart().getValue();
@@ -406,6 +429,8 @@ private void stopAndRecord(double actualMinutes, boolean success) {
         if (mode.equals("HEAT")) heatHistory.add(rec);
         else coolHistory.add(rec);
         
+        debug("Learning: Added record [" + rec.toString() + "]");
+        
         // --- QUADRATIC REGRESSION UPDATE ---
         updateModelRegression();
         
@@ -416,6 +441,7 @@ private void stopAndRecord(double actualMinutes, boolean success) {
         if (now < targetEventTime) {
             isHoldingForSchedule = true;
             setFormattedStatusLog("Finished early. Holding Command until Schedule Event.");
+            debug("Entering HOLD state. Waiting for event time...");
         }
         
     } else {
@@ -429,20 +455,24 @@ private void stopAndRecord(double actualMinutes, boolean success) {
 private void updateModelRegression() {
     pruneHistory();
     
-    double[] heatParams = regress(heatHistory);
-    // EMA Smoothing
+    double[] heatParams = regress(heatHistory, "HEAT");
     this.learned_alpha_a_heat += EMA_ALPHA * (heatParams[0] - this.learned_alpha_a_heat);
     this.learned_alpha_b_heat += EMA_ALPHA * (heatParams[1] - this.learned_alpha_b_heat);
     
-    double[] coolParams = regress(coolHistory);
+    double[] coolParams = regress(coolHistory, "COOL");
     this.learned_alpha_a_cool += EMA_ALPHA * (coolParams[0] - this.learned_alpha_a_cool);
     this.learned_alpha_b_cool += EMA_ALPHA * (coolParams[1] - this.learned_alpha_b_cool);
+    
+    debug(String.format("Regression Update | HEAT: a=%.4f, b=%.2f | COOL: a=%.4f, b=%.2f",
+          learned_alpha_a_heat, learned_alpha_b_heat, learned_alpha_a_cool, learned_alpha_b_cool));
     
     updateVisualRates();
 }
 
-private double[] regress(java.util.List<PerformanceRecord> history) {
-    if (history.size() < 2) return new double[] { 0.1, 5.0 }; 
+private double[] regress(java.util.List<PerformanceRecord> history, String modeLabel) {
+    if (history.size() < 2) {
+        return new double[] { 0.1, 5.0 }; 
+    }
     
     double n = history.size();
     double sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
@@ -465,6 +495,7 @@ private double[] regress(java.util.List<PerformanceRecord> history) {
     if (a < 0) a = 0.1; 
     if (b < 0) b = 0;   
     
+    debug(String.format("Regress(%s): n=%.0f, Raw A=%.4f, Raw B=%.2f", modeLabel, n, a, b));
     return new double[] { a, b };
 }
 
@@ -522,21 +553,11 @@ The **Model 2** block builds on the same self-tuning linear behavior but adds an
 
 
 $$
-t_{\text{today}} = t_{\text{base}} \cdot \frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}{\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
+t_{\text{today}} = t_{\text{base}}
+  \frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}
+       {\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
 $$
 
-
-* If today is **colder** than the baseline heating day (further from `T_ref_heat`), the predicted runtime increases.
-* If today is **milder** than the baseline day (closer to `T_ref_heat`), the predicted runtime decreases.
-* Cooling works the same way, but uses a high-temperature design reference `T_ref_cool`.
-
-If OAT becomes unavailable or unreliable, the block automatically falls back to the **Linear Degree-Per-Minute** model (ΔT ÷ learned rate), so it always remains usable even with a bad sensor. Ultimately the model becomes:
-
-$$
-t_{\text{today}} =
-\frac{\Delta T}{R_{\text{mode}}}
-\frac{|T_{\text{ref}}-OAT_{\text{base}}|}{|T_{\text{ref}}-OAT_{\text{today}}|}
-$$
 
 
 ---
@@ -594,28 +615,30 @@ $$
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
 ```java
+
+
+// PNNL Linear Model 2
 // ==========================================================
 // MEMBER VARIABLES (State)
 // ==========================================================
 private Clock.Ticket ticket;
 private long startTimestamp = 0L;
 private boolean isOptimalStartRunning = false;
-private boolean isHoldingForSchedule = false; // <--- NEW: Unified Backbone
-private long targetEventTime = 0L;            // <--- NEW: Unified Backbone
+private boolean isHoldingForSchedule = false; 
+private long targetEventTime = 0L;            
 private long lastStartTriggerTimestamp = 0L;
 
 // PNNL Model 2 Baselines (The "Memory")
-// Defaults: 30 mins to recover from 20F OAT (Heat) or 85F OAT (Cool)
 private double lastHeatBaselineMinutes = 30.0; 
 private double lastHeatBaselineOat     = 20.0; 
 private double lastCoolBaselineMinutes = 30.0;
 private double lastCoolBaselineOat     = 85.0;
 
-// Reference Temperatures (T_ref) per PNNL / User Request
+// PNNL Reference Temperatures (Design Conditions)
 private static final double TREF_HEAT_IMP = 32.0;   
-private static final double TREF_COOL_IMP = 100.0;  
 private static final double TREF_HEAT_MET = 0.0;
-private static final double TREF_COOL_MET = 38.0;
+private static final double TREF_COOL_IMP = 100.0;  
+private static final double TREF_COOL_MET = 37.78;
 
 // State Flags
 private boolean isOffDelayActive = false;
@@ -629,6 +652,7 @@ public void onStart() throws Exception {
     // 1. Defaults
     if (getMaxMinutesAllowed().isNull()) setMaxMinutesAllowed(new BStatusNumeric(180.0));
     if (getTempTolerance().isNull()) setTempTolerance(new BStatusNumeric(0.5));
+    // Default to Imperial if null
     if (getUseImperialUnits().isNull()) setUseImperialUnits(new BStatusBoolean(true));
 
     // 2. Init Outputs
@@ -655,57 +679,68 @@ public void onStart() throws Exception {
     if (getResetBackToDefault().isNull()) setResetBackToDefault(new BStatusBoolean(false));
     
     setZoneAtTempTolerance(new BStatusBoolean(false));
+    
+    // Log startup
     getStatusLog().setValue("[onStart] PNNL Model 2 (Adaptive OAT Ratio) initialized.");
+    debug("Block Started. Default Baselines: Heat=" + lastHeatBaselineMinutes + "m, Cool=" + lastCoolBaselineMinutes + "m");
     
     updateTimer();
 }
 
 public void onExecute() throws Exception {
-    updateTimer();
-    updateZoneAtTempTolerance();
+    try {
+        updateTimer();
+        updateZoneAtTempTolerance();
 
-    // Handle Reset
-    if (getResetBackToDefault().getStatus().isOk() && getResetBackToDefault().getValue()) {
-        resetModelToDefaults();
-        setResetBackToDefault(new BStatusBoolean(false));
-    }
+        // Handle Reset
+        if (getResetBackToDefault().getStatus().isOk() && getResetBackToDefault().getValue()) {
+            resetModelToDefaults();
+            setResetBackToDefault(new BStatusBoolean(false));
+            debug("User requested Factory Reset.");
+        }
 
-    // Always Predict
-    updateCurrentModelPrediction();
+        // Always Predict (Live Math)
+        updateCurrentModelPrediction();
 
-    // --- MAIN STATE MACHINE ---
-    if (isOptimalStartRunning) {
-        // STATE 1: ACTIVE LEARNING RUN
-        // Run until Target Met OR Timeout (ignore schedule changes)
-        monitorActiveRun();
-        forceCommandTrue();
-        
-    } else if (isHoldingForSchedule) {
-        // STATE 2: HOLDING PATTERN (Finished Early)
-        // Target met, but schedule event hasn't happened yet. Hold ON.
-        monitorHold();
-        forceCommandTrue();
-        
-    } else {
-        // STATE 3: IDLE / MONITORING
-        updateEquipmentStartCommand();
-    }
-
-    // Optional Debug
-    if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
-        System.out.println("--- [Debug Model 2] ---");
-        System.out.println("Running: " + isOptimalStartRunning + " | Holding: " + isHoldingForSchedule);
-        System.out.println("Prediction: " + round1(getCurrentModelPredictMinutes().getValue()) + " min");
+        // --- MAIN STATE MACHINE (Unified Backbone) ---
+        if (isOptimalStartRunning) {
+            // STATE 1: ACTIVE LEARNING RUN
+            monitorActiveRun();
+            forceCommandTrue();
+            
+        } else if (isHoldingForSchedule) {
+            // STATE 2: HOLDING PATTERN (Finished Early)
+            monitorHold();
+            forceCommandTrue();
+            
+        } else {
+            // STATE 3: IDLE / MONITORING
+            updateEquipmentStartCommand();
+        }
+    } catch (Exception e) {
+        // ROBUST CRASH LOGGING
+        if (getPrintToConsoleLog().getValue()) {
+            System.out.println("[OptStart-PNNL] CRASH in onExecute: " + e.getMessage());
+            e.printStackTrace();
+        }
+        getStatusLog().setValue("ERROR: Block crashed. Check Application Director.");
     }
 }
 
 public void onStop() throws Exception {
     if (ticket != null) ticket.cancel();
+    debug("Block Stopped.");
 }
 
 // ==========================================================
 // LOGIC METHODS
 // ==========================================================
+
+private void debug(String msg) {
+    if (getPrintToConsoleLog().getStatus().isOk() && getPrintToConsoleLog().getValue()) {
+        System.out.println("[OptStart-PNNL] " + msg);
+    }
+}
 
 private void forceCommandTrue() {
     getEquipmentStartCommand().setValue(true);
@@ -714,6 +749,12 @@ private void forceCommandTrue() {
 }
 
 private void updateCurrentModelPrediction() {
+    // If at setpoint, prediction is 0
+    if (getZoneAtTempTolerance().getValue()) {
+        setCurrentModelPredictMinutes(new BStatusNumeric(0.0));
+        return;
+    }
+
     if (!getZoneTemp().getStatus().isOk() || !getTargetZoneTempSetpoint().getStatus().isOk()) return;
 
     double zone = getZoneTemp().getValue();
@@ -721,6 +762,7 @@ private void updateCurrentModelPrediction() {
     double delta = Math.abs(target - zone);
     double maxMins = getMaxMinutesAllowed().getValue();
     
+    // Tiny delta check to prevent noise triggers
     if (delta <= 0.2) {
         setCurrentModelPredictMinutes(new BStatusNumeric(0.0));
         return;
@@ -745,32 +787,39 @@ private double calculateModel2Minutes(String mode, double delta, double oatNow) 
     if (mode.equals("HEAT")) {
         tBase = lastHeatBaselineMinutes;
         oatBase = lastHeatBaselineOat;
+        // PNNL Constants: 32F / 0C
         tRef = imperial ? TREF_HEAT_IMP : TREF_HEAT_MET; 
         rateFallback = getDegreesPerMinuteHeat().getValue();
     } else {
         tBase = lastCoolBaselineMinutes;
         oatBase = lastCoolBaselineOat;
+        // PNNL Constants: 100F / 37.78C
         tRef = imperial ? TREF_COOL_IMP : TREF_COOL_MET;
         rateFallback = getDegreesPerMinuteCool().getValue();
     }
 
-    // Fallback if OAT bad
+    // 1. Fallback: If OAT is bad or missing, use simple Linear Model
     if (Double.isNaN(oatNow) || Double.isNaN(oatBase) || rateFallback <= 0.001) {
        return (rateFallback > 0) ? delta / rateFallback : 180.0;
     }
 
-    // PNNL Ratio
+    // 2. PNNL Ratio Calculation
+    // As OAT approaches T_ref (Capacity Limit), the denominator shrinks, Ratio grows, Time increases.
     double numerator   = Math.abs(tRef - oatBase);
     double denominator = Math.abs(tRef - oatNow);
+    
+    // Protect against divide by zero (if today is exactly design temp)
     if (denominator < 0.5) denominator = 0.5; 
 
     double ratio = numerator / denominator;
+    
+    // Clamp ratio to sane limits
     if (ratio < RATIO_MIN) ratio = RATIO_MIN;
     if (ratio > RATIO_MAX) ratio = RATIO_MAX;
 
     double predicted = tBase * ratio;
     
-    // Update adder slot
+    // Update visual "Adder" slot
     double added = predicted - tBase;
     if (mode.equals("HEAT")) setHeatOatMinutesAdder(new BStatusNumeric(added));
     else setCoolOatMinutesAdder(new BStatusNumeric(added));
@@ -791,6 +840,7 @@ private void updateEquipmentStartCommand() {
             getEquipmentStartCommand().setStatus(BStatus.NULL);
             getCountdownToNullStatus().setValue(false);
             setFormattedStatusLog("Off-delay done. Command released.");
+            debug("Off-delay finished.");
         } else {
             getCountdownToNullStatus().setValue(true);
         }
@@ -816,7 +866,8 @@ private void updateEquipmentStartCommand() {
 
         // TRIGGER START
         if (neededMins >= minsUntilEvent) {
-            startOptimalStartSequence(nextTime); // <--- Latch Event Time
+            debug("Start Triggered! Need " + round1(neededMins) + "m, have " + round1(minsUntilEvent) + "m.");
+            startOptimalStartSequence(nextTime); // Latch Target Time
             forceCommandTrue();
         }
     } else {
@@ -824,6 +875,7 @@ private void updateEquipmentStartCommand() {
             isOffDelayActive = true;
             offDelayStartTime = System.currentTimeMillis();
             getCountdownToNullStatus().setValue(true);
+            debug("Schedule unoccupied. Entering Off-Delay.");
         }
     }
 }
@@ -834,14 +886,17 @@ private void startOptimalStartSequence(long nextEventTime) {
         return;
     }
     
+    // --- SNAPSHOT PREDICTION ---
+    double pred = getCurrentModelPredictMinutes().getValue();
+    setLastRunPredictedMinutes(new BStatusNumeric(pred));
+    
     // Init Run Stats
-    setLastRunPredictedMinutes(new BStatusNumeric(getCurrentModelPredictMinutes().getValue()));
     setLastRunActualMinutes(new BStatusNumeric(0.0));
     setLastRunErrorMinutes(new BStatusNumeric(0.0));
     setLastRunErrorPercent(new BStatusNumeric(0.0));
     
     startTimestamp = System.currentTimeMillis();
-    targetEventTime = nextEventTime; // <--- Unified Backbone: Latch Target
+    targetEventTime = nextEventTime; 
     isOptimalStartRunning = true;
     isHoldingForSchedule = false;
     
@@ -853,7 +908,8 @@ private void startOptimalStartSequence(long nextEventTime) {
         setOutdoorTempAtStart(new BStatusNumeric(getOutdoorAirTemp().getValue()));
     }
 
-    setFormattedStatusLog("[Start] PNNL Model running. Need " + round1(getLastRunPredictedMinutes().getValue()) + " min.");
+    setFormattedStatusLog("[Start] PNNL Model running. Need " + round1(pred) + " min.");
+    debug("Run Started. TargetTime=" + new java.util.Date(targetEventTime) + ", Pred=" + round1(pred));
 }
 
 private void monitorActiveRun() {
@@ -861,14 +917,14 @@ private void monitorActiveRun() {
     double elapsed = (now - startTimestamp) / 60000.0;
     double maxMins = getMaxMinutesAllowed().getValue();
 
-    // A. STOP: Target Met
+    // A. STOP: Target Met (SUCCESS)
     if (getZoneAtTempTolerance().getValue()) {
         setFormattedStatusLog("[Stop] Target met in " + round1(elapsed) + " min. Updating model.");
         stopAndRecord(elapsed, true);
         return;
     }
 
-    // B. STOP: Timeout
+    // B. STOP: Timeout (FAILURE)
     if (elapsed >= maxMins) {
         setFormattedStatusLog("[Stop] Max Minutes (" + maxMins + ") exceeded.");
         stopAndRecord(elapsed, false);
@@ -882,19 +938,18 @@ private void monitorActiveRun() {
 }
 
 private void monitorHold() {
-    // Hold Command=True until the schedule catches up.
     long now = System.currentTimeMillis();
     
-    // Release if Event Time passed
     if (now >= targetEventTime) {
         isHoldingForSchedule = false;
         setFormattedStatusLog("Schedule Event Time reached. Releasing to BAS.");
+        debug("Hold Released: Event time arrived.");
     }
     
-    // Release if Schedule Flips Unoccupied
     if (getScheduleNextValue().getStatus().isOk() && !getScheduleNextValue().getValue()) {
         isHoldingForSchedule = false;
         setFormattedStatusLog("Schedule Next Value changed to Unoccupied. Aborting hold.");
+        debug("Hold Aborted: Schedule flipped.");
     }
 }
 
@@ -911,6 +966,9 @@ private void stopAndRecord(double actualMinutes, boolean success) {
     double pct = (actualMinutes > 0) ? (error / actualMinutes) * 100.0 : 0.0;
     setLastRunErrorPercent(new BStatusNumeric(pct));
     
+    debug(String.format("Run Finished. Actual=%.1f, Pred=%.1f, Err=%.1f (%.1f%%). Success=%b", 
+          actualMinutes, predicted, error, pct, success));
+    
     // 2. Learning
     double zoneStart = getZoneTempAtStart().getValue();
     double zoneEnd = getZoneTemp().getValue();
@@ -921,7 +979,7 @@ private void stopAndRecord(double actualMinutes, boolean success) {
         String mode = (zoneStart < getTargetZoneTempSetpoint().getValue()) ? "HEAT" : "COOL";
         double rate = tempChange / actualMinutes;
 
-        // Update Baseline
+        // Update Baseline (Memory)
         if (mode.equals("HEAT")) {
             setDegreesPerMinuteHeat(new BStatusNumeric(rate));
             lastHeatBaselineMinutes = actualMinutes;
@@ -932,12 +990,14 @@ private void stopAndRecord(double actualMinutes, boolean success) {
             if (!Double.isNaN(oatStart)) lastCoolBaselineOat = oatStart;
         }
         setFormattedStatusLog("Learning updated. Mode: " + mode + ", New Baseline: " + round1(actualMinutes) + "m @ " + round1(oatStart) + "°");
+        debug("Learning Saved: New Baseline established for " + mode);
         
         // 3. ENTER HOLD if finished early
         long now = System.currentTimeMillis();
         if (now < targetEventTime) {
             isHoldingForSchedule = true;
             setFormattedStatusLog("Finished early. Holding Command until Schedule Event.");
+            debug("Entering HOLD state.");
         }
     } else {
         setFormattedStatusLog("Run finished. No learning (Timeout or Short Run).");
