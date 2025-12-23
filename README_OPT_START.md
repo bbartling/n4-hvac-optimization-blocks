@@ -596,7 +596,7 @@ Then, per the PNNL Model 2 definition, the outside air temperature is incorporat
 
 
 $$
-t_{\text{total}} = t_{\text{linear}}+\frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}{\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
+t_{\text{total}} = t_{\text{linear}}*\frac{\left|T_{\text{ref}}-OAT_{\text{base}}\right|}{\left|T_{\text{ref}}-OAT_{\text{today}}\right|}
 $$
 
 
@@ -655,9 +655,9 @@ $$
 > Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
 ```java
-
-
 // PNNL Linear Model 2
+// UPDATE LOG
+// 12-23-2025 - TREF bump up outdoor weather extremes values
 // ==========================================================
 // MEMBER VARIABLES (State)
 // ==========================================================
@@ -675,10 +675,10 @@ private double lastCoolBaselineMinutes = 30.0;
 private double lastCoolBaselineOat     = 85.0;
 
 // PNNL Reference Temperatures (Design Conditions)
-private static final double TREF_HEAT_IMP = 32.0;   
-private static final double TREF_HEAT_MET = 0.0;
-private static final double TREF_COOL_IMP = 100.0;  
-private static final double TREF_COOL_MET = 37.78;
+private static final double TREF_HEAT_IMP = -40.0;   
+private static final double TREF_HEAT_MET = -40.0;
+private static final double TREF_COOL_IMP = 110.0;  
+private static final double TREF_COOL_MET = 43.33;
 
 // State Flags
 private boolean isOffDelayActive = false;
