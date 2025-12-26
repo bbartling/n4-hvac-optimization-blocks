@@ -49,9 +49,9 @@ $$
 
 where:
 
-* (\alpha) is the learning weight (tunable)
-* larger (\alpha) → faster learning
-* smaller (\alpha) → more stability
+* $\alpha$ is the learning weight (tunable)
+* larger $\alpha$ → faster learning
+* smaller $\alpha$ → more stability
 
 The predicted optimal start time is then:
 
@@ -72,7 +72,7 @@ $$
 
 where:
 
-* (\Delta T = \left|T_{\text{zone,start}} - T_{\text{setpoint}}\right|)
+* * $t = a(\Delta T)^2 + b(\Delta T) + c$
 * (a, b, c) are continuously self-tuned regression coefficients
   learned from historical runs.
 
