@@ -36,16 +36,16 @@ Model 0 assumes the zone recovers at an approximately linear rate
 (measured in **degrees per minute**). After each completed run, a new rate
 measurement is computed:
 
-[
+$$
 r_{\text{new}} = \frac{\left|T_{\text{zone,start}} - T_{\text{setpoint}}\right|}{t_{\text{actual}}}
-]
+$$
 
 To avoid noisy predictions and allow the system to “learn” over time,
 the recovery rate is updated using an **Exponential Moving Average** (EMA):
 
-[
+$$
 r_{\text{EMA}}(k) = \alpha \cdot r_{\text{new}} + (1-\alpha)\cdot r_{\text{EMA}}(k-1)
-]
+$$
 
 where:
 
@@ -55,9 +55,9 @@ where:
 
 The predicted optimal start time is then:
 
-[
+$$
 t_{\text{pred}} = \frac{\left|T_{\text{zone,current}} - T_{\text{setpoint}}\right|}{r_{\text{EMA}}}
-]
+$$
 
 ---
 
@@ -66,9 +66,9 @@ t_{\text{pred}} = \frac{\left|T_{\text{zone,current}} - T_{\text{setpoint}}\righ
 For thermally stable or interior zones, recovery behavior often follows
 a **non-linear** curve. PNNL recommends fitting a quadratic model of the form:
 
-[
+$$
 t = a\cdot(\Delta T)^2 + b\cdot(\Delta T) + c
-]
+$$
 
 where:
 
@@ -78,9 +78,9 @@ where:
 
 Thus, optimal start time becomes:
 
-[
+$$
 t_{\text{pred}} = a\cdot(\Delta T)^2 + b\cdot(\Delta T) + c
-]
+$$
 
 This model works best when outdoor temperature has **minimal influence**
 on warm-up or cool-down behavior.
@@ -93,21 +93,21 @@ For exterior or weather-exposed zones, recovery rate changes
 significantly with outdoor air temperature (OAT).
 Model 2 begins with a baseline Model-0 prediction:
 
-[
+$$
 t_{\text{base}} = \frac{\left|T_{\text{zone,current}} - T_{\text{setpoint}}\right|}{r_{\text{EMA}}}
-]
+$$
 
 Then applies a learned **OAT sensitivity ratio**:
 
-[
+$$
 t_{\text{pred}} = t_{\text{base}} \cdot R(T_{\text{OAT}})
-]
+$$
 
 Where the ratio function is self-tuned over time, commonly modeled as:
 
-[
+$$
 R(T_{\text{OAT}}) = m\cdot T_{\text{OAT}} + b
-]
+$$
 
 meaning:
 
@@ -122,9 +122,9 @@ meaning:
 At runtime, models are continuously evaluated and compared based on
 historical prediction error:
 
-[
+$$
 \text{Error} = t_{\text{pred}} - t_{\text{actual}}
-]
+$$
 
 and the system dynamically favors whichever model shows superior accuracy
 over recent runs.
