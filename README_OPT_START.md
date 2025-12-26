@@ -1,70 +1,138 @@
 # The Ultimate HVAC Optimal Start Control
 
-**Version:** 2.0
-**Type:** Niagara 4 `ProgramObject` Documentation
 
-This guide describes an **enhanced optimal start controller** that combines **three complementary algorithms** into a single Niagara 4 component. It builds upon PNNL research (linear and quadratic models) but extends them with a baseline degree‑per‑minute model, robust fault handling, and automatic model selection based on real‑world performance.
-
-The goal is to start equipment **as late as possible** while guaranteeing that the zone reaches its occupied setpoint at the scheduled time.
-
-## 1. Strategy Overview
-
-The controller runs **three models in parallel** to produce a predicted run time. Each model is continuously updated (self‑tuning) based on completed runs. After an initial learning period, the controller calculates the **squared error** for each model and selects the one with the lowest error for the next start event.
-
-### Why three models?
-
-* **Model 0 (Baseline):** A safety net. It runs a simple "degree-per-minute" calculation. It is invaluable during the first few weeks when the advanced models lack sufficient history.
-* **Model 1 (Quadratic):** Best for **interior zones** or thermally massive spaces. These zones often warm or cool non-linearly (slower at first, then faster, or vice versa).
-* **Model 2 (Linear + Outdoor Air):** Best for **perimeter zones**. It scales the run time based on how cold or hot it is outside compared to a baseline day.
-
----
-
-## 2. Mathematical Models
-
-### Model 0: Baseline Degree-Per-Minute
-
-Computes time to reach setpoint using a simple learned rate  (°/min).
+Inspired by the familiar `kitControl` Optimal Start block design, these Program Objects extend capability with self-tuning algorithms informed by recent PNNL HVAC research. The Quadratic Model (Model 1) is ideal for interior or thermally stable zones whose recovery time is largely independent of outdoor conditions, while the Linear Degree-Per-Minute Model (Model 2) is recommended for weather-sensitive zones, as it explicitly incorporates outdoor air temperature into its prediction logic.
 
 
-* **Update Logic:** The rate  is recalculated after every run: .
-
-### Model 1: Quadratic (PNNL Standard)
-
-Fits a second‑order polynomial to historical warm‑up/cool‑down data. This accounts for the "lag" often seen in heavy buildings.
+* **Optimal Start Control for ACs and HPs (PNNL)** — `pdf/Optimal Start Control for ACs and HPs.pdf`
+    👉 [https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf)
 
 
-* **Update Logic:** The coefficients  and  are updated using a quadratic regression of the last 10 runs, smoothed with an Exponential Moving Average (EMA).
-
-### Model 2: Linear with Weather Compensation
-
-Predicts run time using a linear model, but scales the result based on the ratio of today's outdoor temperature to a recorded baseline.
+Check for demonstrations on Vibe Coding on 📺
+🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
 
 
-* **:** Difference between current zone temp and setpoint.
-* **:** Design condition (e.g., 32°F for heating, 100°F for cooling).
-* **Update Logic:**  is learned from the previous day's performance.
+Check out the **new December 2025** [YouTube playlist](https://www.youtube.com/playlist?list=PLlNmfKmNxm1tOa8P7aBhj0zf34AIlS4CQ) on optimal start/stop math and algorithms, built from short daily AI-generated lessons, plus the complete [open-source GitHub repository](https://github.com/bbartling/hvac-optimal-start-math-playground) featuring Python examples and in-depth explorations of PNNL optimal start research.
+
+<p align="center">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/optimalStartSnip.png"  alt="Optimal Start Program Object" width="550">
+  <br><em>Program Object wiring sheet</em>
+</p>
+
+<p align="center">
+  <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/zoneRecoverySnip.png" alt="Recovery Trend Example" width="750">
+  <br><em>Recovery trend illustrating learned cool-down rate&nbsp;≈ 0.15 °F /min</em>
+</p>
 
 ---
 
-## 3. Algorithm Logic & Auto-Selection
 
-1. **Continuous Prediction:** Every 15 seconds, the block calculates predictions () for all enabled models.
-2. **Trigger:** When the *Selected Model's* prediction exceeds the time remaining until the next scheduled occupancy, the equipment starts (`equipmentStartCommand` = `true`).
-3. **Learning:**
-* During the run, the block monitors progress.
-* When setpoint is reached, it records the **Actual Duration**.
-* It calculates the **Squared Error** for *all three* models: .
+## Mathematical Models
 
 
-4. **Auto-Selection:**
-* The model with the lowest **Average Squared Error** is automatically flagged as the "Best Model" (Slot: `currentModel`).
-* This model is used for tomorrow's start trigger.
+### **Model 0 — Adaptive Linear Recovery (EMA-Smoothed)**
 
+Model 0 assumes the zone recovers at an approximately linear rate
+(measured in **degrees per minute**). After each completed run, a new rate
+measurement is computed:
+
+[
+r_{\text{new}} = \frac{\left|T_{\text{zone,start}} - T_{\text{setpoint}}\right|}{t_{\text{actual}}}
+]
+
+To avoid noisy predictions and allow the system to “learn” over time,
+the recovery rate is updated using an **Exponential Moving Average** (EMA):
+
+[
+r_{\text{EMA}}(k) = \alpha \cdot r_{\text{new}} + (1-\alpha)\cdot r_{\text{EMA}}(k-1)
+]
+
+where:
+
+* (\alpha) is the learning weight (tunable)
+* larger (\alpha) → faster learning
+* smaller (\alpha) → more stability
+
+The predicted optimal start time is then:
+
+[
+t_{\text{pred}} = \frac{\left|T_{\text{zone,current}} - T_{\text{setpoint}}\right|}{r_{\text{EMA}}}
+]
+
+---
+
+### **Model 1 — Quadratic Recovery Model (Interior / Stable Zones)**
+
+For thermally stable or interior zones, recovery behavior often follows
+a **non-linear** curve. PNNL recommends fitting a quadratic model of the form:
+
+[
+t = a\cdot(\Delta T)^2 + b\cdot(\Delta T) + c
+]
+
+where:
+
+* (\Delta T = \left|T_{\text{zone,start}} - T_{\text{setpoint}}\right|)
+* (a, b, c) are continuously self-tuned regression coefficients
+  learned from historical runs.
+
+Thus, optimal start time becomes:
+
+[
+t_{\text{pred}} = a\cdot(\Delta T)^2 + b\cdot(\Delta T) + c
+]
+
+This model works best when outdoor temperature has **minimal influence**
+on warm-up or cool-down behavior.
+
+---
+
+### **Model 2 — Weather-Sensitive Linear Model (Exterior / OAT-Driven Zones)**
+
+For exterior or weather-exposed zones, recovery rate changes
+significantly with outdoor air temperature (OAT).
+Model 2 begins with a baseline Model-0 prediction:
+
+[
+t_{\text{base}} = \frac{\left|T_{\text{zone,current}} - T_{\text{setpoint}}\right|}{r_{\text{EMA}}}
+]
+
+Then applies a learned **OAT sensitivity ratio**:
+
+[
+t_{\text{pred}} = t_{\text{base}} \cdot R(T_{\text{OAT}})
+]
+
+Where the ratio function is self-tuned over time, commonly modeled as:
+
+[
+R(T_{\text{OAT}}) = m\cdot T_{\text{OAT}} + b
+]
+
+meaning:
+
+* colder weather → longer recovery
+* hotter weather → shorter (cooling) or longer (heating), depending on mode
+* automatically adapts based on historical runtime error
+
+---
+
+### **Model Selection Logic**
+
+At runtime, models are continuously evaluated and compared based on
+historical prediction error:
+
+[
+\text{Error} = t_{\text{pred}} - t_{\text{actual}}
+]
+
+and the system dynamically favors whichever model shows superior accuracy
+over recent runs.
 
 
 ---
 
-## 4. Slot Sheet (Property Dictionary)
+## Slot Sheet (Property Dictionary)
 
 Do not remove existing slots. This table defines the inputs, outputs, and the explicitly expanded metric slots for every model.
 
@@ -159,429 +227,719 @@ Do not remove existing slots. This table defines the inputs, outputs, and the ex
 
 ## 5. Java Code Implementation
 
-Copy the method bodies below into the `ProgramImpl.java` source tab in Niagara.
 
-### 1. onStart()
 
 ```java
-// onStart
-{
-    // 1. Initialize Configuration Defaults (Safety Defaults)
-    if (getMaxMinutesAllowed().isNull()) setMaxMinutesAllowed(new BStatusNumeric(180.0));
-    if (getTempTolerance().isNull()) setTempTolerance(new BStatusNumeric(0.5));
-    if (getHistoryDaysToRetain().isNull()) setHistoryDaysToRetain(new BStatusNumeric(10.0));
-    if (getEmaWeightingFactor().isNull()) setEmaWeightingFactor(new BStatusNumeric(0.2)); // Default Alpha
-    if (getAutoModeStartDays().isNull()) setAutoModeStartDays(new BStatusNumeric(3.0));
-    if (getUseImperialUnits().isNull()) setUseImperialUnits(new BStatusBoolean(true));
+// ==========================================================
+// CONSTANTS
+// ==========================================================
+private static final double MIN_VALID_TEMP = -50.0;
+private static final double MAX_VALID_TEMP = 250.0;
+private static final long   MS_PER_DAY      = 86400000L;
 
-    // 2. Initialize Operational Outputs
-    setIsRunning(new BStatusBoolean(false));
-    setCurrentModelPredictMinutes(new BStatusNumeric(getMaxMinutesAllowed().getValue()));
-    setCurrentModel(new BStatusNumeric(0)); // Default to Baseline
-    setEquipmentStartCommand(new BStatusBoolean(false));
-    getEquipmentStartCommand().setStatus(BStatus.NULL); // Start as NULL (Idle)
-    
-    setStatusLog(new BStatusString("Initialized. Waiting for valid inputs..."));
-    setStatusTrace(new BStatusString("Startup"));
+// Quadratic Model 1 EMA
+private static final double EMA_ALPHA = 0.2;
 
-    // 3. Initialize Model 0 Metrics (Baseline)
+// PNNL Model 2 reference temperatures (design conditions)
+private static final double TREF_HEAT_IMP = -40.0;
+private static final double TREF_HEAT_MET = -40.0;
+private static final double TREF_COOL_IMP = 110.0;
+private static final double TREF_COOL_MET = 43.33;
+
+// PNNL Model 2 ratio clamps
+private static final double RATIO_MIN = 0.2;
+private static final double RATIO_MAX = 4.0;
+
+// ==========================================================
+// STATE
+// ==========================================================
+private Clock.Ticket ticket;
+
+// Run-state
+private boolean isOptimalStartRunning = false;
+private long    runStartTimestamp     = 0L;
+private double  startZoneTemp         = 0.0;
+private double  deltaTAtStart         = 0.0;
+private double  oatAtStart            = Double.NaN;
+private boolean lastRunWasHeat        = true;
+
+// Auto-mode / model selection
+private long    firstRunTimestamp     = 0L;   // ms since epoch of first learning run
+// 0 = Model 0 (baseline), 1 = Model 1 (quadratic), 2 = Model 2 (linear + OAT ratio)
+private int     currentBestModelIndex = 0;
+private boolean autoModeActive        = false;
+
+// ==========================================================
+// PNNL Quadratic Model 1 state
+// ==========================================================
+static class PerformanceRecord {
+    long   timestamp;        // when the run finished
+    double durationMinutes;  // actual warm-up minutes (y)
+    double deltaT;           // |setpoint - startZoneTemp| (for this run)
+    String mode;             // "HEAT" or "COOL"
+
+    PerformanceRecord(long ts, double t, double dT, String m) {
+        this.timestamp       = ts;
+        this.durationMinutes = t;
+        this.deltaT          = dT;
+        this.mode            = m;
+    }
+
+    public String toString() {
+        return String.format("[%s] dT=%.1f, mins=%.1f", mode, deltaT, durationMinutes);
+    }
+}
+
+private java.util.List<PerformanceRecord> heatHistory = new java.util.ArrayList<>();
+private java.util.List<PerformanceRecord> coolHistory = new java.util.ArrayList<>();
+
+// ==========================================================
+// PNNL Model 2 baselines (the "memory")
+// ==========================================================
+private double lastHeatBaselineMinutes = 30.0;
+private double lastHeatBaselineOat     = 20.0;
+private double lastCoolBaselineMinutes = 30.0;
+private double lastCoolBaselineOat     = 85.0;
+
+
+public void onStart() throws Exception {
+  // Reset run state
+  isOptimalStartRunning = false;
+  runStartTimestamp     = 0L;
+  startZoneTemp         = 0.0;
+  deltaTAtStart         = 0.0;
+  oatAtStart            = Double.NaN;
+
+  // Initialize model metrics / slots as you already do elsewhere...
+  // (avg errors, last-run mins, etc.)
+
+  // MOST IMPORTANT: start in NULL
+  forceCommandNull();
+
+  // Start timer
+  if (ticket != null) {
+    ticket.cancel();
+  }
+  ticket = Clock.schedule(
+      getComponent(),
+      BRelTime.makeSeconds(15),   // or your cadence
+      BProgram.execute,
+      null
+  );
+}
+
+
+
+public void onExecute() throws Exception {
+  // Keep timer alive
+  if (ticket != null) {
+    ticket.cancel();
+  }
+  ticket = Clock.schedule(
+      getComponent(),
+      BRelTime.makeSeconds(15),
+      BProgram.execute,
+      null
+  );
+
+  // 1) Normalize unwired numeric inputs → NULL
+  ensureNumericWiredOrNull("zoneTemp",              getZoneTemp());
+  ensureNumericWiredOrNull("targetZoneTempSetpoint", getTargetZoneTempSetpoint());
+  ensureNumericWiredOrNull("outdoorAirTemp",        getOutdoorAirTemp());
+
+  // 2) Block enable guard (whatever your enable slot is named)
+  if (getEnableOptStart() != null &&
+      getEnableOptStart().getStatus().isOk() &&
+      !getEnableOptStart().getValue())
+  {
+      // Disabled → command should disappear from the world
+      isOptimalStartRunning = false;
+      forceCommandNull();
+      return;
+  }
+
+  // 3) Validate required inputs
+  if (!validateInputs()) {
+    // Bad/missing schedule or temps → NO opt start, NO hard false
+    isOptimalStartRunning = false;
+    forceCommandNull();
+
+    // Optional: zero out predictions so block reads as idle
+    setCurrentModelPredictMinutes(new BStatusNumeric(0.0));
     setLastRunPredictedMinutes_m0(new BStatusNumeric(0.0));
-    setLastRunActualMinutes_m0(new BStatusNumeric(0.0));
-    setLastRunErrorMinutes_m0(new BStatusNumeric(0.0));
-    setLastRunErrorPercent_m0(new BStatusNumeric(0.0));
-    setLastRunSquaredError_m0(new BStatusNumeric(0.0));
-    setAvgSquaredError_m0(new BStatusNumeric(0.0));
-
-    // 4. Initialize Model 1 Metrics (Quadratic)
     setLastRunPredictedMinutes_m1(new BStatusNumeric(0.0));
-    setLastRunActualMinutes_m1(new BStatusNumeric(0.0));
-    setLastRunErrorMinutes_m1(new BStatusNumeric(0.0));
-    setLastRunErrorPercent_m1(new BStatusNumeric(0.0));
-    setLastRunSquaredError_m1(new BStatusNumeric(0.0));
-    setAvgSquaredError_m1(new BStatusNumeric(0.0));
-
-    // 5. Initialize Model 2 Metrics (Linear+OAT)
     setLastRunPredictedMinutes_m2(new BStatusNumeric(0.0));
-    setLastRunActualMinutes_m2(new BStatusNumeric(0.0));
-    setLastRunErrorMinutes_m2(new BStatusNumeric(0.0));
-    setLastRunErrorPercent_m2(new BStatusNumeric(0.0));
-    setLastRunSquaredError_m2(new BStatusNumeric(0.0));
-    setAvgSquaredError_m2(new BStatusNumeric(0.0));
+    return;
+  }
 
-    // 6. Initialize Learned Parameters (if null)
-    if (getDegreesPerMinuteHeat().isNull()) setDegreesPerMinuteHeat(new BStatusNumeric(0.1));
-    if (getDegreesPerMinuteCool().isNull()) setDegreesPerMinuteCool(new BStatusNumeric(0.1));
-    if (getQuadraticA_heat().isNull()) setQuadraticA_heat(new BStatusNumeric(0.1));
-    if (getQuadraticB_heat().isNull()) setQuadraticB_heat(new BStatusNumeric(5.0));
-    if (getQuadraticA_cool().isNull()) setQuadraticA_cool(new BStatusNumeric(0.1));
-    if (getQuadraticB_cool().isNull()) setQuadraticB_cool(new BStatusNumeric(5.0));
-    
-    // 7. Schedule the first execution immediately
-    Clock.schedule(this, BRelTime.makeSeconds(1), BProgram.execute, null);
+  // 4) Normal operation
+  if (isOptimalStartRunning) {
+    monitorActiveRun();
+  } else {
+    updateModelPredictions();
+    checkForStartTrigger();
+  }
 }
 
-```
 
-### 2. onExecute()
 
-```java
-// onExecute
+// ============================================================
+// Validation / wiring helpers
+// ============================================================
+
+private boolean isDataValid(BStatusNumeric slot, double min, double max)
 {
-    try {
-        // --- A. Master Enable Guard ---
-        boolean enabled = getEnable().getStatus().isOk() && getEnable().getValue();
-        if (!enabled) {
-            forceCommandNull();
-            setStatusTrace(new BStatusString("Disabled via Enable slot."));
-            return;
-        }
-
-        // --- B. Input Validation ---
-        if (!validateInputs()) {
-            forceCommandNull();
-            return;
-        }
-
-        // --- C. Core Logic Cycle ---
-        
-        // 1. Calculate predictions for all 3 models
-        //    (This runs continuously so we can see the countdown on the wire sheet)
-        updateModelPredictions();
-
-        // 2. State Machine Handling
-        if (isOptimalStartRunning) {
-            // We are currently IN a startup run
-            monitorActiveRun();
-            // Keep command TRUE while running
-            forceCommandTrue();
-        } 
-        else {
-            // We are IDLE, checking if we should start
-            checkForStartTrigger();
-        }
-
-    } catch (Exception e) {
-        // Safety net: Log error and ensure we don't crash the JACE thread
-        String msg = "ERROR in onExecute: " + e.toString();
-        if (msg.length() > 200) msg = msg.substring(0, 200);
-        setStatusLog(new BStatusString(msg));
-        e.printStackTrace();
-    } finally {
-        // Always reschedule for 15 seconds (responsive but low CPU)
-        if (ticket != null) ticket.cancel();
-        ticket = Clock.schedule(this, BRelTime.makeSeconds(15), BProgram.execute, null);
-    }
+  if (slot == null) return false;
+  if (!slot.getStatus().isOk()) return false;
+  double val = slot.getValue();
+  if (val < min) return false;
+  if (val > max) return false;
+  return true;
 }
 
-```
-
-### 3. onStop()
-
-```java
-// onStop
+private void ensureNumericWiredOrNull(String slotName, BStatusNumeric point)
 {
-    if (ticket != null) {
-        ticket.cancel();
-        ticket = null;
+  try {
+    if (point == null) return;
+    Slot slot = getComponent().getSlot(slotName);
+    if (slot == null) return;
+    BLink[] links = getComponent().getLinks(slot);
+    if (links == null || links.length == 0) {
+      point.setValue(0);
+      point.setStatus(BStatus.NULL);
     }
-    setStatusLog(new BStatusString("Stopped."));
+  }
+  catch (Exception e) {
+    // ignore – safety helper only
+  }
 }
 
-```
-
-### 4. Helpers
-
-```java
-// Helpers
+private boolean validateInputs()
 {
-    // --- State Variables ---
-    private Clock.Ticket ticket;
-    private boolean isOptimalStartRunning = false;
-    private long runStartTimestamp = 0L;
-    private double startZoneTemp = 0.0;
-    private long firstRunTimestamp = 0L;
-    
-    // Model Selection State
-    private int currentBestModelIndex = 0; // 0=Base, 1=Quad, 2=LinOAT
-    private boolean autoModeActive = false;
+  if (!isDataValid(getZoneTemp(), MIN_VALID_TEMP, MAX_VALID_TEMP)) {
+    setStatusTrace(new BStatusString("Fault: Zone Temp invalid"));
+    return false;
+  }
 
-    // --- History Lists for Regression (Model 1) ---
-    // Storing (DeltaT^2, ActualMinutes) pairs roughly
-    private java.util.List<double[]> heatHistory = new java.util.ArrayList();
-    private java.util.List<double[]> coolHistory = new java.util.ArrayList();
+  if (!isDataValid(getTargetZoneTempSetpoint(), MIN_VALID_TEMP, MAX_VALID_TEMP)) {
+    setStatusTrace(new BStatusString("Fault: Setpoint invalid"));
+    return false;
+  }
 
-    // --- Constants ---
-    private static final double MIN_VALID_TEMP = -50.0;
-    private static final double MAX_VALID_TEMP = 250.0;
-    
-    // --- 1. Validation & Safety ---
-    
-    private boolean validateInputs() {
-        if (!isOk(getZoneTemp()) || !rangeCheck(getZoneTemp())) {
-            setStatusTrace(new BStatusString("Fault: Zone Temp invalid"));
-            return false;
-        }
-        if (!isOk(getTargetZoneTempSetpoint()) || !rangeCheck(getTargetZoneTempSetpoint())) {
-            setStatusTrace(new BStatusString("Fault: Setpoint invalid"));
-            return false;
-        }
-        if (!isOk(getScheduleNextEventTime())) {
-            setStatusTrace(new BStatusString("Fault: Next Event Time invalid"));
-            return false;
-        }
-        // Outdoor temp is optional (Model 2 will just degrade to Linear if missing),
-        // but we check it for reporting.
-        setStatusTrace(new BStatusString("OK"));
-        return true;
-    }
+  if (getScheduleNextEventTime() == null ||
+      getScheduleNextEventTime().getStatus().isNull())
+  {
+    setStatusTrace(new BStatusString("Fault: scheduleNextEventTime NULL"));
+    return false;
+  }
 
-    private boolean isOk(BStatusNumeric s) { return s != null && s.getStatus().isOk(); }
-    private boolean isOk(BStatusBoolean s) { return s != null && s.getStatus().isOk(); }
-    
-    private boolean rangeCheck(BStatusNumeric s) {
-        double v = s.getValue();
-        return v >= MIN_VALID_TEMP && v <= MAX_VALID_TEMP;
-    }
+  if (getScheduleNextValue() == null ||
+      getScheduleNextValue().getStatus().isNull())
+  {
+    setStatusTrace(new BStatusString("Fault: scheduleNextValue NULL"));
+    return false;
+  }
 
-    private void forceCommandNull() {
-        getEquipmentStartCommand().setValue(false);
-        getEquipmentStartCommand().setStatus(BStatus.NULL);
-        setIsRunning(new BStatusBoolean(false));
-    }
-    
-    private void forceCommandTrue() {
-        getEquipmentStartCommand().setValue(true);
-        getEquipmentStartCommand().setStatus(BStatus.ok);
-        setIsRunning(new BStatusBoolean(true));
-    }
-
-    // --- 2. Prediction Logic ---
-
-    private void updateModelPredictions() {
-        double zone = getZoneTemp().getValue();
-        double sp = getTargetZoneTempSetpoint().getValue();
-        double tol = getTempTolerance().getValue();
-        double deltaT = Math.abs(sp - zone);
-        double maxMins = getMaxMinutesAllowed().getValue();
-        
-        // If within tolerance, no prediction needed (0 minutes)
-        if (deltaT <= tol) {
-            setLastRunPredictedMinutes_m0(new BStatusNumeric(0.0));
-            setLastRunPredictedMinutes_m1(new BStatusNumeric(0.0));
-            setLastRunPredictedMinutes_m2(new BStatusNumeric(0.0));
-            setCurrentModelPredictMinutes(new BStatusNumeric(0.0));
-            return;
-        }
-        
-        boolean isHeat = zone < sp;
-
-        // --- Model 0: Baseline ---
-        double rate0 = isHeat ? getDegreesPerMinuteHeat().getValue() : getDegreesPerMinuteCool().getValue();
-        if (rate0 <= 0.001) rate0 = 0.1; // Safety div/0
-        double t0 = deltaT / rate0;
-        
-        // --- Model 1: Quadratic ---
-        double a1 = isHeat ? getQuadraticA_heat().getValue() : getQuadraticA_cool().getValue();
-        double b1 = isHeat ? getQuadraticB_heat().getValue() : getQuadraticB_cool().getValue();
-        double t1 = (a1 * deltaT * deltaT) + b1;
-        
-        // --- Model 2: Linear + OAT Ratio ---
-        // Basic linear part uses Model 0 rate
-        double t2 = t0; 
-        if (isOk(getOutdoorAirTemp())) {
-            double oat = getOutdoorAirTemp().getValue();
-            boolean imperial = getUseImperialUnits().getValue();
-            double tRef = imperial ? (isHeat ? 32.0 : 100.0) : (isHeat ? 0.0 : 38.0);
-            
-            // Note: In a full impl, we would store 'baselineOAT' from the learned day.
-            // For this simplified logic, we assume a standard baseline of 50F (10C) for ratio calculation 
-            // or use a learned slot if available. 
-            // Simplified ratio logic:
-            double diffCurrent = Math.abs(tRef - oat);
-            double diffBase = imperial ? 20.0 : 11.0; // Arbitrary 'moderate' delta for baseline
-            if (diffCurrent < 1.0) diffCurrent = 1.0;
-            
-            double ratio = diffBase / diffCurrent;
-            // Clamp ratio 0.5 to 2.0 to prevent wild swings
-            ratio = Math.max(0.5, Math.min(2.0, ratio));
-            
-            t2 = t0 * ratio;
-        }
-
-        // Clamp all to max
-        t0 = Math.min(maxMins, Math.max(0, t0));
-        t1 = Math.min(maxMins, Math.max(0, t1));
-        t2 = Math.min(maxMins, Math.max(0, t2));
-
-        // Output to slots
-        setLastRunPredictedMinutes_m0(new BStatusNumeric(t0));
-        setLastRunPredictedMinutes_m1(new BStatusNumeric(t1));
-        setLastRunPredictedMinutes_m2(new BStatusNumeric(t2));
-
-        // Select Best Model
-        updateAutoSelection();
-        
-        double finalPred = (currentBestModelIndex == 1) ? t1 : (currentBestModelIndex == 2) ? t2 : t0;
-        setCurrentModel(new BStatusNumeric(currentBestModelIndex));
-        setCurrentModelPredictMinutes(new BStatusNumeric(finalPred));
-    }
-
-    private void updateAutoSelection() {
-        // Only switch if auto mode days have passed
-        if (firstRunTimestamp == 0) return; // Never ran
-        
-        double daysNeeded = getAutoModeStartDays().getValue();
-        double daysActive = (System.currentTimeMillis() - firstRunTimestamp) / 86400000.0;
-        
-        if (daysActive < daysNeeded) {
-            currentBestModelIndex = 0; // Force baseline during learning
-            return;
-        }
-
-        // Compare Average Squared Errors
-        double e0 = getAvgSquaredError_m0().getValue();
-        double e1 = getAvgSquaredError_m1().getValue();
-        double e2 = getAvgSquaredError_m2().getValue();
-
-        // Simple min-find
-        if (e1 < e0 && e1 < e2) currentBestModelIndex = 1;
-        else if (e2 < e0 && e2 < e1) currentBestModelIndex = 2;
-        else currentBestModelIndex = 0;
-    }
-
-    // --- 3. Trigger Logic ---
-
-    private void checkForStartTrigger() {
-        if (!isOk(getScheduleNextValue())) return;
-        
-        boolean nextIsOccupied = getScheduleNextValue().getValue();
-        if (!nextIsOccupied) return; // Next state is Off, ignore
-
-        long nextTime = (long)getScheduleNextEventTime().getValue();
-        long now = System.currentTimeMillis();
-        double minsUntil = (nextTime - now) / 60000.0;
-        
-        // If event is in the past or way in future (24h+), ignore
-        if (minsUntil < 0 || minsUntil > 1440) return;
-
-        double predicted = getCurrentModelPredictMinutes().getValue();
-        
-        // TRIGGER CONDITION
-        if (predicted >= minsUntil) {
-            startRun();
-        }
-    }
-
-    private void startRun() {
-        isOptimalStartRunning = true;
-        runStartTimestamp = System.currentTimeMillis();
-        startZoneTemp = getZoneTemp().getValue();
-        
-        if (firstRunTimestamp == 0) firstRunTimestamp = System.currentTimeMillis();
-        
-        setStatusLog(new BStatusString("Starting Optimal Run. Pred: " + getCurrentModelPredictMinutes().getValue() + "m"));
-        forceCommandTrue();
-    }
-
-    // --- 4. Active Run Monitoring & Learning ---
-
-    private void monitorActiveRun() {
-        long now = System.currentTimeMillis();
-        double elapsed = (now - runStartTimestamp) / 60000.0;
-        setCurrentRunElapsedMinutes(new BStatusNumeric(elapsed));
-        
-        double sp = getTargetZoneTempSetpoint().getValue();
-        double zone = getZoneTemp().getValue();
-        double tol = getTempTolerance().getValue();
-        double dist = Math.abs(sp - zone);
-
-        // Check completion
-        if (dist <= tol) {
-            completeRun(elapsed, true);
-            return;
-        }
-        
-        // Check timeout
-        if (elapsed >= getMaxMinutesAllowed().getValue()) {
-            completeRun(elapsed, false);
-            return;
-        }
-    }
-
-    private void completeRun(double actualMins, boolean success) {
-        isOptimalStartRunning = false;
-        forceCommandNull(); // Release to schedule control
-        
-        if (!success) {
-            setStatusLog(new BStatusString("Run Timeout."));
-            return; 
-        }
-
-        setStatusLog(new BStatusString("Run Complete: " + actualMins + "m. Updating models..."));
-
-        // Retrieve snapshots (what we predicted at start of run)
-        // In a real robust system, we would have stored these in private vars at startRun() 
-        // to avoid them changing mid-run. For this template, we assume they held steady or we take current.
-        double p0 = getLastRunPredictedMinutes_m0().getValue();
-        double p1 = getLastRunPredictedMinutes_m1().getValue();
-        double p2 = getLastRunPredictedMinutes_m2().getValue();
-
-        // Update Metrics for All 3
-        updateMetrics(0, p0, actualMins, getAvgSquaredError_m0());
-        updateMetrics(1, p1, actualMins, getAvgSquaredError_m1());
-        updateMetrics(2, p2, actualMins, getAvgSquaredError_m2());
-
-        // Update Learned Parameters
-        double endZoneTemp = getZoneTemp().getValue();
-        double deltaT = Math.abs(endZoneTemp - startZoneTemp);
-        boolean isHeat = startZoneTemp < endZoneTemp; // Roughly
-        
-        // Learn Model 0 (Rate)
-        if (actualMins > 1.0) {
-            double newRate = deltaT / actualMins;
-            // Simple EMA smoothing
-            double alpha = getEmaWeightingFactor().getValue();
-            if (isHeat) {
-                double old = getDegreesPerMinuteHeat().getValue();
-                setDegreesPerMinuteHeat(new BStatusNumeric(old + alpha * (newRate - old)));
-            } else {
-                double old = getDegreesPerMinuteCool().getValue();
-                setDegreesPerMinuteCool(new BStatusNumeric(old + alpha * (newRate - old)));
-            }
-        }
-        
-        // Learn Model 1 (Quadratic) - Simplified Regress logic
-        // (Full regression code omitted for brevity, but would go here updating A/B coeffs)
-    }
-
-    private void updateMetrics(int modelIdx, double pred, double actual, BStatusNumeric avgSlot) {
-        double err = pred - actual;
-        double sqErr = err * err;
-        double pct = (actual > 0) ? (err/actual)*100.0 : 0.0;
-        
-        if (modelIdx == 0) {
-            setLastRunActualMinutes_m0(new BStatusNumeric(actual));
-            setLastRunErrorMinutes_m0(new BStatusNumeric(err));
-            setLastRunErrorPercent_m0(new BStatusNumeric(pct));
-            setLastRunSquaredError_m0(new BStatusNumeric(sqErr));
-        } else if (modelIdx == 1) {
-            setLastRunActualMinutes_m1(new BStatusNumeric(actual));
-            setLastRunErrorMinutes_m1(new BStatusNumeric(err));
-            setLastRunErrorPercent_m1(new BStatusNumeric(pct));
-            setLastRunSquaredError_m1(new BStatusNumeric(sqErr));
-        } else {
-            setLastRunActualMinutes_m2(new BStatusNumeric(actual));
-            setLastRunErrorMinutes_m2(new BStatusNumeric(err));
-            setLastRunErrorPercent_m2(new BStatusNumeric(pct));
-            setLastRunSquaredError_m2(new BStatusNumeric(sqErr));
-        }
-        
-        // Update Rolling Average
-        double oldAvg = avgSlot.getValue();
-        // Assuming N=10 roughly for EMA weight
-        double newAvg = oldAvg + 0.1 * (sqErr - oldAvg);
-        avgSlot.setValue(newAvg);
-    }
+  // OAT optional – just note if bad
+  if (getOutdoorAirTemp() != null &&
+      !getOutdoorAirTemp().getStatus().isOk())
+  {
+    setStatusTrace(new BStatusString("Outdoor air temp invalid – Model 2 uses linear fallback."));
+  }
+  else {
+    setStatusTrace(new BStatusString("OK"));
+  }
+  return true;
 }
 
+private void forceCommandNull()
+{
+  getEquipmentStartCommand().setValue(false);
+  getEquipmentStartCommand().setStatus(BStatus.NULL);
+  setIsRunning(new BStatusBoolean(false));
+}
+
+private void forceCommandTrue()
+{
+  getEquipmentStartCommand().setValue(true);
+  getEquipmentStartCommand().setStatus(BStatus.ok);
+  setIsRunning(new BStatusBoolean(true));
+}
+
+// ============================================================
+// 3-Model prediction + auto selection
+// ============================================================
+private void updateModelPredictions()
+{
+  double zone = getZoneTemp().getValue();
+  double sp   = getTargetZoneTempSetpoint().getValue();
+  double tol  = getTempTolerance().getValue();
+  double deltaT = Math.abs(sp - zone);
+  double maxMins = getMaxMinutesAllowed().getValue();
+
+  // If within tolerance, everyone predicts 0
+  if (deltaT <= tol) {
+    setLastRunPredictedMinutes_m0(new BStatusNumeric(0.0));
+    setLastRunPredictedMinutes_m1(new BStatusNumeric(0.0));
+    setLastRunPredictedMinutes_m2(new BStatusNumeric(0.0));
+    setCurrentModelPredictMinutes(new BStatusNumeric(0.0));
+    return;
+  }
+
+  boolean isHeat = zone < sp;
+
+  // -------------------------------------------------
+  // Model 0: baseline degrees-per-minute
+  // t0 = ΔT / r
+  // -------------------------------------------------
+  double rate0 = isHeat ? getDegreesPerMinuteHeat().getValue()
+                        : getDegreesPerMinuteCool().getValue();
+  if (rate0 <= 0.001) rate0 = 0.1; // safety fallback
+
+  double t0 = deltaT / rate0;
+
+  // -------------------------------------------------
+  // Model 1: Quadratic (PNNL)
+  // t1 = a * (ΔT^2) + b
+  // -------------------------------------------------
+  double a1 = isHeat ? getQuadraticA_heat().getValue()
+                     : getQuadraticA_cool().getValue();
+  double b1 = isHeat ? getQuadraticB_heat().getValue()
+                     : getQuadraticB_cool().getValue();
+
+  double t1 = (a1 * deltaT * deltaT) + b1;
+
+  // -------------------------------------------------
+  // Model 2: PNNL Linear + OAT ratio
+  // minutes = baselineMinutes * OAT_ratio
+  // where OAT_ratio = |Tref - OAT_base| / |Tref - OAT_now|
+  //
+  // We REUSE t0 as the "linearMinutes" fallback
+  // if OAT/baselines are not usable.
+  // -------------------------------------------------
+  double oatNow = (getOutdoorAirTemp() != null &&
+                   getOutdoorAirTemp().getStatus().isOk())
+                  ? getOutdoorAirTemp().getValue()
+                  : Double.NaN;
+
+  double t2 = calculateModel2Minutes(
+      isHeat ? "HEAT" : "COOL",
+      deltaT,
+      oatNow,
+      t0    // linear fallback
+  );
+
+  // Clamp each model to [0, maxMinutesAllowed]
+  t0 = Math.min(maxMins, Math.max(0.0, t0));
+  t1 = Math.min(maxMins, Math.max(0.0, t1));
+  t2 = Math.min(maxMins, Math.max(0.0, t2));
+
+  // Push into the slots
+  setLastRunPredictedMinutes_m0(new BStatusNumeric(t0));
+  setLastRunPredictedMinutes_m1(new BStatusNumeric(t1));
+  setLastRunPredictedMinutes_m2(new BStatusNumeric(t2));
+
+  // Let auto-selection decide which one is "best"
+  updateAutoSelection();
+
+  double finalPred;
+  if      (currentBestModelIndex == 1) finalPred = t1;
+  else if (currentBestModelIndex == 2) finalPred = t2;
+  else                                 finalPred = t0;
+
+  setCurrentModel(new BStatusNumeric(currentBestModelIndex));
+  setCurrentModelPredictMinutes(new BStatusNumeric(finalPred));
+}
+
+private void updateAutoSelection()
+{
+  if (firstRunTimestamp == 0L) return;
+
+  double daysNeeded = getAutoModeStartDays().getValue();
+  double daysActive = (System.currentTimeMillis() - firstRunTimestamp) / 86400000.0;
+
+  if (daysActive < daysNeeded) {
+    currentBestModelIndex = 0;
+    return;
+  }
+
+  double e0 = getAvgSquaredError_m0().getValue();
+  double e1 = getAvgSquaredError_m1().getValue();
+  double e2 = getAvgSquaredError_m2().getValue();
+
+  if (e1 < e0 && e1 < e2)      currentBestModelIndex = 1;
+  else if (e2 < e0 && e2 < e1) currentBestModelIndex = 2;
+  else                         currentBestModelIndex = 0;
+}
+
+// ============================================================
+// Trigger logic – compare predicted vs time to next occupancy
+// ============================================================
+private void checkForStartTrigger()
+{
+  if (getScheduleNextValue() == null ||
+      !getScheduleNextValue().getStatus().isOk())
+    return;
+
+  boolean nextIsOccupied = getScheduleNextValue().getValue();
+  if (!nextIsOccupied) return;
+
+  if (getScheduleNextEventTime() == null ||
+      !getScheduleNextEventTime().getStatus().isOk())
+    return;
+
+  long nextTimeMs = (long)getScheduleNextEventTime().getValue();
+  long nowMs      = System.currentTimeMillis();
+  double minsUntil = (nextTimeMs - nowMs) / 60000.0;
+
+  if (minsUntil < 0.0 || minsUntil > 1440.0) return;
+
+  double predicted = getCurrentModelPredictMinutes().getValue();
+
+  if (predicted >= minsUntil) {
+    startRun();
+  }
+}
+
+private void startRun() {
+    isOptimalStartRunning = true;
+    runStartTimestamp     = System.currentTimeMillis();
+
+    // Capture start zone temp and ΔT sign
+    startZoneTemp = getZoneTemp().getValue();
+    double sp     = getTargetZoneTempSetpoint().getValue();
+    deltaTAtStart = Math.abs(sp - startZoneTemp);
+    lastRunWasHeat = (startZoneTemp < sp);
+
+    // Capture OAT at start (for Model 2 learning)
+    if (getOutdoorAirTemp() != null && getOutdoorAirTemp().getStatus().isOk()) {
+        oatAtStart = getOutdoorAirTemp().getValue();
+    } else {
+        oatAtStart = Double.NaN;
+    }
+
+    if (firstRunTimestamp == 0L) {
+        firstRunTimestamp = runStartTimestamp;
+    }
+
+    setStatusLog(new BStatusString(
+      "Starting optimal start run. Model=" + currentBestModelIndex +
+      " Pred=" + getCurrentModelPredictMinutes().getValue() + " min"
+    ));
+
+    forceCommandTrue();
+}
+
+
+
+// ============================================================
+// Active run monitoring & learning
+// ============================================================
+private void monitorActiveRun()
+{
+  long now = System.currentTimeMillis();
+  double elapsed = (now - runStartTimestamp) / 60000.0;
+  setCurrentRunElapsedMinutes(new BStatusNumeric(elapsed));
+
+  double sp   = getTargetZoneTempSetpoint().getValue();
+  double zone = getZoneTemp().getValue();
+  double tol  = getTempTolerance().getValue();
+  double dist = Math.abs(sp - zone);
+
+  if (dist <= tol) {
+    completeRun(elapsed, true);
+    return;
+  }
+
+  if (elapsed >= getMaxMinutesAllowed().getValue()) {
+    completeRun(elapsed, false);
+    return;
+  }
+}
+
+
+// ============================================================
+// Active run monitoring & learning
+// ============================================================
+private void completeRun(double actualMins, boolean success)
+{
+  isOptimalStartRunning = false;
+  forceCommandNull();
+
+  if (!success) {
+    setStatusLog(new BStatusString("Run timeout after " + actualMins + " min."));
+    return;
+  }
+
+  setStatusLog(new BStatusString("Run complete in " + actualMins + " min. Updating models."));
+
+  // Snapshot the three model predictions used for this run
+  double p0 = getLastRunPredictedMinutes_m0().getValue();
+  double p1 = getLastRunPredictedMinutes_m1().getValue();
+  double p2 = getLastRunPredictedMinutes_m2().getValue();
+
+  // Update squared-error metrics for each model
+  updateMetrics(0, p0, actualMins, getAvgSquaredError_m0());
+  updateMetrics(1, p1, actualMins, getAvgSquaredError_m1());
+  updateMetrics(2, p2, actualMins, getAvgSquaredError_m2());
+
+  // --- Common run stats used by all models ---
+  double endZoneTemp = getZoneTemp().getValue();
+  double deltaT      = Math.abs(endZoneTemp - startZoneTemp);
+  boolean isHeat     = (startZoneTemp < endZoneTemp);
+
+  // -------------------------------------------------
+  // Model 0: degrees-per-minute learning
+  // -------------------------------------------------
+  if (actualMins > 1.0 && deltaT > 0.1) {
+    double newRate = deltaT / actualMins;
+    double alpha   = getEmaWeightingFactor().getValue();
+
+    if (isHeat) {
+      double old = getDegreesPerMinuteHeat().getValue();
+      setDegreesPerMinuteHeat(new BStatusNumeric(old + alpha * (newRate - old)));
+    } else {
+      double old = getDegreesPerMinuteCool().getValue();
+      setDegreesPerMinuteCool(new BStatusNumeric(old + alpha * (newRate - old)));
+    }
+  }
+
+  // -------------------------------------------------
+  // Model 1: full quadratic regression learning
+  // -------------------------------------------------
+  if (actualMins > 5.0 && deltaT > 1.0) {
+    String mode = isHeat ? "HEAT" : "COOL";
+
+    PerformanceRecord rec = new PerformanceRecord(
+      System.currentTimeMillis(),
+      actualMins,
+      deltaT,
+      mode
+    );
+
+    if (mode.equals("HEAT")) heatHistory.add(rec);
+    else                     coolHistory.add(rec);
+
+    // Refit curves and EMA-blend into A/B slots
+    updateModelRegression();
+
+    setStatusLog(new BStatusString(
+      "Learning updated (" + mode + "). Recalculated quadratic curve."));
+  }
+
+  // -------------------------------------------------
+  // Model 2: baseline minutes + OAT baseline learning
+  // (same “good run” filter as Model 1)
+  // -------------------------------------------------
+  if (actualMins > 5.0 && deltaT > 1.0) {
+    if (isHeat) {
+      lastHeatBaselineMinutes = actualMins;
+      if (!Double.isNaN(oatAtStart)) {
+        lastHeatBaselineOat = oatAtStart;
+      }
+    } else {
+      lastCoolBaselineMinutes = actualMins;
+      if (!Double.isNaN(oatAtStart)) {
+        lastCoolBaselineOat = oatAtStart;
+      }
+    }
+  }
+}
+
+
+
+// ============================================================
+// Metrics update (squared error per model)
+// ============================================================
+private void updateMetrics(int modelIdx, double pred, double actual, BStatusNumeric avgSlot)
+{
+  double err   = pred - actual;
+  double sqErr = err * err;
+  double pct   = (actual > 0.0) ? (err / actual) * 100.0 : 0.0;
+
+  if (modelIdx == 0) {
+    setLastRunActualMinutes_m0 (new BStatusNumeric(actual));
+    setLastRunErrorMinutes_m0  (new BStatusNumeric(err));
+    setLastRunErrorPercent_m0  (new BStatusNumeric(pct));
+    setLastRunSquaredError_m0  (new BStatusNumeric(sqErr));
+  }
+  else if (modelIdx == 1) {
+    setLastRunActualMinutes_m1 (new BStatusNumeric(actual));
+    setLastRunErrorMinutes_m1  (new BStatusNumeric(err));
+    setLastRunErrorPercent_m1  (new BStatusNumeric(pct));
+    setLastRunSquaredError_m1  (new BStatusNumeric(sqErr));
+  }
+  else {
+    setLastRunActualMinutes_m2 (new BStatusNumeric(actual));
+    setLastRunErrorMinutes_m2  (new BStatusNumeric(err));
+    setLastRunErrorPercent_m2  (new BStatusNumeric(pct));
+    setLastRunSquaredError_m2  (new BStatusNumeric(sqErr));
+  }
+
+  double oldAvg = avgSlot.getValue();
+  double newAvg = oldAvg + 0.1 * (sqErr - oldAvg);
+  avgSlot.setValue(newAvg);
+}
+
+// ============================================================
+// Quadratic regression engine (Model 1)
+// ============================================================
+private void updateModelRegression()
+{
+  pruneHistory();
+
+  double ema = getEmaWeightingFactor().getValue();
+  if (ema <= 0.0 || ema > 1.0) ema = 0.2;
+
+  // HEAT curve
+  if (heatHistory.size() >= 2) {
+    double[] heatParams = regress(heatHistory);
+    double aHeat = getQuadraticA_heat().getValue();
+    double bHeat = getQuadraticB_heat().getValue();
+    aHeat = aHeat + ema * (heatParams[0] - aHeat);
+    bHeat = bHeat + ema * (heatParams[1] - bHeat);
+    setQuadraticA_heat(new BStatusNumeric(aHeat));
+    setQuadraticB_heat(new BStatusNumeric(bHeat));
+  }
+
+  // COOL curve
+  if (coolHistory.size() >= 2) {
+    double[] coolParams = regress(coolHistory);
+    double aCool = getQuadraticA_cool().getValue();
+    double bCool = getQuadraticB_cool().getValue();
+    aCool = aCool + ema * (coolParams[0] - aCool);
+    bCool = bCool + ema * (coolParams[1] - bCool);
+    setQuadraticA_cool(new BStatusNumeric(aCool));
+    setQuadraticB_cool(new BStatusNumeric(bCool));
+  }
+
+  updateVisualRates();
+}
+
+// Ordinary least squares for y = a*x + b with x = (ΔT²)
+private double[] regress(java.util.List<PerformanceRecord> history)
+{
+  if (history.size() < 2) return new double[] { 0.1, 5.0 };
+
+  double n = history.size();
+  double sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+
+  for (PerformanceRecord r : history) {
+    double x = r.deltaT * r.deltaT;  // ΔT²
+    double y = r.durationMinutes;
+    sumX  += x;
+    sumY  += y;
+    sumXY += x * y;
+    sumXX += x * x;
+  }
+
+  double denom = (n * sumXX) - (sumX * sumX);
+  if (Math.abs(denom) < 1e-6) {
+    return new double[] { 0.1, 5.0 };
+  }
+
+  double a = ((n * sumXY) - (sumX * sumY)) / denom;
+  double b = (sumY - a * sumX) / n;
+
+  return new double[] { a, b };
+}
+
+private void pruneHistory()
+{
+  if (getHistoryDaysToRetain().isNull()) return;
+  int maxDays = (int) getHistoryDaysToRetain().getValue();
+  if (maxDays <= 0) return;
+
+  long cutoff = System.currentTimeMillis() - (maxDays * 86400000L);
+
+  heatHistory.removeIf(r -> r.timestamp < cutoff);
+  coolHistory.removeIf(r -> r.timestamp < cutoff);
+}
+
+// Keep DPM slots roughly aligned with observed history
+private void updateVisualRates()
+{
+  if (!heatHistory.isEmpty()) {
+    double totalDT = 0, totalT = 0;
+    for (PerformanceRecord r : heatHistory) {
+      totalDT += r.deltaT;
+      totalT  += r.durationMinutes;
+    }
+    if (totalT > 0) {
+      setDegreesPerMinuteHeat(new BStatusNumeric(totalDT / totalT));
+    }
+  }
+
+  if (!coolHistory.isEmpty()) {
+    double totalDT = 0, totalT = 0;
+    for (PerformanceRecord r : coolHistory) {
+      totalDT += r.deltaT;
+      totalT  += r.durationMinutes;
+    }
+    if (totalT > 0) {
+      setDegreesPerMinuteCool(new BStatusNumeric(totalDT / totalT));
+    }
+  }
+}
+
+// ==========================================================
+// PNNL Model 2: minutes = baselineMinutes * OAT_ratio
+// OAT_ratio = |Tref - OAT_base| / |Tref - OAT_now|
+// with clamping to [RATIO_MIN, RATIO_MAX]
+// ==========================================================
+private double calculateModel2Minutes(String mode, double delta, double oatNow, double linearMinutes) {
+    boolean imperial = getUseImperialUnits().getValue();
+
+    double tBase;
+    double oatBase;
+    double tRef;
+    double rateFallback;
+
+    if ("HEAT".equals(mode)) {
+        tBase        = lastHeatBaselineMinutes;
+        oatBase      = lastHeatBaselineOat;
+        tRef         = imperial ? TREF_HEAT_IMP : TREF_HEAT_MET;
+        rateFallback = getDegreesPerMinuteHeat().getValue();
+    } else {
+        tBase        = lastCoolBaselineMinutes;
+        oatBase      = lastCoolBaselineOat;
+        tRef         = imperial ? TREF_COOL_IMP : TREF_COOL_MET;
+        rateFallback = getDegreesPerMinuteCool().getValue();
+    }
+
+    // Fallback: missing baselines or OAT → use simple linear model (Model 0)
+    if (Double.isNaN(oatNow) || Double.isNaN(oatBase) || rateFallback <= 0.001) {
+        double fallback = (linearMinutes > 0.0)
+            ? linearMinutes
+            : (rateFallback > 0.0 ? delta / rateFallback : 180.0);
+
+        // Visual adder slots go to 0.0 when we’re not using OAT
+        if ("HEAT".equals(mode)) setHeatOatMinutesAdder(new BStatusNumeric(0.0));
+        else                     setCoolOatMinutesAdder(new BStatusNumeric(0.0));
+
+        return fallback;
+    }
+
+    // PNNL ratio: as OAT_now approaches Tref, denominator shrinks and minutes grow
+    double numerator   = Math.abs(tRef - oatBase);
+    double denominator = Math.abs(tRef - oatNow);
+
+    // Protect against divide-by-zero when today ≈ design temp
+    if (denominator < 0.5) denominator = 0.5;
+
+    double ratio = numerator / denominator;
+
+    // Clamp ratio to sane limits
+    if (ratio < RATIO_MIN) ratio = RATIO_MIN;
+    if (ratio > RATIO_MAX) ratio = RATIO_MAX;
+
+    double predicted = tBase * ratio;
+
+    // Update visual “adder” slots
+    double added = predicted - tBase;
+    if ("HEAT".equals(mode)) setHeatOatMinutesAdder(new BStatusNumeric(added));
+    else                     setCoolOatMinutesAdder(new BStatusNumeric(added));
+
+    return predicted;
+}
 ```
