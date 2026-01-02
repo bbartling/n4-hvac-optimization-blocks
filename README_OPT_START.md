@@ -230,6 +230,14 @@ Do not remove existing slots. This table defines the inputs, outputs, and the ex
 
 
 ```java
+/* UDPATE LOG
+
+1-2-2026 - rounding on status trace minutes and fault handling to exclude if point is in alarm
+and EMA in the updateModelRegression using EMA_ALPHA for model 1.
+
+*/
+
+
 // ==========================================================
 // CONSTANTS
 // ==========================================================
@@ -387,13 +395,26 @@ public void onExecute() throws Exception {
 // Validation / wiring helpers
 // ============================================================
 
+// Add this to your // Helpers block
+private double round1(double v) {
+    if (Double.isNaN(v)) return 0.0;
+    // Rounds to one decimal place (e.g., 0.3)
+    return Math.round(v * 10.0) / 10.0;
+}
+
 private boolean isDataValid(BStatusNumeric slot, double min, double max)
 {
   if (slot == null) return false;
-  if (!slot.getStatus().isOk()) return false;
+  
+  // ALARM is not "ok", but it is "usable". 
+  // We only block if it's explicitly Fault, Down, Null, or Disabled.
+  BStatus status = slot.getStatus();
+  if (status.isFault() || status.isDown() || status.isNull() || status.isDisabled()) {
+    return false;
+  }
+
   double val = slot.getValue();
-  if (val < min) return false;
-  if (val > max) return false;
+  if (val < min || val > max) return false;
   return true;
 }
 
@@ -426,31 +447,30 @@ private boolean validateInputs()
     return false;
   }
 
-  if (getScheduleNextEventTime() == null ||
-      getScheduleNextEventTime().getStatus().isNull())
-  {
+  if (getScheduleNextEventTime() == null || getScheduleNextEventTime().getStatus().isNull()) {
     setStatusTrace(new BStatusString("Fault: scheduleNextEventTime NULL"));
     return false;
   }
 
-  if (getScheduleNextValue() == null ||
-      getScheduleNextValue().getStatus().isNull())
-  {
+  if (getScheduleNextValue() == null || getScheduleNextValue().getStatus().isNull()) {
     setStatusTrace(new BStatusString("Fault: scheduleNextValue NULL"));
     return false;
   }
 
-  // OAT optional – just note if bad
-  if (getOutdoorAirTemp() != null &&
-      !getOutdoorAirTemp().getStatus().isOk())
-  {
-    setStatusTrace(new BStatusString("Outdoor air temp invalid – Model 2 uses linear fallback."));
+  // Default to OK
+  setStatusTrace(new BStatusString("OK"));
+
+  // OAT optional – only warn if truly unusable (ALARM allowed)
+  if (getOutdoorAirTemp() != null) {
+    BStatus s = getOutdoorAirTemp().getStatus();
+    if (s.isFault() || s.isDown() || s.isNull() || s.isDisabled()) {
+      setStatusTrace(new BStatusString("Outdoor air temp invalid – Model 2 uses linear fallback."));
+    }
   }
-  else {
-    setStatusTrace(new BStatusString("OK"));
-  }
+
   return true;
 }
+
 
 private void forceCommandNull()
 {
@@ -517,10 +537,14 @@ private void updateModelPredictions()
   // We REUSE t0 as the "linearMinutes" fallback
   // if OAT/baselines are not usable.
   // -------------------------------------------------
-  double oatNow = (getOutdoorAirTemp() != null &&
-                   getOutdoorAirTemp().getStatus().isOk())
-                  ? getOutdoorAirTemp().getValue()
-                  : Double.NaN;
+  double oatNow = Double.NaN;
+  if (getOutdoorAirTemp() != null) {
+    BStatus s = getOutdoorAirTemp().getStatus();
+    if (!(s.isFault() || s.isDown() || s.isNull() || s.isDisabled())) {
+      oatNow = getOutdoorAirTemp().getValue(); // includes ALARM
+    }
+  }
+
 
   double t2 = calculateModel2Minutes(
       isHeat ? "HEAT" : "COOL",
@@ -624,7 +648,7 @@ private void startRun() {
 
     setStatusLog(new BStatusString(
       "Starting optimal start run. Model=" + currentBestModelIndex +
-      " Pred=" + getCurrentModelPredictMinutes().getValue() + " min"
+      " Pred=" + round1(getCurrentModelPredictMinutes().getValue()) + " min"
     ));
 
     forceCommandTrue();
@@ -667,11 +691,11 @@ private void completeRun(double actualMins, boolean success)
   forceCommandNull();
 
   if (!success) {
-    setStatusLog(new BStatusString("Run timeout after " + actualMins + " min."));
+    setStatusLog(new BStatusString("Run timeout after " + round1(actualMins) + " min."));
     return;
   }
 
-  setStatusLog(new BStatusString("Run complete in " + actualMins + " min. Updating models."));
+  setStatusLog(new BStatusString("Run complete in " + round1(actualMins) + " min. Updating models."));
 
   // Snapshot the three model predictions used for this run
   double p0 = getLastRunPredictedMinutes_m0().getValue();
@@ -784,37 +808,57 @@ private void updateMetrics(int modelIdx, double pred, double actual, BStatusNume
 // ============================================================
 // Quadratic regression engine (Model 1)
 // ============================================================
+/**
+ * Performs Quadratic Regression on historical data and applies
+ * EMA smoothing to A and B coefficients (HEAT and COOL) to reduce jumpiness.
+ *
+ * Observed coefficients come from regression over retained history.
+ * Learned coefficients are updated via: New = Old + alpha*(Observed - Old)
+ */
 private void updateModelRegression()
 {
   pruneHistory();
 
-  double ema = getEmaWeightingFactor().getValue();
+  // Fixed smoothing for the quadratic model (separate from DPM EMA if desired)
+  double ema = EMA_ALPHA;
   if (ema <= 0.0 || ema > 1.0) ema = 0.2;
 
-  // HEAT curve
+  // --------------------------
+  // HEAT curve update
+  // --------------------------
   if (heatHistory.size() >= 2) {
-    double[] heatParams = regress(heatHistory);
-    double aHeat = getQuadraticA_heat().getValue();
-    double bHeat = getQuadraticB_heat().getValue();
-    aHeat = aHeat + ema * (heatParams[0] - aHeat);
-    bHeat = bHeat + ema * (heatParams[1] - bHeat);
-    setQuadraticA_heat(new BStatusNumeric(aHeat));
-    setQuadraticB_heat(new BStatusNumeric(bHeat));
+    double[] observed = regress(heatHistory); // [a, b] for y = a*(ΔT^2) + b
+
+    double currentA = getQuadraticA_heat().getValue();
+    double currentB = getQuadraticB_heat().getValue();
+
+    double newA = currentA + ema * (observed[0] - currentA);
+    double newB = currentB + ema * (observed[1] - currentB);
+
+    setQuadraticA_heat(new BStatusNumeric(newA));
+    setQuadraticB_heat(new BStatusNumeric(newB));
   }
 
-  // COOL curve
+  // --------------------------
+  // COOL curve update
+  // --------------------------
   if (coolHistory.size() >= 2) {
-    double[] coolParams = regress(coolHistory);
-    double aCool = getQuadraticA_cool().getValue();
-    double bCool = getQuadraticB_cool().getValue();
-    aCool = aCool + ema * (coolParams[0] - aCool);
-    bCool = bCool + ema * (coolParams[1] - bCool);
-    setQuadraticA_cool(new BStatusNumeric(aCool));
-    setQuadraticB_cool(new BStatusNumeric(bCool));
+    double[] observed = regress(coolHistory);
+
+    double currentA = getQuadraticA_cool().getValue();
+    double currentB = getQuadraticB_cool().getValue();
+
+    double newA = currentA + ema * (observed[0] - currentA);
+    double newB = currentB + ema * (observed[1] - currentB);
+
+    setQuadraticA_cool(new BStatusNumeric(newA));
+    setQuadraticB_cool(new BStatusNumeric(newB));
   }
 
+  // Keep the “visual” DPM rates aligned with the retained history
   updateVisualRates();
 }
+
 
 // Ordinary least squares for y = a*x + b with x = (ΔT²)
 private double[] regress(java.util.List<PerformanceRecord> history)
