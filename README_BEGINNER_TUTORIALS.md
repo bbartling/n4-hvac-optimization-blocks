@@ -2177,6 +2177,9 @@ private void nullOutputs(String trace)
 }
 ```
 
+</details>
+
+
 
 <details>
 
@@ -2540,3 +2543,252 @@ public void onStop() throws Exception {
 </details>
 
 
+
+
+
+<details>
+<summary>🧪 Math Sandbox: Testing Built-In Java Math Safely Inside a ProgramObject</summary>
+
+This tutorial is a **pure math sandbox** designed to let you experiment with Java math operations inside a Niagara **ProgramObject** before using them in real control logic.  
+It intentionally uses **no external math libraries** — only standard Java `Math` calls — and follows Niagara best practices for **status-aware execution**, **safe triggering**, and **fault isolation**.
+
+This is ideal for:
+- Learning how math behaves inside Niagara’s execution model
+- Verifying numeric stability and edge cases
+- Practicing trigger-based execution patterns
+- Building confidence before embedding math in Optimal Start or GL36 logic
+
+---
+
+### 🧠 What This Block Does
+
+When the `calculateTrigger` boolean is set to `true`:
+
+1. Reads two sides (`sideA`, `sideB`)
+2. Computes the **hypotenuse** using the Pythagorean theorem  
+3. Computes a **power function** (`a^exp`)
+4. Writes results to output slots
+5. Resets the trigger automatically
+
+If anything fails, the block:
+- Does **not crash the station**
+- Writes a short diagnostic to `statusTrace`
+- Leaves outputs in a safe state
+
+---
+
+### 💻 ProgramObject Code (Math Sandbox)
+
+Paste **only the methods below** into the ProgramObject source editor.
+
+```java
+public void onStart() throws Exception
+{
+    // Initialize outputs to null/ready state
+    getHypotenuseResult().setStatus(BStatus.nullStatus);
+    getPowerResult().setStatus(BStatus.nullStatus);
+    getStatusTrace().setValue("Math Sandbox Ready. Enter values and click trigger.");
+}
+
+public void onExecute() throws Exception
+{
+    // Only run if the trigger is OK and TRUE
+    if (getCalculateTrigger().getStatus().isOk() && getCalculateTrigger().getValue()) {
+        try {
+            // 1. Safe Data Retrieval
+            double a = getSideA().getStatus().isOk() ? getSideA().getValue() : 0.0;
+            double b = getSideB().getStatus().isOk() ? getSideB().getValue() : 0.0;
+            double exp = getExponent().getStatus().isOk() ? getExponent().getValue() : 1.0;
+
+            // 2. Perform Math Operations
+            double hypotenuse = Math.sqrt(Math.pow(a, 2) + Math.pow(b, 2));
+            double power = Math.pow(a, exp);
+
+            // 3. Update Results
+            getHypotenuseResult().setValue(hypotenuse);
+            getHypotenuseResult().setStatus(BStatus.ok);
+
+            getPowerResult().setValue(power);
+            getPowerResult().setStatus(BStatus.ok);
+
+            getStatusTrace().setValue(
+                "Success: Hypotenuse=" + hypotenuse + ", Power=" + power
+            );
+
+        } catch (Exception e) {
+            // Safety guard
+            getStatusTrace().setValue("Math Error: " + shortMsg(e));
+        } finally {
+            // CRITICAL: Reset trigger
+            getCalculateTrigger().setValue(false);
+        }
+    }
+}
+
+public void onStop() throws Exception
+{
+    getStatusTrace().setValue("Program Stopped.");
+}
+
+/**
+ * Helper to truncate error messages for small StatusString slots
+ */
+private static String shortMsg(Throwable t) {
+    if (t == null) return "null";
+    String m = t.getMessage();
+    return (m == null)
+        ? t.getClass().getSimpleName()
+        : (m.length() > 56 ? m.substring(0, 56) + "..." : m);
+}
+```
+
+---
+
+### 🔍 Why This Matters
+
+This block demonstrates **exactly how math executes inside Niagara**, including:
+
+* Trigger-based execution
+* Safe reads from `BStatusNumeric`
+* Proper cleanup and reset logic
+* How to surface math failures without throwing station-breaking exceptions
+
+This same structure is reused later in Optimal Start math blocks — only the equations change.
+
+</details>
+
+---
+
+
+<details>
+<summary>📐 Manual Regression Math: Model-3 Style Linear Algebra Without Libraries</summary>
+
+This tutorial shows how to perform **real regression math inside a Niagara ProgramObject** using **only primitive Java operations** — no linear algebra libraries, no ML frameworks, no shortcuts.
+
+It mirrors the **PNNL Model-3 structure** used in Optimal Start:
+
+```
+
+minutes = d + a·ΔT + b·(ΔT·wf)
+
+````
+
+The goal is not performance — it’s **transparency**.  
+You can step through this line-by-line and see exactly how regression math behaves inside the station.
+
+---
+
+### 🧠 What This Block Demonstrates
+
+- Constructing a **design matrix**
+- Computing `XᵀX` and `Xᵀy`
+- Solving a **3×3 system** using Cramer’s Rule / basic Gaussian logic
+- Mapping coefficients back into meaningful model terms
+- Testing a prediction with new inputs
+
+This is the math that Optimal Start *actually* relies on — just stripped down and visible.
+
+---
+
+### 💻 ProgramObject Code (Manual Regression Sandbox)
+
+```java
+public void onStart() throws Exception
+{
+  getStatusTrace().setValue("Regression math sandbox ready.");
+}
+
+public void onExecute() throws Exception
+{
+    try {
+        // 1. DATASET FROM PYTHON TUTORIAL
+        double[] dT   = {3.0, 5.0, 7.0, 2.0, 6.0};
+        double[] wf   = {0.4, 0.6, 0.8, 0.3, 0.7};
+        double[] mins = {20.0, 35.0, 50.0, 15.0, 40.0};
+
+        // 2. DESIGN MATRIX X (Intercept, dT, dT*wf)
+        double[][] X = new double[5][3];
+        for(int i=0; i<5; i++) {
+            X[i][0] = 1.0;
+            X[i][1] = dT[i];
+            X[i][2] = dT[i] * wf[i];
+        }
+
+        // 3. NORMAL EQUATION COMPONENTS
+        double[][] xtx = new double[3][3];
+        double[] xty = new double[3];
+
+        for (int i = 0; i < 3; i++) {
+            for (int j = 0; j < 3; j++) {
+                for (int k = 0; k < 5; k++) {
+                    xtx[i][j] += X[k][i] * X[k][j];
+                }
+            }
+            for (int k = 0; k < 5; k++) {
+                xty[i] += X[k][i] * mins[k];
+            }
+        }
+
+        // 4. SOLVE 3x3 SYSTEM (Cramer's Rule)
+        double det =
+            xtx[0][0] * (xtx[1][1]*xtx[2][2] - xtx[1][2]*xtx[2][1]) -
+            xtx[0][1] * (xtx[1][0]*xtx[2][2] - xtx[1][2]*xtx[2][0]) +
+            xtx[0][2] * (xtx[1][0]*xtx[2][1] - xtx[1][1]*xtx[2][0]);
+
+        if (Math.abs(det) < 1e-9)
+            throw new Exception("Singular Matrix");
+
+        double[] beta = new double[3];
+
+        for (int i = 0; i < 3; i++) {
+            double[][] temp = new double[3][3];
+            for(int r=0; r<3; r++) {
+                for(int c=0; c<3; c++) {
+                    temp[r][c] = (c == i) ? xty[r] : xtx[r][c];
+                }
+            }
+
+            beta[i] =
+                (temp[0][0]*(temp[1][1]*temp[2][2] - temp[1][2]*temp[2][1]) -
+                 temp[0][1]*(temp[1][0]*temp[2][2] - temp[1][2]*temp[2][0]) +
+                 temp[0][2]*(temp[1][0]*temp[2][1] - temp[1][1]*temp[2][0])) / det;
+        }
+
+        // 5. MAP TO MODEL-3 TERMS
+        getAlpha_3_d().setValue(beta[0]);
+        getAlpha_3_a().setValue(beta[1]);
+        getAlpha_3_b().setValue(beta[2]);
+
+        // 6. TEST PREDICTION
+        double pred = beta[0] + (beta[1] * 4.0) + (beta[2] * (4.0 * 0.5));
+        getPrediction().setValue(pred);
+
+        getStatusTrace().setValue(
+            "Regression Verified. Pred for ΔT=4, wf=0.5 → " + pred
+        );
+
+    } catch (Exception e) {
+        getStatusTrace().setValue("Regression Error: " + e.toString());
+    }
+}
+
+public void onStop() throws Exception
+{
+  getStatusTrace().setValue("Regression sandbox stopped.");
+}
+```
+
+---
+
+### 🧠 Why This Exists
+
+This block exists so you can:
+
+* Prove that **real regression math works inside Niagara**
+* Understand every coefficient before trusting automation
+* Debug convergence and singular matrices early
+* Gain intuition before scaling this logic into Optimal Start
+
+Once this makes sense, the Optimal Start block is just **data plumbing + scheduling**.
+
+</details>

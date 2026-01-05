@@ -1575,7 +1575,7 @@ double numericOrDefault(BStatusNumeric slot, double defVal) {
 
 
 <details>
-<summary>🍃 NOT TESTED YET - Central Plant AHU Request Counter (Heating + Cooling)</summary>
+<summary>🍃 Central Plant AHU Request Counter (Heating + Cooling)</summary>
 
 For **each AHU/FCU**, build a small “Plant Reset Request Generator” `ProgramObject` that can:
 
@@ -1600,342 +1600,331 @@ This lets one ProgramObject serve:
 * AHUs with **both** coils  
 * FCUs / DOAS units that only have one active coil
 
-
-### Slot Map (per AHU/FCU)
+### Slot Map (per AHU/FCU) — updated to match your ProgramObject slots
 
 #### Inputs
 
-| Slot Name        | Type             | Notes                                                                 |
-|------------------|------------------|-----------------------------------------------------------------------|
-| `sat`            | `BStatusNumeric` | Supply (discharge) air temperature off coils (°F or °C)              |
-| `coolSatSp`      | `BStatusNumeric` | Cooling SAT setpoint (used for CHW requests). Optional.             |
-| `heatSatSp`      | `BStatusNumeric` | Heating SAT setpoint (used for HW requests). Optional.              |
-| `chwValvePct`    | `BStatusNumeric` | CHW valve position (%) – 0–100. Optional (cool-only).               |
-| `hwValvePct`     | `BStatusNumeric` | HW valve position (%) – 0–100. Optional (heat-only).                |
-| `fanAtMaxCool`   | `BStatusBoolean` | Optional fan-gating for CHW requests (e.g. “fan at max cool speed”). |
-| `fanAtMaxHeat`   | `BStatusBoolean` | Optional fan-gating for HW requests (e.g. “fan at max heat speed”).  |
+| Slot Name               | Type             | Notes                                                                                                                                 |
+| ----------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `supplyAirTemp`         | `BStatusNumeric` | Supply (discharge) air temperature off coils (°F or °C). **Required**.                                                                |
+| `supplyAirTempSetpoint` | `BStatusNumeric` | The active SAT setpoint used by the ladders (cooling compares `SAT - SP`, heating compares `SP - SAT`). **Required**.                 |
+| `coolValveCommand`      | `BStatusNumeric` | Cooling coil valve command (%) 0–100. **Optional**: if NULL/unwired → cooling coil treated as not present.                            |
+| `heatValveCommand`      | `BStatusNumeric` | Heating coil valve command (%) 0–100. **Optional**: if NULL/unwired → heating coil treated as not present.                            |
+| `fanStatus`             | `BStatusBoolean` | Fan proof/status. If `false` (and OK) → suppress both ladders, reset timers, outputs to 0. Unwired defaults to `true` in your helper. |
+| `fanAtMaxCool`          | `BStatusNumeric` | Optional gate for cooling ladder (accepts >90% or ≈1.0). NULL/unwired defaults allow. Bad status suppresses.                          |
+| `fanAtMaxHeat`          | `BStatusNumeric` | Optional gate for heating ladder (accepts >90% or ≈1.0). NULL/unwired defaults allow. Bad status suppresses.                          |
+| `useImperial`           | `BStatusBoolean` | Config   | `true` = °F / PSI (Imperial); `false` = °C / kPa (Metric). Controls defaults and sanity limits.                            |
 
-> **Important:**  
-> If `coolSatSp` *and* `chwValvePct` are NULL/unwired → the **CHW ladder is disabled**.  
-> If `heatSatSp` *and* `hwValvePct` are NULL/unwired → the **HW ladder is disabled**.
 
 #### Outputs
 
-| Slot Name          | Type             | Notes                                           |
-|--------------------|------------------|-------------------------------------------------|
-| `chwResetRequests` | `BStatusNumeric` | 0…3 integer CHW reset requests                  |
-| `hwResetRequests`  | `BStatusNumeric` | 0…3 integer HW reset requests                   |
-| `coolStatusTrace`  | `BStatusString`  | Debug trace for cooling / CHW ladder            |
-| `heatStatusTrace`  | `BStatusString`  | Debug trace for heating / HW ladder             |
+| Slot Name            | Type             | Notes                                                        |
+| -------------------- | ---------------- | ------------------------------------------------------------ |
+| `coolingRequests`    | `BStatusNumeric` | 0…3 integer cooling requests (Trim & Respond request level). |
+| `heatingRequests`    | `BStatusNumeric` | 0…3 integer heating requests (Trim & Respond request level). |
+| `coolingStatusTrace` | `BStatusString`  | Human-readable trace for cooling ladder decisions.           |
+| `heatingStatusTrace` | `BStatusString`  | Human-readable trace for heating ladder decisions.           |
 
 
-### Algorithms
 
-#### Cooling / CHW Reset Requests (per AHU)
+### 💻 Java Code
 
-Same ladder you described from the CHW plant section:
-
-* If `SAT ≥ coolSatSp + 10°F` for **5 min** → `3` CHW reset requests  
-* Else if `SAT ≥ coolSatSp + 5°F` for **5 min** → `2` CHW reset requests  
-* Else if `chwValvePct ≥ 95%` (latched until `< 85%`) → `1` CHW reset request  
-* Else → `0` CHW reset requests  
-
-Optional fan gating:
-
-* If `fanAtMaxCool == false` (and wired) → **suppress all CHW requests**, reset timers
-
-If the **cooling coil is not present**, identified by both `coolSatSp`
-and `chwValvePct` being NULL/unwired, then:
-
-* Timers are cleared
-* `chwResetRequests = 0`
-* `coolStatusTrace` tells you “cooling coil not present / not wired”
-
-#### Heating / HW Reset Requests (per AHU)
-
-Mirror image for heating:
-
-* If `SAT ≤ heatSatSp − 30°F` for **5 min** → `3` HW reset requests  
-* Else if `SAT ≤ heatSatSp − 15°F` for **5 min** → `2` HW reset requests  
-* Else if `hwValvePct ≥ 95%` (latched until `< 85%`) → `1` HW reset request  
-* Else → `0` HW reset requests  
-
-Optional fan gating:
-
-* If `fanAtMaxHeat == false` (and wired) → **suppress all HW requests**, reset timers
-
-If the **heating coil is not present**, identified by both `heatSatSp`
-and `hwValvePct` being NULL/unwired, then:
-
-* Timers are cleared
-* `hwResetRequests = 0`
-* `heatStatusTrace` tells you “heating coil not present / not wired”
+> Niagara auto-generates class headers, imports, and getters/setters. Paste **only** the methods below into the Program’s **Source** editor.
 
 
-### Java Code – AHU/FCU Heating + Cooling Request Counter
-
-> Niagara auto-generates headers/imports/getters/setters.  
-> Paste **only** the methods below into the Program’s **Source** editor.
 
 ```java
-////////////////////////////////////////////////////////////////
+// ==============================================================================
+//  GL36 AHU REQUEST GENERATOR (Heating + Cooling) v2.0
+//  - Logic: Trim & Respond Requests (0-3)
+//  - Update: Consolidated Setpoints & Human-Readable Names
+//  - Safety: Strict Sanity Checks (Range + Status)
+// ==============================================================================
+
 // Class-level fields
-////////////////////////////////////////////////////////////////
+private Clock.Ticket ticket;
+private static final int EXEC_PERIOD_SEC = 10;
+private static final int PERSIST_SEC     = 300; // 5 min persistence
 
-Clock.Ticket ticket;
+// Thresholds (G36 Defaults)
+private static final double COOL_ERR_3REQ   = 10.0; // SAT > SP + 10
+private static final double COOL_ERR_2REQ   = 5.0;  // SAT > SP + 5
+private static final double HEAT_ERR_3REQ   = 30.0; // SAT < SP - 30 (Deep deviation)
+private static final double HEAT_ERR_2REQ   = 15.0; // SAT < SP - 15
+private static final double VALVE_ON_PCT    = 95.0;
+private static final double VALVE_OFF_PCT   = 85.0;
 
-private static final int EXEC_PERIOD_SEC = 10;    // Run every 10 s
-private static final int PERSIST_SEC     = 300;   // 5 min persistence
+// Sanity Limits (Data Quality Guardrails)
+private static final double SANITY_VALVE_MIN = -5.0;
+private static final double SANITY_VALVE_MAX = 105.0;
+private static final double SANITY_TEMP_MIN  = -50.0;
+private static final double SANITY_TEMP_MAX  = 250.0;
 
-// Cooling thresholds (°F)
-private static final double COOL_ERR_3REQ_F   = 10.0;  // SAT ≥ SP + 10°F
-private static final double COOL_ERR_2REQ_F   = 5.0;   // SAT ≥ SP + 5°F
-private static final double CHW_VALVE_ON_PCT  = 95.0;
-private static final double CHW_VALVE_OFF_PCT = 85.0;
+// Internal State
+private int     coolHigh10Sec   = 0;
+private int     coolHigh5Sec    = 0;
+private boolean coolValveLatched = false;
 
-// Heating thresholds (°F)
-// Use positive "overcool" diff = (heatSatSp - SAT)
-private static final double HEAT_ERR_3REQ_F   = 30.0;  // SAT ≤ SP - 30°F
-private static final double HEAT_ERR_2REQ_F   = 15.0;  // SAT ≤ SP - 15°F
-private static final double HW_VALVE_ON_PCT   = 95.0;
-private static final double HW_VALVE_OFF_PCT  = 85.0;
+private int     heatLow30Sec    = 0;
+private int     heatLow15Sec    = 0;
+private boolean heatValveLatched = false;
 
-// Cooling timers / latch
-int    coolHigh10Sec = 0;
-int    coolHigh5Sec  = 0;
-boolean chwValveLatched = false;
 
-// Heating timers / latch
-int    heatLow30Sec = 0;
-int    heatLow15Sec = 0;
-boolean hwValveLatched = false;
 
-////////////////////////////////////////////////////////////////
-// Lifecycle
-////////////////////////////////////////////////////////////////
-
+// ==============================================================================
+//  LIFECYCLE
+// ==============================================================================
 public void onStart() throws Exception {
     updateTimer();
 }
+
+public void onExecute() throws Exception {
+    // 1) Master Gate: Fan Status
+    boolean fanIsRunning = boolOrDefault(getFanStatus(), true);
+
+    if (!fanIsRunning) {
+        resetAllState();
+        zeroOutputs("Fan OFF.");
+        updateTimer();
+        return;
+    }
+
+    // 2) Fetch & Validate Inputs (Sanity Checks)
+    BStatusNumeric satSlot = getSupplyAirTemp();
+    BStatusNumeric spSlot  = getSupplyAirTempSetpoint();
+
+    boolean satValid = isDataValid(satSlot, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+    boolean spValid  = isDataValid(spSlot,  SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+
+    BStatusNumeric coolVlvSlot = getCoolValveCommand();
+    BStatusNumeric heatVlvSlot = getHeatValveCommand();
+
+    boolean coolVlvOk = isNumericUnwiredOrValid(coolVlvSlot, SANITY_VALVE_MIN, SANITY_VALVE_MAX);
+    boolean heatVlvOk = isNumericUnwiredOrValid(heatVlvSlot, SANITY_VALVE_MIN, SANITY_VALVE_MAX);
+
+    boolean fanAtMaxCool = checkFanGate(getFanAtMaxCool());
+    boolean fanAtMaxHeat = checkFanGate(getFanAtMaxHeat());
+
+    // 3) Persistence (seconds)
+    final int COOL_PERSIST_SEC = 120; // G36-style for cooling SAT error ladder
+    final int HEAT_PERSIST_SEC = 300; // keep your 5-min heating persistence (change if desired)
+
+    // ============================================================
+    // COOLING REQUESTS
+    // ============================================================
+    int coolReq = 0;
+    String coolTrace = "";
+
+    if (!satValid || !spValid || !coolVlvOk) {
+        coolReq = 0;
+        resetCoolTimers();
+        coolTrace = "Bad Sensor Data (SAT, SP, or Valve in Fault/Range error).";
+    }
+    else if (!isNumericWired(coolVlvSlot)) {
+        coolReq = 0;
+        resetCoolTimers();
+        coolTrace = "No Cooling Coil (Valve unwired).";
+    }
+    else if (!fanAtMaxCool) {
+        coolReq = 0;
+        resetCoolTimers();
+        coolTrace = "Fan not at max speed. Suppressed.";
+    }
+    else {
+        double sat = satSlot.getValue();
+        double sp  = spSlot.getValue();
+        double vlv = coolVlvSlot.getValue();
+        double err = sat - sp; // Positive = Too Hot
+
+        // Timers accumulate by EXEC_PERIOD_SEC
+        if (err >= COOL_ERR_3REQ) {
+            coolHigh10Sec += EXEC_PERIOD_SEC;
+            coolHigh5Sec  += EXEC_PERIOD_SEC;
+        }
+        else if (err >= COOL_ERR_2REQ) {
+            coolHigh10Sec = 0;
+            coolHigh5Sec  += EXEC_PERIOD_SEC;
+        }
+        else {
+            coolHigh10Sec = 0;
+            coolHigh5Sec  = 0;
+        }
+
+        // Valve latch (hysteresis)
+        if (vlv >= VALVE_ON_PCT)      coolValveLatched = true;
+        else if (vlv < VALVE_OFF_PCT) coolValveLatched = false;
+
+        // Ladder (COOL persistence = 120s)
+        if (coolHigh10Sec >= COOL_PERSIST_SEC) {
+            coolReq = 3;
+            coolTrace = "Req=3 (SAT > SP+10)";
+        }
+        else if (coolHigh5Sec >= COOL_PERSIST_SEC) {
+            coolReq = 2;
+            coolTrace = "Req=2 (SAT > SP+5)";
+        }
+        else if (coolValveLatched) {
+            coolReq = 1;
+            coolTrace = "Req=1 (Vlv > 95%)";
+        }
+        else {
+            coolReq = 0;
+            coolTrace = "Satisfied";
+        }
+
+        coolTrace += " [Err=" + round1(err) + ", Vlv=" + (int)vlv + "%, t10=" + coolHigh10Sec + "s, t5=" + coolHigh5Sec + "s]";
+    }
+
+    // ============================================================
+    // HEATING REQUESTS
+    // ============================================================
+    int heatReq = 0;
+    String heatTrace = "";
+
+    if (!satValid || !spValid || !heatVlvOk) {
+        heatReq = 0;
+        resetHeatTimers();
+        heatTrace = "Bad Sensor Data (SAT, SP, or Valve in Fault/Range error).";
+    }
+    else if (!isNumericWired(heatVlvSlot)) {
+        heatReq = 0;
+        resetHeatTimers();
+        heatTrace = "No Heating Coil (Valve unwired).";
+    }
+    else if (!fanAtMaxHeat) {
+        heatReq = 0;
+        resetHeatTimers();
+        heatTrace = "Fan not at max speed. Suppressed.";
+    }
+    else {
+        double sat = satSlot.getValue();
+        double sp  = spSlot.getValue();
+        double vlv = heatVlvSlot.getValue();
+        double err = sp - sat; // Positive = Too Cold
+
+        // Timers accumulate by EXEC_PERIOD_SEC
+        if (err >= HEAT_ERR_3REQ) {
+            heatLow30Sec += EXEC_PERIOD_SEC;
+            heatLow15Sec += EXEC_PERIOD_SEC;
+        }
+        else if (err >= HEAT_ERR_2REQ) {
+            heatLow30Sec = 0;
+            heatLow15Sec += EXEC_PERIOD_SEC;
+        }
+        else {
+            heatLow30Sec = 0;
+            heatLow15Sec = 0;
+        }
+
+        // Valve latch (hysteresis)
+        if (vlv >= VALVE_ON_PCT)      heatValveLatched = true;
+        else if (vlv < VALVE_OFF_PCT) heatValveLatched = false;
+
+        // Ladder (HEAT persistence = 300s)
+        if (heatLow30Sec >= HEAT_PERSIST_SEC) {
+            heatReq = 3;
+            heatTrace = "Req=3 (SAT < SP-30)";
+        }
+        else if (heatLow15Sec >= HEAT_PERSIST_SEC) {
+            heatReq = 2;
+            heatTrace = "Req=2 (SAT < SP-15)";
+        }
+        else if (heatValveLatched) {
+            heatReq = 1;
+            heatTrace = "Req=1 (Vlv > 95%)";
+        }
+        else {
+            heatReq = 0;
+            heatTrace = "Satisfied";
+        }
+
+        heatTrace += " [Err=" + round1(err) + ", Vlv=" + (int)vlv + "%, t30=" + heatLow30Sec + "s, t15=" + heatLow15Sec + "s]";
+    }
+
+    // 4) Update Outputs
+    getCoolingRequests().setValue(coolReq);
+    getCoolingStatusTrace().setValue(coolTrace);
+
+    getHeatingRequests().setValue(heatReq);
+    getHeatingStatusTrace().setValue(heatTrace);
+
+    updateTimer();
+}
+
 
 public void onStop() throws Exception {
     if (ticket != null) ticket.cancel();
 }
 
-public BComponent getProgram() {
-    return (BComponent) getComponent();
-}
-
+// ==============================================================================
+//  HELPERS
+// ==============================================================================
 void updateTimer() {
     if (ticket != null) ticket.cancel();
-    ticket = Clock.schedule(getProgram(), BRelTime.makeSeconds(EXEC_PERIOD_SEC),
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(EXEC_PERIOD_SEC),
                             BProgram.execute, null);
 }
 
-////////////////////////////////////////////////////////////////
-// Helpers
-////////////////////////////////////////////////////////////////
-
-boolean isNumericValid(BStatusNumeric slot) {
-    return slot != null && slot.getStatus().isOk();
+void zeroOutputs(String msg) {
+    getCoolingRequests().setValue(0);
+    getCoolingStatusTrace().setValue(msg);
+    getHeatingRequests().setValue(0);
+    getHeatingStatusTrace().setValue(msg);
 }
 
-double numericOrDefault(BStatusNumeric slot, double defVal) {
-    return (slot != null && slot.getStatus().isOk()) ? slot.getValue() : defVal;
+void resetAllState() {
+    resetCoolTimers();
+    resetHeatTimers();
+}
+
+void resetCoolTimers() { coolHigh10Sec = 0; coolHigh5Sec = 0; coolValveLatched = false; }
+void resetHeatTimers() { heatLow30Sec = 0; heatLow15Sec = 0; heatValveLatched = false; }
+
+// --- Sanity & Validation ---
+
+/** Returns TRUE if slot is wired, status is OK, and value is within [min, max] */
+boolean isDataValid(BStatusNumeric slot, double min, double max) {
+    if (slot == null) return false;
+    // Allow Alarm, but block Fault/Down/Null/Disabled
+    if (slot.getStatus().isFault() || slot.getStatus().isDown() || 
+        slot.getStatus().isNull() || slot.getStatus().isDisabled()) return false;
+    
+    double val = slot.getValue();
+    return (val >= min && val <= max);
+}
+
+/** * Returns TRUE if:
+ * 1. Slot is NULL/Unwired (Acceptable for optional coils)
+ * 2. Slot is Wired, Status OK, and Value is in Range
+ * Returns FALSE if:
+ * 1. Slot is Wired but Fault/Down (Bad sensor)
+ * 2. Slot is Wired but Value is Out of Range (Sanity fail)
+ */
+boolean isNumericUnwiredOrValid(BStatusNumeric slot, double min, double max) {
+    if (slot == null || slot.getStatus().isNull()) return true; // Not present = Valid "Zero"
+    return isDataValid(slot, min, max);
+}
+
+boolean isNumericWired(BStatusNumeric slot) {
+    return slot != null && !slot.getStatus().isNull();
 }
 
 boolean boolOrDefault(BStatusBoolean slot, boolean defVal) {
-    return (slot != null && slot.getStatus().isOk()) ? slot.getValue() : defVal;
+    if (slot != null && slot.getStatus().isOk()) return slot.getValue();
+    return defVal;
 }
 
-String boolStatus(BStatusBoolean b) {
-    if (b == null || !b.getStatus().isOk()) return "NULL";
-    return Boolean.toString(b.getValue());
+// Smart Fan Gate: Accepts >90% Speed OR Boolean 1.0. Defaults True if unwired.
+boolean checkFanGate(BStatusNumeric slot) {
+    if (slot == null || slot.getStatus().isNull()) return true; // Default allow
+    if (!slot.getStatus().isOk()) return false; // Faulted input = Stop
+    
+    double v = slot.getValue();
+    return (v > 90.0) || (Math.abs(v - 1.0) < 0.1); 
 }
 
-int clampInt(int v, int lo, int hi) {
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
-}
+private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
 
-////////////////////////////////////////////////////////////////
-// Main execute
-////////////////////////////////////////////////////////////////
-
-public void execute() throws Exception {
-    // Shared SAT
-    double sat = numericOrDefault(getSat(), 55.0);
-
-    // Inputs
-    BStatusNumeric coolSpSlot = getCoolSatSp();
-    BStatusNumeric heatSpSlot = getHeatSatSp();
-    BStatusNumeric chwVlvSlot = getChwValvePct();
-    BStatusNumeric hwVlvSlot  = getHwValvePct();
-    BStatusBoolean fanCoolSlot = getFanAtMaxCool();
-    BStatusBoolean fanHeatSlot = getFanAtMaxHeat();
-
-    // Coil presence detection
-    boolean hasCoolingCoil = isNumericValid(coolSpSlot) || isNumericValid(chwVlvSlot);
-    boolean hasHeatingCoil = isNumericValid(heatSpSlot) || isNumericValid(hwVlvSlot);
-
-    // Optional fan gating:
-    // - If wired → use its value
-    // - If unwired → default true (no gating)
-    boolean fanAtMaxCool = boolOrDefault(fanCoolSlot, true);
-    boolean fanAtMaxHeat = boolOrDefault(fanHeatSlot, true);
-
-    int chwReq = 0;
-    int hwReq  = 0;
-
-    ////////////////////////////////////////////////////////////
-    // COOLING / CHW REQUESTS
-    ////////////////////////////////////////////////////////////
-    String coolTrace;
-
-    if (!hasCoolingCoil) {
-        // No cooling coil wired → fully bypass CHW logic
-        coolHigh10Sec = 0;
-        coolHigh5Sec  = 0;
-        chwValveLatched = false;
-        chwReq = 0;
-        coolTrace = "Cooling coil not present/not wired → CHW reset requests = 0.";
-    }
-    else if (!fanAtMaxCool && fanCoolSlot != null && fanCoolSlot.getStatus().isOk()) {
-        // Fan gating is wired AND false → suppress CHW requests
-        coolHigh10Sec = 0;
-        coolHigh5Sec  = 0;
-        chwValveLatched = false;
-        chwReq = 0;
-        coolTrace = "fanAtMaxCool = FALSE → suppress CHW reset requests (0).";
-    }
-    else {
-        double coolSp = numericOrDefault(coolSpSlot, sat); // avoid big err if SP missing
-        double chwVlv = numericOrDefault(chwVlvSlot, 0.0);
-
-        // Cooling error: SAT - SP (positive = too warm)
-        double coolErr = sat - coolSp;
-
-        // Persistence timers
-        if (coolErr >= COOL_ERR_3REQ_F) {
-            coolHigh10Sec += EXEC_PERIOD_SEC;
-            coolHigh5Sec  += EXEC_PERIOD_SEC;
-        } else if (coolErr >= COOL_ERR_2REQ_F) {
-            coolHigh10Sec = 0;
-            coolHigh5Sec  += EXEC_PERIOD_SEC;
-        } else {
-            coolHigh10Sec = 0;
-            coolHigh5Sec  = 0;
-        }
-
-        boolean coolHigh10 = (coolHigh10Sec >= PERSIST_SEC);
-        boolean coolHigh5  = (coolHigh5Sec  >= PERSIST_SEC);
-
-        // Valve latch
-        if (chwVlv >= CHW_VALVE_ON_PCT) {
-            chwValveLatched = true;
-        } else if (chwVlv < CHW_VALVE_OFF_PCT) {
-            chwValveLatched = false;
-        }
-
-        // Request ladder
-        if (coolHigh10) {
-            chwReq = 3;
-            coolTrace = "SAT ≥ coolSp + 10°F for ≥5 min → 3 CHW reset requests.";
-        } else if (coolHigh5) {
-            chwReq = 2;
-            coolTrace = "SAT ≥ coolSp + 5°F for ≥5 min → 2 CHW reset requests.";
-        } else if (chwValveLatched) {
-            chwReq = 1;
-            coolTrace = "CHW valve ≥ 95% (latched until < 85%) → 1 CHW reset request.";
-        } else {
-            chwReq = 0;
-            coolTrace = "Within cooling band and CHW valve < 95% → 0 CHW reset requests.";
-        }
-
-        coolTrace += " [sat=" + sat + "°F, coolSp=" + coolSp + "°F, err="
-                   + (sat - coolSp) + "°F, chwVlv=" + chwVlv + "%, fanAtMaxCool="
-                   + boolStatus(fanCoolSlot) + "]";
-    }
-
-    chwReq = clampInt(chwReq, 0, 3);
-    getChwResetRequests().setValue(chwReq);
-    getCoolStatusTrace().setValue(coolTrace);
-
-    ////////////////////////////////////////////////////////////
-    // HEATING / HW REQUESTS
-    ////////////////////////////////////////////////////////////
-    String heatTrace;
-
-    if (!hasHeatingCoil) {
-        // No heating coil wired → fully bypass HW logic
-        heatLow30Sec = 0;
-        heatLow15Sec = 0;
-        hwValveLatched = false;
-        hwReq = 0;
-        heatTrace = "Heating coil not present/not wired → HW reset requests = 0.";
-    }
-    else if (!fanAtMaxHeat && fanHeatSlot != null && fanHeatSlot.getStatus().isOk()) {
-        // Fan gating is wired AND false → suppress HW requests
-        heatLow30Sec = 0;
-        heatLow15Sec = 0;
-        hwValveLatched = false;
-        hwReq = 0;
-        heatTrace = "fanAtMaxHeat = FALSE → suppress HW reset requests (0).";
-    }
-    else {
-        double heatSp = numericOrDefault(heatSpSlot, sat);
-        double hwVlv  = numericOrDefault(hwVlvSlot, 0.0);
-
-        // Heating error: SP - SAT (positive = too cold)
-        double heatErr = heatSp - sat;
-
-        // Persistence timers
-        if (heatErr >= HEAT_ERR_3REQ_F) {
-            heatLow30Sec += EXEC_PERIOD_SEC;
-            heatLow15Sec += EXEC_PERIOD_SEC;
-        } else if (heatErr >= HEAT_ERR_2REQ_F) {
-            heatLow30Sec = 0;
-            heatLow15Sec += EXEC_PERIOD_SEC;
-        } else {
-            heatLow30Sec = 0;
-            heatLow15Sec = 0;
-        }
-
-        boolean heatLow30 = (heatLow30Sec >= PERSIST_SEC);
-        boolean heatLow15 = (heatLow15Sec >= PERSIST_SEC);
-
-        // Valve latch
-        if (hwVlv >= HW_VALVE_ON_PCT) {
-            hwValveLatched = true;
-        } else if (hwVlv < HW_VALVE_OFF_PCT) {
-            hwValveLatched = false;
-        }
-
-        // Request ladder
-        if (heatLow30) {
-            hwReq = 3;
-            heatTrace = "SAT ≤ heatSp - 30°F for ≥5 min → 3 HW reset requests.";
-        } else if (heatLow15) {
-            hwReq = 2;
-            heatTrace = "SAT ≤ heatSp - 15°F for ≥5 min → 2 HW reset requests.";
-        } else if (hwValveLatched) {
-            hwReq = 1;
-            heatTrace = "HW valve ≥ 95% (latched until < 85%) → 1 HW reset request.";
-        } else {
-            hwReq = 0;
-            heatTrace = "Within heating band and HW valve < 95% → 0 HW reset requests.";
-        }
-
-        heatTrace += " [sat=" + sat + "°F, heatSp=" + heatSp + "°F, err="
-                   + (heatSp - sat) + "°F, hwVlv=" + hwVlv + "%, fanAtMaxHeat="
-                   + boolStatus(fanHeatSlot) + "]";
-    }
-
-    hwReq = clampInt(hwReq, 0, 3);
-    getHwResetRequests().setValue(hwReq);
-    getHeatStatusTrace().setValue(heatTrace);
-}
 ```
 
 </details>
@@ -1947,34 +1936,36 @@ public void execute() throws Exception {
 
 ## 🔧 Slot Sheet 
 
-Create a ProgramObject with these slots (names can be tweaked, but keep them consistent with the code):
+### Inputs / Configuration
 
-### Inputs / Config
+| Slot Name           | Type             | Writable | Notes                                                                                           |
+| ------------------- | ---------------- | -------- | ----------------------------------------------------------------------------------------------- |
+| `enable`            | `BStatusBoolean` | Yes      | Master enable for the Trim & Respond logic.                                                     |
+| `totalHwResetReq`   | `BStatusNumeric` | Yes      | Sum of all AHU hot-water reset requests (**R**, 0…N).                                           |
+| `sp0`               | `BStatusNumeric` | Config   | Initial HWST setpoint (starting / fallback value).                                              |
+| `spMin`             | `BStatusNumeric` | Config   | Minimum HWST (e.g., 90°F condensing, 155°F non-condensing).                                     |
+| `spMax`             | `BStatusNumeric` | Config   | Maximum HWST (e.g., 180–190°F).                                                                 |
+| `ignoredReq` (`I`)  | `BStatusNumeric` | Config   | Number of requests to ignore (GL-36 variable **I**).                                            |
+| `stepMinutes` (`T`) | `BStatusNumeric` | Config   | Time step between T&R actions (default 5 minutes).                                              |
+| `spTrim`            | `BStatusNumeric` | Config   | **SPtrim** — trim amount per step (typically negative).                                         |
+| `spRespond`         | `BStatusNumeric` | Config   | **SPres** — response per effective request.                                                     |
+| `spRespondMax`      | `BStatusNumeric` | Config   | **SPres-max** — maximum response allowed per step.                                              |
+| `useImperial`       | `BStatusBoolean` | Config   | `true` = °F / PSI (Imperial); `false` = °C / kPa (Metric). Controls defaults and sanity limits. |
 
-| Slot Name           | Type             | Writable | Notes                                                        |
-| ------------------- | ---------------- | -------- | ------------------------------------------------------------ |
-| `enable`            | `BStatusBoolean` | Yes      | Master enable for the reset logic.                           |
-| `totalHwResetReq`   | `BStatusNumeric` | Yes      | Sum of all AHU hot-water reset requests (0…N).               |
-| `sp0`               | `BStatusNumeric` | Config   | Initial HWST setpoint (starting value).                      |
-| `spMin`             | `BStatusNumeric` | Config   | Minimum HWST (e.g., 90°F condensing, 155°F non-cond).        |
-| `spMax`             | `BStatusNumeric` | Config   | Maximum HWST (e.g., 180–190°F).                              |
-| `ignoredReq` (`I`)  | `BStatusNumeric` | Config   | Number of requests to ignore (GL-36 variable **I**).         |
-| `stepMinutes` (`T`) | `BStatusNumeric` | Config   | Time step between T&R actions (default 5 min).               |
-| `spTrim`            | `BStatusNumeric` | Config   | **SPtrim** – trim step (e.g., –2°F).                         |
-| `spRes`             | `BStatusNumeric` | Config   | **SPres** – respond step per effective request (e.g., +3°F). |
-| `spResMax`          | `BStatusNumeric` | Config   | **SPres-max** – max response per step (e.g., +7°F).          |
+*(`Td` delay can be added later for a full GL-36 implementation; this version intentionally omits it for clarity.)*
 
-*(You can add `tdMinutes` later if you want a GL-36 style delay **Td**; this first version keeps it simple.)*
+---
 
 ### Outputs
 
-| Slot Name     | Type             | Writable | Notes                                     |
-| ------------- | ---------------- | -------- | ----------------------------------------- |
-| `hwstSpOut`   | `BStatusNumeric` | No       | Final HWST setpoint to send to boiler(s). |
-| `activeR`     | `BStatusNumeric` | No       | Clamped, effective `R` used by the loop.  |
-| `statusTrace` | `BStatusString`  | No       | Human-readable trace of last T&R action.  |
+| Slot Name               | Type             | Writable | Notes                                                               |
+| ----------------------- | ---------------- | -------- | ------------------------------------------------------------------- |
+| `hwstSpOut`             | `BStatusNumeric` | No       | Final HWST setpoint command sent to the boiler plant.               |
+| `effectiveRequestCount` | `BStatusNumeric` | No       | Clamped effective request count (`max(R − I, 0)`) used by the loop. |
+| `statusTrace`           | `BStatusString`  | No       | Human-readable trace of the most recent T&R decision.               |
 
 ---
+
 
 ## 💻 Java Code – Boiler HWST T&R (Plant Block)
 
@@ -1982,224 +1973,183 @@ Create a ProgramObject with these slots (names can be tweaked, but keep them con
 > Paste **only** the code below into the Program’s **Source** editor.
 
 ```java
-////////////////////////////////////////////////////////////
+// ==============================================================================
+//  GL36 BOILER HWST TRIM & RESPOND v3.1
+//  - Logic: Adjusts HWST Setpoint based on AHU heating requests.
+//  - Safety: Strict Sanity Checks (Range + Status) aligned with AHU block.
+//  - Fault-Aware: Resets to SP0 if critical request data is bad or unwired.
+// ==============================================================================
+
 // Class-level fields
-////////////////////////////////////////////////////////////
+private Clock.Ticket ticket;
+private long lastStepMillis = 0L;
+private boolean wasEnabled = false;
 
-Clock.Ticket ticket;
+private static final int EXEC_PERIOD_SEC = 60; // Internal check frequency
 
-long lastStepMillis = 0L;
-boolean wasEnabled = false;
+// Sanity Limits (Data Quality Guardrails)
+private static final double SANITY_TEMP_MIN = 60.0;
+private static final double SANITY_TEMP_MAX = 210.0;
+private static final double SANITY_REQ_MIN  = 0.0;
+private static final double SANITY_REQ_MAX  = 999.0;
+private boolean lastPlantOn = false;
 
-////////////////////////////////////////////////////////////
-// Lifecycle
-////////////////////////////////////////////////////////////
+
+// ==============================================================================
+//  LIFECYCLE
+// ==============================================================================
 
 public void onStart() throws Exception {
-  // Initialize last step time
-  lastStepMillis = System.currentTimeMillis();
-
-  // Set sensible GL-36-style defaults if config slots are NULL
-  ensureDefault(getSpTrim(),   -2.0);  // °F per step down
-  ensureDefault(getSpRes(),     3.0);  // °F per request up
-  ensureDefault(getSpResMax(),  7.0);  // °F per step max up
-  ensureDefault(getStepMinutes(), 5.0); // T = 5 minutes
-  ensureDefault(getIgnoredReq(), 0.0);  // I = 0 by default
-
-  // HWST bounds – adjust to your plant type
-  // (90°F for condensing/hybrid SPmin, 155°F for non-condensing per G36) 
-  ensureDefault(getSpMin(),  120.0);     
-  ensureDefault(getSpMax(),  180.0);     
-  ensureDefault(getSp0(),    150.0);     
-
-  // Initialize output SP
-  double initSp = safeNumeric(getHwstSpOut(), getSp0(), getSpMin(), getSpMax());
-  getHwstSpOut().setValue(initSp);
-  getStatusTrace().setValue("Boiler HWST T&R started. Init SP = " + round1(initSp));
-  getActiveR().setValue(0.0);
-
-  updateTimer();
+    lastStepMillis = System.currentTimeMillis();
+    updateTimer();
 }
 
 public void onExecute() throws Exception {
-  updateTimer();
+    try {
+        updateTimer();
 
-  boolean enabled = safeBool(getEnable());
-  long now = System.currentTimeMillis();
+        long now = System.currentTimeMillis();
 
-  // If just transitioned to enabled, reset the step timer
-  if (enabled && !wasEnabled) {
-    lastStepMillis = now;
-    getStatusTrace().setValue("T&R enabled; waiting for first step.");
-  }
-  wasEnabled = enabled;
+        // 1) Master Gate: Enabled + Plant Proven ON
+        boolean enabled = boolOrDefault(getEnable(), false);
+        boolean plantOn = boolOrDefault(getPlantProvenOn(), false); // NEW
 
-  // If disabled, hold SP at sp0 (or last good) and exit
-  if (!enabled) {
-    double holdSp = safeNumeric(getHwstSpOut(), getSp0(), getSpMin(), getSpMax());
-    getHwstSpOut().setValue(holdSp);
-    getStatusTrace().setValue("T&R disabled → holding SP = " + round1(holdSp));
-    return;
-  }
+        // Rising-edge of "ACTIVE" (enabled AND plantOn)
+        boolean wasActive = (wasEnabled && lastPlantOn);
+        boolean isActive  = (enabled && plantOn);
+        boolean becameActive = (isActive && !wasActive);
 
-  // Step timing
-  int stepMin = (int) clampDouble(
-      safeNumeric(getStepMinutes(), null, null, null),
-      1.0, 60.0
-  );
-  long stepMs = stepMin * 60L * 1000L;
+        wasEnabled = enabled;
+        lastPlantOn = plantOn;
 
-  if ((now - lastStepMillis) < stepMs) {
-    // Not time yet – just exit quietly
-    return;
-  }
-  lastStepMillis = now;
+        // G36 intent: if device/plant OFF -> command SP0
+        if (!isActive) {
+            resetToSafeSetpoint(!enabled ? "T&R disabled." : "Plant OFF -> SP0.");
+            return;
+        }
 
-  // Read total requests R and clamp to a sane range
-  int R = (int) clampDouble(
-      getTotalHwResetReq().getStatus().isOk() ? getTotalHwResetReq().getValue() : 0.0,
-      0.0, 999.0
-  );
+        // 2) Output initialization on becoming active
+        if (becameActive) {
+            lastStepMillis = now;
 
-  int I = (int) clampDouble(
-      getIgnoredReq().getStatus().isOk() ? getIgnoredReq().getValue() : 0.0,
-      0.0, 50.0
-  );
+            double sp0 = valOrDefault(getSp0(), 150.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+            getHwstSpOut().setValue(sp0);
+            getHwstSpOut().setStatus(BStatus.ok);
+            getEffectiveRequestCount().setValue(0.0);
+            getStatusTrace().setValue("Init: Plant ON -> SP0=" + round1(sp0));
+            return; // skip adjusting on the same tick
+        }
 
-  getActiveR().setValue(R);
+        // 3) Validate critical request input
+        BStatusNumeric reqSlot = getTotalHwResetReq();
+        if (!isDataValid(reqSlot, SANITY_REQ_MIN, SANITY_REQ_MAX)) {
+            // Fail safe to SP0 if input is Fault/Down/Null/Disabled/out-of-range
+            resetToSafeSetpoint("FAULT: totalHwResetReq Bad/Unwired -> SP0.");
+            getHwstSpOut().setStatus(BStatus.fault);
+            return;
+        }
 
-  double spMin  = getSpMin().getStatus().isOk() ? getSpMin().getValue() : 120.0;
-  double spMax  = getSpMax().getStatus().isOk() ? getSpMax().getValue() : 180.0;
-  double spTrim = getSpTrim().getStatus().isOk() ? getSpTrim().getValue() : -2.0;
-  double spRes  = getSpRes().getStatus().isOk()  ? getSpRes().getValue()  :  3.0;
-  double spResMax = getSpResMax().getStatus().isOk() ? getSpResMax().getValue() : 7.0;
+        // 4) Step timing guard
+        double stepMin = valOrDefault(getStepMinutes(), 5.0, 1.0, 60.0);
+        if ((now - lastStepMillis) < (stepMin * 60000L)) {
+            return;
+        }
+        lastStepMillis = now;
 
-  double currentSp = safeNumeric(getHwstSpOut(), getSp0(), getSpMin(), getSpMax());
-  double newSp = currentSp;
+        // 5) Compute effective request count
+        double R = reqSlot.getValue();
+        double I = valOrDefault(getIgnoredReq(), 2.0, 0.0, 50.0);
+        double effR = Math.max(0.0, R - I);
+        getEffectiveRequestCount().setValue(effR);
 
-  StringBuilder trace = new StringBuilder();
-  trace.append("R=").append(R).append(", I=").append(I)
-       .append(", oldSP=").append(round1(currentSp)).append(" → ");
+        // 6) Load loop parameters + current SP
+        double spMin = valOrDefault(getSpMin(), 90.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+        double spMax = valOrDefault(getSpMax(), 180.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
 
-  if (R > I) {
-    // Respond UP: SP += min( SPres * (R−I), SPres-max )
-    int effR = R - I;
-    double rawResp = spRes * effR;
-    double limitedResp = (spResMax > 0.0)
-        ? Math.min(rawResp, spResMax)
-        : rawResp;
+        // If output ever went weird/uninitialized, pull it back to SP0 before stepping
+        double curSp = getHwstSpOut().getValue();
+        if (curSp < SANITY_TEMP_MIN || curSp > SANITY_TEMP_MAX) {
+            curSp = valOrDefault(getSp0(), 150.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+            getHwstSpOut().setValue(curSp);
+        }
 
-    newSp = currentSp + limitedResp;
-    trace.append("Respond ↑ by ").append(round1(limitedResp));
-  }
-  else if (R == 0) {
-    // Trim DOWN: SP += SPtrim (typically negative)
-    newSp = currentSp + spTrim;
-    trace.append("Trim ").append(spTrim < 0 ? "↓" : "↑")
-         .append(" by ").append(round1(spTrim));
-  }
-  else {
-    // 0 < R ≤ I → hold
-    trace.append("Hold (0 < R ≤ I)");
-  }
+        double newSp = curSp;
+        String action = "Hold";
 
-  // Clamp to SPmin/SPmax
-  newSp = clampDouble(newSp, spMin, spMax);
-  getHwstSpOut().setValue(newSp);
+        // 7) Trim & Respond ladder
+        if (effR > 0) {
+            double res  = valOrDefault(getSpRespond(), 3.0, 0.0, 20.0);
+            double resM = valOrDefault(getSpRespondMax(), 7.0, 0.0, 50.0);
+            double amt = Math.min(effR * res, resM);
+            newSp = curSp + amt;
+            action = "Respond ↑ " + round1(amt);
+        } else {
+            // i.e. R <= I
+            double trim = valOrDefault(getSpTrim(), -2.0, -20.0, 0.0);
+            newSp = curSp + trim;
+            action = "Trim ↓ " + round1(trim);
+        }
 
-  trace.append(" → newSP=").append(round1(newSp))
-       .append(" [spMin=").append(round1(spMin))
-       .append(", spMax=").append(round1(spMax)).append("]");
+        // 8) Clamp and write outputs
+        newSp = Math.max(spMin, Math.min(spMax, newSp));
+        getHwstSpOut().setValue(newSp);
+        getHwstSpOut().setStatus(BStatus.ok);
+        getStatusTrace().setValue(action + " | R=" + (int)R + ", I=" + (int)I + ", effR=" + (int)effR + ", SP=" + round1(newSp));
 
-  getStatusTrace().setValue(trace.toString());
+    } catch (Exception e) {
+        getStatusTrace().setValue("Error: " + e.getMessage());
+    }
 }
+
 
 public void onStop() throws Exception {
-  if (ticket != null) {
-    ticket.cancel();
-  }
-  getStatusTrace().setValue("Boiler HWST T&R stopped.");
+    if (ticket != null) {
+        ticket.cancel();
+        ticket = null;
+    }
 }
 
-////////////////////////////////////////////////////////////
-// Helpers
-////////////////////////////////////////////////////////////
+// ==============================================================================
+//  HELPERS
+// ==============================================================================
 
-void updateTimer() {
-  if (ticket != null) {
-    ticket.cancel();
-  }
-  // Execute every 60 s, internal logic only acts every stepMinutes
-  ticket = Clock.schedule(
-      getComponent(),
-      BRelTime.makeSeconds(60),
-      BProgram.execute,
-      null
-  );
+private void updateTimer() {
+    if (ticket != null) ticket.cancel();
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(EXEC_PERIOD_SEC), BProgram.execute, null);
 }
 
-boolean safeBool(BStatusBoolean b) {
-  try {
-    return b.getStatus().isOk() && b.getValue();
-  } catch (Exception e) {
-    return false;
-  }
+private void resetToSafeSetpoint(String msg) {
+    double sp0 = valOrDefault(getSp0(), 150.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+    getHwstSpOut().setValue(sp0);
+    getEffectiveRequestCount().setValue(0.0);
+    getStatusTrace().setValue(msg + " Holding SP0=" + round1(sp0));
 }
 
-/**
- * If primary is bad/NULL, fall back to sp0, then midpoint(spMin, spMax).
- */
-double safeNumeric(BStatusNumeric primary,
-                   BStatusNumeric sp0,
-                   BStatusNumeric spMinSlot,
-                   BStatusNumeric spMaxSlot) {
-  if (primary != null && primary.getStatus().isOk()) {
-    return primary.getValue();
-  }
-
-  if (sp0 != null && sp0.getStatus().isOk()) {
-    return sp0.getValue();
-  }
-
-  double lo = 120.0;
-  double hi = 180.0;
-
-  if (spMinSlot != null && spMinSlot.getStatus().isOk()) {
-    lo = spMinSlot.getValue();
-  }
-  if (spMaxSlot != null && spMaxSlot.getStatus().isOk()) {
-    hi = spMaxSlot.getValue();
-  }
-  if (hi < lo) {
-    double tmp = lo;
-    lo = hi;
-    hi = tmp;
-  }
-  return (lo + hi) / 2.0;
+/** Returns TRUE if slot is wired, status is OK, and value is within [min, max] */
+private boolean isDataValid(BStatusNumeric slot, double min, double max) {
+    if (slot == null) return false;
+    // Standard Niagara check: Block Fault/Down/Null/Disabled
+    if (slot.getStatus().isFault() || slot.getStatus().isDown() || 
+        slot.getStatus().isNull() || slot.getStatus().isDisabled()) return false;
+    
+    double val = slot.getValue();
+    return (val >= min && val <= max);
 }
 
-void ensureDefault(BStatusNumeric slot, double defVal) {
-  if (slot == null) return;
-  if (!slot.getStatus().isOk()) {
-    slot.setValue(defVal);
-  }
+private double valOrDefault(BStatusNumeric slot, double def, double min, double max) {
+    return isDataValid(slot, min, max) ? slot.getValue() : def;
 }
 
-double clampDouble(double v, double lo, double hi) {
-  if (!Double.isFinite(v)) return lo;
-  if (lo > hi) {
-    double tmp = lo;
-    lo = hi;
-    hi = tmp;
-  }
-  if (v < lo) return lo;
-  if (v > hi) return hi;
-  return v;
+private boolean boolOrDefault(BStatusBoolean slot, boolean defVal) {
+    if (slot != null && slot.getStatus().isOk()) return slot.getValue();
+    return defVal;
 }
 
-double round1(double v) {
-  return Math.round(v * 10.0) / 10.0;
+private boolean safeBool(BStatusBoolean b) {
+    return (b != null && b.getStatus().isOk()) ? b.getValue() : false;
 }
+
+private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
 ```
 
 

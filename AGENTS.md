@@ -38,18 +38,24 @@ Before generating code, familiarize yourself with the available logic patterns a
 
 Given a **slot table** and a **task description**, you will produce **only** the Java method bodies for `onStart()`, `onExecute()`, `onStop()`, and any necessary private helper methods or constants.
 
-### 1.2. Agent Interaction Model
+### 1.2. Agent Interaction Model (REVISED)
+Deliverables You Must Return (The "Response"):
 
-**Inputs You Will Receive (The "Prompt"):**
+The Consolidated Code Block: You must return exactly one fenced Java code block containing the entire logic.
 
-1.  A **Slot Table**: A definitive list of all pre-existing properties (slots) on the `ProgramObject`, including their names and Java types (e.g., `BStatusNumeric`, `BOrd`, `BStatusBoolean`).
-2.  A **Task**: A clear description of the desired logic (e.g., "Fetch Nager holidays and populate a Calendar schedule," "Average all `In` slots," "Implement a lead-lag rotator").
+No Method Headers: Do not include the public void onStart() or public void onExecute() headers. Instead, use comments to separate the sections.
 
-**Deliverables You Must Return (The "Response"):**
+The "One-Shot" Format: The block must be structured as follows:
 
-1.  **Method Bodies Only**: Fenced Java code blocks for `onStart`, `onExecute`, and `onStop`.
-2.  **Helpers Block**: An optional fourth block, `// Helpers`, for any private helper methods or `private static final` constants.
-3.  **No other code**: No package declarations, no imports, no class headers, no field declarations, and no getters/setters.
+Stateful field declarations (e.g., Clock.Ticket ticket;).
+
+The body of onStart().
+
+The body of onExecute().
+
+The body of onStop().
+
+The helper methods block.
 
 ---
 
@@ -456,31 +462,33 @@ Use this "Golden Pattern" inside `onExecute` for maximum safety.
 
 You **must** return your response as a series of fenced code blocks in this exact order.
 
-### 1\. onStart()
-
 ```java
-// onStart
-{
-    // ... onStart() body only ...
-}
-```
+// ==========================================
+// 1. STATEFUL FIELDS (Class Level)
+// ==========================================
+private Clock.Ticket ticket;
+private long lastStepMillis = 0L;
+private boolean wasEnabled = false;
 
-### 2\. onExecute()
+// ==========================================
+// 2. onStart() BODY
+// ==========================================
+// (Logic here - NO headers or extra braces)
 
-```java
-// onExecute
-{
-    // ... onExecute() body only ...
-}
-```
+// ==========================================
+// 3. onExecute() BODY
+// ==========================================
+// (Logic here - NO headers or extra braces)
 
-### 3\. onStop()
+// ==========================================
+// 4. onStop() BODY
+// ==========================================
+// (Logic here - NO headers or extra braces)
 
-```java
-// onStop
-{
-    // ... onStop() body only ...
-}
+// ==========================================
+// 5. HELPERS
+// ==========================
+private void updateTimer() { ... }
 ```
 
 ### 4\. Helpers (Optional)
