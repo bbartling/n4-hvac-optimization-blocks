@@ -491,18 +491,88 @@ private double[] m4CoolMin   = new double[MODEL4_MAX_HIST];
 // ==========================================================
 // LIFECYCLE
 // ==========================================================
+// ==========================================================
+// DEFAULT SEEDING (run once at startup)
+// ==========================================================
 public void onStart() throws Exception
 {
-    isOptimalStartRunning = false;
-    runStartTimestamp = 0L;
-    scheduleDropTimestamp = 0L;
-    
-    // Ensure we start in a safe, non-commanding state
-    forceCommandNull("Initialization");
+  isOptimalStartRunning = false;
+  runStartTimestamp = 0L;
+  scheduleDropTimestamp = 0L;
 
-    // Initialize the first run timer
-    reschedule(15);
+  forceCommandNull("Initialization");
+
+  seedDefaultsIfNeeded();   // <-- ADD THIS
+
+  reschedule(15);
 }
+
+private void seedDefaultsIfNeeded()
+{
+  // ---- Model 0 (baseline rates) ----
+  setDegreesPerMinuteHeat(new BStatusNumeric(seedIfZero(getDegreesPerMinuteHeat(), 0.15, 1e-6)));
+  setDegreesPerMinuteCool(new BStatusNumeric(seedIfZero(getDegreesPerMinuteCool(), 0.20, 1e-6)));
+
+  // EMA weighting used by Model 0 learn
+  setEmaWeightingFactor(new BStatusNumeric(seedIfZero(getEmaWeightingFactor(), 0.20, 1e-6)));
+
+  // ---- Model 1 (your renamed quadratic slots) ----
+  setModel2QuadraticA_heat(new BStatusNumeric(seedIfZero(getModel2QuadraticA_heat(), 0.10, 1e-6)));
+  setModel2QuadraticB_heat(new BStatusNumeric(seedIfZero(getModel2QuadraticB_heat(), 5.0,  1e-6)));
+  setModel2QuadraticA_cool(new BStatusNumeric(seedIfZero(getModel2QuadraticA_cool(), 0.08, 1e-6)));
+  setModel2QuadraticB_cool(new BStatusNumeric(seedIfZero(getModel2QuadraticB_cool(), 4.0,  1e-6)));
+
+  // ---- Model 2 (PNNL baselines are state vars, but you can expose them as slots if you want)
+  // You already hard-init:
+  // lastHeatBaselineMinutes = 30.0; lastHeatBaselineOat = 20.0;
+  // lastCoolBaselineMinutes = 30.0; lastCoolBaselineOat = 85.0;
+
+  // Optional: seed the OAT adders (purely visual)
+  setModel2HeatOatMinutesAdder(new BStatusNumeric(seedIfZero(getModel2HeatOatMinutesAdder(), 0.0, 1e-6)));
+  setModel2CoolOatMinutesAdder(new BStatusNumeric(seedIfZero(getModel2CoolOatMinutesAdder(), 0.0, 1e-6)));
+
+  // ---- Model 3 (must not be zero for wf normalization) ----
+  setModel3WfRef_heat(new BStatusNumeric(seedIfZero(getModel3WfRef_heat(), 1.0, 1e-6)));
+  setModel3WfRef_cool(new BStatusNumeric(seedIfZero(getModel3WfRef_cool(), 1.0, 1e-6)));
+
+  // Seed coefficients so Model 3 behaves like "t ≈ dT" until it learns
+  // (This prevents the all-zero coefficient trap.)
+  setModel3D_heat(new BStatusNumeric(seedIfZero(getModel3D_heat(), 0.0, 1e-6)));
+  setModel3A_heat(new BStatusNumeric(seedIfZero(getModel3A_heat(), 1.0, 1e-6)));
+  setModel3B_heat(new BStatusNumeric(seedIfZero(getModel3B_heat(), 0.0, 1e-6)));
+
+  setModel3D_cool(new BStatusNumeric(seedIfZero(getModel3D_cool(), 0.0, 1e-6)));
+  setModel3A_cool(new BStatusNumeric(seedIfZero(getModel3A_cool(), 1.0, 1e-6)));
+  setModel3B_cool(new BStatusNumeric(seedIfZero(getModel3B_cool(), 0.0, 1e-6)));
+
+  // ---- Model 4 (MUST NOT be zero) ----
+  setModel4Tau_heat(new BStatusNumeric(seedIfZero(getModel4Tau_heat(), 25.0, 1e-6)));
+  setModel4K_heat  (new BStatusNumeric(seedIfZero(getModel4K_heat(),   0.10, 1e-6)));
+  setModel4Tau_cool(new BStatusNumeric(seedIfZero(getModel4Tau_cool(), 25.0, 1e-6)));
+  setModel4K_cool  (new BStatusNumeric(seedIfZero(getModel4K_cool(),   0.10, 1e-6)));
+
+  // Model 4 fitter tuning (must be > 0)
+  setModel4LearningRateTau(new BStatusNumeric(seedIfZero(getModel4LearningRateTau(), 0.001,  1e-9)));
+  setModel4LearningRateK  (new BStatusNumeric(seedIfZero(getModel4LearningRateK(),   0.0005, 1e-9)));
+  setModel4FitSteps       (new BStatusNumeric(seedIfZero(getModel4FitSteps(),        60.0,   1e-6)));
+
+}
+
+
+private double seedIfZero(BStatusNumeric slot, double seed, double eps)
+{
+  if (slot == null) return seed;
+
+  BStatus st = slot.getStatus();
+  // If unusable, we still want deterministic defaults
+  if (st.isNull() || st.isFault() || st.isDown() || st.isDisabled()) return seed;
+
+  double v = slot.getValue();
+  if (Double.isNaN(v) || Double.isInfinite(v)) return seed;
+  if (Math.abs(v) <= eps) return seed;
+  return v;
+}
+
 
 public void onExecute() throws Exception
 {
