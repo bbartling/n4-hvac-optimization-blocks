@@ -363,6 +363,7 @@ Where `mX ∈ {m0,m1,m2,m3,m4}`.
 ============================================================
 OptimalStartCombined — Models 0–4 (FINAL BLESSED VERSION)
 ============================================================
+ - Updated updateAutoSelection() 1-11-26
 */
 
 // ==========================================================
@@ -390,12 +391,13 @@ private static final int MODEL3_MAX_HIST = 60;
 private static final int MODEL4_MAX_HIST = 60;
 
 // Model 3 numeric safety
-private static final double DET_MIN     = 1e-9;
-private static final double WF_REF_MIN = 0.1;
+private static final double DET_MIN     = 0.000000001;
+private static final double WF_REF_MIN  = 0.1;
 
 // Model 4 clamps
-private static final double TAU_MIN = 1e-3;
-private static final double K_MIN   = 1e-6;
+private static final double TAU_MIN     = 2.0; // minutes
+private static final double K_MIN       = 0.000001;
+
 
 // Rolling avg squared error EMA (same for all models)
 private static final double SCORE_ALPHA = 0.1;
@@ -839,23 +841,19 @@ private boolean decideHeatModeAtStart(double zone, double sp, double tol)
 }
 
 // ==========================================================
-// IDLE PREDICTIONS (compute all enabled model preds, then winner predicts)
+// IDLE PREDICTIONS
+// - Computes predictions continuously for trigger logic.
+// - DOES NOT overwrite lastRunPredictedMinutes_mX.
 // ==========================================================
 private void updateAllModelPredictionsIdle()
 {
   double zone = getZoneTemp().getValue();
   double sp   = getTargetZoneTempSetpoint().getValue();
   double tol  = safeNum(getTempTolerance(), 0.5);
-  double maxM = safeNum(getMaxMinutesAllowed(), 180.0);
 
-  // If within tolerance, everyone predicts 0
+  // If already satisfied, live prediction is 0.0 (but do NOT overwrite "last run" slots)
   if (Math.abs(sp - zone) <= tol)
   {
-    setLastRunPredictedMinutes_m0(new BStatusNumeric(0.0));
-    setLastRunPredictedMinutes_m1(new BStatusNumeric(0.0));
-    setLastRunPredictedMinutes_m2(new BStatusNumeric(0.0));
-    setLastRunPredictedMinutes_m3(new BStatusNumeric(0.0));
-    setLastRunPredictedMinutes_m4(new BStatusNumeric(0.0));
     setCurrentModelPredictMinutes(new BStatusNumeric(0.0));
     return;
   }
@@ -863,74 +861,54 @@ private void updateAllModelPredictionsIdle()
   boolean isHeatNow = decideHeatModeAtStart(zone, sp, tol);
   double deltaT = Math.abs(sp - zone);
 
-  // --- Model 0 (always available) ---
+  double maxM = safeNum(getMaxMinutesAllowed(), 180.0);
+
+  // OAT is only needed for models 2/3; safe to NaN when missing
+  double oat = getUsableOatOrNaN();
+
+  // -----------------------------
+  // Predict each model (fallback-to-t0 pattern preserved)
+  // -----------------------------
   double t0 = model0Predict(deltaT, isHeatNow);
 
-  // --- Model 1 (Quadratic) ---
   double t1 = t0;
   if (isBoolUsable(getModel1Enabled()) && getModel1Enabled().getValue())
   {
     t1 = model1Predict(deltaT, isHeatNow);
   }
 
-  // --- Model 2 (PNNL ratio) ---
   double t2 = t0;
-  if (isBoolUsable(getModel2Enabled()) && getModel2Enabled().getValue())
+  if (isBoolUsable(getModel2Enabled()) && getModel2Enabled().getValue() && !Double.isNaN(oat))
   {
-    double oatNow = getUsableOatOrNaN();
-    t2 = model2Predict(deltaT, oatNow, isHeatNow, t0);
-  }
-  else
-  {
-    // keep “adder” visuals quiet if disabled
-    setModel2HeatOatMinutesAdder(new BStatusNumeric(0.0));
-    setModel2CoolOatMinutesAdder(new BStatusNumeric(0.0));
+    t2 = model2Predict(deltaT, oat, isHeatNow, t0);
   }
 
-  // --- Model 3 (interaction) ---
   double t3 = t0;
-  if (isBoolUsable(getModel3Enabled()) && getModel3Enabled().getValue())
+  if (isBoolUsable(getModel3Enabled()) && getModel3Enabled().getValue() && !Double.isNaN(oat))
   {
-    // requires OAT usable
-    double oatNow = getUsableOatOrNaN();
-    if (!Double.isNaN(oatNow))
-    {
-      t3 = model3Predict(deltaT, sp, oatNow, isHeatNow);
-    }
-    else
-    {
-      // no OAT => fallback to t0
-      t3 = t0;
-    }
+    t3 = model3Predict(deltaT, sp, oat, isHeatNow);
   }
 
-  // --- Model 4 (log) ---
   double t4 = t0;
   if (isBoolUsable(getModel4Enabled()) && getModel4Enabled().getValue())
   {
     t4 = model4Predict(deltaT, isHeatNow);
   }
 
-  // clamp
+  // Clamp for safety
   t0 = clamp(t0, 0.0, maxM);
   t1 = clamp(t1, 0.0, maxM);
   t2 = clamp(t2, 0.0, maxM);
   t3 = clamp(t3, 0.0, maxM);
   t4 = clamp(t4, 0.0, maxM);
 
-  // publish to per-model predicted slots
-  setLastRunPredictedMinutes_m0(new BStatusNumeric(t0));
-  setLastRunPredictedMinutes_m1(new BStatusNumeric(t1));
-  setLastRunPredictedMinutes_m2(new BStatusNumeric(t2));
-  setLastRunPredictedMinutes_m3(new BStatusNumeric(t3));
-  setLastRunPredictedMinutes_m4(new BStatusNumeric(t4));
-
-  // winner chosen in updateAutoSelection(), but default if not called yet:
+  // Winner is whichever auto-selection chose
   double finalPred = pickPredictionByIndex(currentBestModelIndex, t0, t1, t2, t3, t4);
 
-  setCurrentModel(new BStatusNumeric((double)currentBestModelIndex));
+  setCurrentModel(new BStatusNumeric((double) currentBestModelIndex));
   setCurrentModelPredictMinutes(new BStatusNumeric(finalPred));
 }
+
 
 private double pickPredictionByIndex(int idx, double t0, double t1, double t2, double t3, double t4)
 {
@@ -942,51 +920,67 @@ private double pickPredictionByIndex(int idx, double t0, double t1, double t2, d
 }
 
 // ==========================================================
-// AUTO SELECTION (based on avgSquaredError_mX)
+// AUTO SELECTION (Fixed to respect persisted history)
 // ==========================================================
 private void updateAutoSelection()
 {
-  // Before any run, stick to Model 0
-  if (firstRunTimestamp == 0L)
-  {
-    currentBestModelIndex = 0;
-    setCurrentModel(new BStatusNumeric(0.0));
-    return;
-  }
+  // 1. Check if we have VALID historical data already persisted in the slots.
+  // If Model 0 has a non-trivial error score (> 0.01), we assume training has occurred previously.
+  boolean hasPriorHistory = false;
+  double s0 = safeNum(getAvgSquaredError_m0(), 0.0);
+  if (s0 > 0.01) hasPriorHistory = true;
 
+  // 2. Calculate runtime duration (volatile RAM check)
+  double daysActive = 0.0;
+  if (firstRunTimestamp > 0L) {
+      daysActive = (System.currentTimeMillis() - firstRunTimestamp) / (double)MS_PER_DAY;
+  }
+  
   double daysNeeded = safeNum(getAutoModeStartDays(), 0.0);
-  double daysActive = (System.currentTimeMillis() - firstRunTimestamp) / (double)MS_PER_DAY;
 
-  // Not enough history yet => Model 0
-  if (daysActive < daysNeeded)
+  // 3. The Gate: Only force Model 0 if we are BRAND NEW (no history) AND (uptime < daysNeeded)
+  if (!hasPriorHistory && daysActive < daysNeeded)
   {
+    // We strictly force Model 0 only during the initial "learning phase" of a fresh install
     currentBestModelIndex = 0;
     setCurrentModel(new BStatusNumeric(0.0));
+    
+    // Debug trace to explain why
+    if (daysNeeded > 0) {
+        setStatusTrace(new BStatusString("Training Mode: Using Model 0 for " + round1(daysNeeded - daysActive) + " more days"));
+    }
     return;
   }
 
+  // --- STANDARD SELECTION LOGIC BELOW ---
+  
   // NULL/NotOK-safe reads: treat unusable scores as +infinity (not eligible)
   double bestScore = safeNum(getAvgSquaredError_m0(), Double.POSITIVE_INFINITY);
   int    bestIdx   = 0;
 
+  // Check Model 1
   if (isBoolUsable(getModel1Enabled()) && getModel1Enabled().getValue())
   {
     double s1 = safeNum(getAvgSquaredError_m1(), Double.POSITIVE_INFINITY);
+    // Strict less-than ensures stability if scores are identical
     if (s1 < bestScore) { bestScore = s1; bestIdx = 1; }
   }
 
+  // Check Model 2
   if (isBoolUsable(getModel2Enabled()) && getModel2Enabled().getValue())
   {
     double s2 = safeNum(getAvgSquaredError_m2(), Double.POSITIVE_INFINITY);
     if (s2 < bestScore) { bestScore = s2; bestIdx = 2; }
   }
 
+  // Check Model 3
   if (isBoolUsable(getModel3Enabled()) && getModel3Enabled().getValue())
   {
     double s3 = safeNum(getAvgSquaredError_m3(), Double.POSITIVE_INFINITY);
     if (s3 < bestScore) { bestScore = s3; bestIdx = 3; }
   }
 
+  // Check Model 4
   if (isBoolUsable(getModel4Enabled()) && getModel4Enabled().getValue())
   {
     double s4 = safeNum(getAvgSquaredError_m4(), Double.POSITIVE_INFINITY);
@@ -995,11 +989,6 @@ private void updateAutoSelection()
 
   currentBestModelIndex = bestIdx;
   setCurrentModel(new BStatusNumeric((double)bestIdx));
-
-  // Optional trace for debugging
-  setStatusTrace(new BStatusString(
-    "AutoSelect: bestModel=" + bestIdx + " bestScore=" + round1(bestScore)
-  ));
 }
 
 
@@ -1147,17 +1136,21 @@ private void checkForStartTrigger()
   }
 }
 
+// ==========================================================
+// START RUN
+// - Captures “forensic” predictions ONCE.
+// - Prevents idle loop from overwriting lastRunPredictedMinutes_mX.
+// ==========================================================
 private void startRun()
 {
   double zone = getZoneTemp().getValue();
   double sp   = getTargetZoneTempSetpoint().getValue();
   double tol  = safeNum(getTempTolerance(), 0.5);
 
-  // If we’re already basically there, do not start
+  // Guard (should already be blocked before calling startRun, but keep it safe)
   if (Math.abs(sp - zone) <= tol)
   {
-    setStatusLog(new BStatusString("No start: within tolerance."));
-    forceCommandNull("WithinTolerance");
+    forceCommandNull("No start: already within tolerance");
     return;
   }
 
@@ -1169,20 +1162,57 @@ private void startRun()
   startSetpoint      = sp;
   deltaTAtStart      = Math.abs(sp - zone);
   runModeHeatAtStart = decideHeatModeAtStart(zone, sp, tol);
+  oatAtStart         = getUsableOatOrNaN();
 
-  // Capture OAT at start if usable (ALARM ok, Fault/Down/Null/Disabled not)
-  oatAtStart = getUsableOatOrNaN();
+  // Capture predictions at the trigger moment
+  double maxM = safeNum(getMaxMinutesAllowed(), 180.0);
 
+  double t0 = model0Predict(deltaTAtStart, runModeHeatAtStart);
+
+  double t1 = t0;
+  if (isBoolUsable(getModel1Enabled()) && getModel1Enabled().getValue())
+  {
+    t1 = model1Predict(deltaTAtStart, runModeHeatAtStart);
+  }
+
+  double t2 = t0;
+  if (isBoolUsable(getModel2Enabled()) && getModel2Enabled().getValue() && !Double.isNaN(oatAtStart))
+  {
+    t2 = model2Predict(deltaTAtStart, oatAtStart, runModeHeatAtStart, t0);
+  }
+
+  double t3 = t0;
+  if (isBoolUsable(getModel3Enabled()) && getModel3Enabled().getValue() && !Double.isNaN(oatAtStart))
+  {
+    t3 = model3Predict(deltaTAtStart, sp, oatAtStart, runModeHeatAtStart);
+  }
+
+  double t4 = t0;
+  if (isBoolUsable(getModel4Enabled()) && getModel4Enabled().getValue())
+  {
+    t4 = model4Predict(deltaTAtStart, runModeHeatAtStart);
+  }
+
+  // Clamp and store to LAST RUN predicted slots (freeze until next start)
+  t0 = clamp(t0, 0.0, maxM);
+  t1 = clamp(t1, 0.0, maxM);
+  t2 = clamp(t2, 0.0, maxM);
+  t3 = clamp(t3, 0.0, maxM);
+  t4 = clamp(t4, 0.0, maxM);
+
+  setLastRunPredictedMinutes_m0(new BStatusNumeric(t0));
+  setLastRunPredictedMinutes_m1(new BStatusNumeric(t1));
+  setLastRunPredictedMinutes_m2(new BStatusNumeric(t2));
+  setLastRunPredictedMinutes_m3(new BStatusNumeric(t3));
+  setLastRunPredictedMinutes_m4(new BStatusNumeric(t4));
+
+  // First run timestamp for auto-mode day counting
   if (firstRunTimestamp == 0L) firstRunTimestamp = runStartTimestamp;
 
-  setStatusLog(new BStatusString(
-    "Starting run. mode=" + (runModeHeatAtStart ? "HEAT" : "COOL") +
-    " bestModel=" + currentBestModelIndex +
-    " pred=" + round1(safeNum(getCurrentModelPredictMinutes(), 0.0)) + " min"
-  ));
-
-  forceCommandTrue("Start");
+  // Fire the command
+  forceCommandTrue("OptimalStart startRun()");
 }
+
 
 // ==========================================================
 // ACTIVE RUN MONITORING + OFF-DELAY

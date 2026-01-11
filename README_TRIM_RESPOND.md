@@ -53,10 +53,8 @@ These variables form the **core logic foundation** for all GL36-based supervisor
 <details>
 <summary>🌬️ GL36 VAV Box Zone Request Generator</summary>
 
-**Purpose:**  
-Implements ASHRAE Guideline 36 zone-level request logic for each VAV box.  
-Each zone generates **Pressure** and **Cooling (SAT)** requests based on its local damper, airflow, and temperature.  
-These individual zone requests are totalized at the AHU level and used by Trim & Respond algorithms for duct static pressure and supply air temperature reset.
+> This block typicall runs on a wire sheet for the VAV box points where then the output request count data is brought into the AHU JACE via the Niagara network.
+
 
 ![GL36 VAV Box Request Counter](https://github.com/bbartling/n4-hvac-optimization-blocks/blob/develop/snips/gl36VavBoxReqCounter.png)
 
@@ -1577,28 +1575,23 @@ double numericOrDefault(BStatusNumeric slot, double defVal) {
 <details>
 <summary>🍃 Central Plant AHU Request Counter (Heating + Cooling)</summary>
 
-For **each AHU/FCU**, build a small “Plant Reset Request Generator” `ProgramObject` that can:
+> This block typicall runs on a wire sheet for the AHU points where then the output request count data is brought into the Central Plant JACE via the Niagara network.
 
-* Generate **CHW reset requests** (for chilled-water plant trim & respond)
-* Generate **HW reset requests** (for boiler HWST trim & respond)
+### Request Timer Logic (Applies to both Heating & Cooling)
 
-Both request ladders follow the same Guideline-36 style as the VAV box:
-integer **0–3** requests, with persistence timers, hysteresis on valve
-position, and optional fan-gating.
+The logic uses a "parallel timer" strategy where the Critical condition also contributes time to the Failing condition. This ensures that if a massive temperature error drops to a moderate error, the "Failing" timer does not lose its progress.
 
-Crucially, this AHU block is designed to be **coil-agnostic**:
+| Error Severity | Critical Timer (Req 3) | Failing Timer (Req 2) |
+| :--- | :--- | :--- |
+| **Massive (>10°F)** | 🟢 **Counts Up** | 🟢 **Counts Up** *(Gets free credit)* |
+| **Moderate (>5°F)** | 🔴 **Resets to 0** | 🟢 **Counts Up** |
+| **Satisfied (<5°F)** | 🔴 **Resets to 0** | 🔴 **Resets to 0** |
 
-* If the **cooling coil** is not present (no CHW valve / cooling SAT SP wired),
-  the **CHW logic is bypassed** → `chwResetRequests = 0`
-* If the **heating coil** is not present (no HW valve / heating SAT SP wired),
-  the **HW logic is bypassed** → `hwResetRequests = 0`
+> **Note:**
+> * **Cooling Error:** Supply Temp - Setpoint
+> * **Heating Error:** Setpoint - Supply Temp
 
-This lets one ProgramObject serve:
 
-* Heat-only AHUs  
-* Cool-only AHUs  
-* AHUs with **both** coils  
-* FCUs / DOAS units that only have one active coil
 
 ### Slot Map (per AHU/FCU) — updated to match your ProgramObject slots
 
@@ -1634,297 +1627,273 @@ This lets one ProgramObject serve:
 
 
 ```java
-// ==============================================================================
-//  GL36 AHU REQUEST GENERATOR (Heating + Cooling) v2.0
-//  - Logic: Trim & Respond Requests (0-3)
-//  - Update: Consolidated Setpoints & Human-Readable Names
-//  - Safety: Strict Sanity Checks (Range + Status)
-// ==============================================================================
+// ==========================================
+// 1. STATEFUL FIELDS (Class Level)
+// ==========================================
+/* * DEVELOPER MODIFICATION NOTE:
+ * Modified per site requirements & technician recommendation (10yrs exp).
+ * * CHANGES:
+ * 1. Widened Error Thresholds: 
+ * - Level 3 (Critical) now requires > 10.0 deg deviation (was 5.0)
+ * - Level 2 (Failing)  now requires >  5.0 deg deviation (was 3.0)
+ * * 2. Extended Timers (De-bouncing):
+ * - Level 3 (Critical) delay increased to 10 MINUTES (was 2m/5m)
+ * - Level 2 (Failing)  delay increased to  5 MINUTES (was 2m/5m)
+ * * 3. Status Trace:
+ * - Reformatted for better readability on graphics.
+ */
 
-// Class-level fields
 private Clock.Ticket ticket;
 private static final int EXEC_PERIOD_SEC = 10;
-private static final int PERSIST_SEC     = 300; // 5 min persistence
+private long lastRunMillis = 0L; 
 
-// Thresholds (G36 Defaults)
-private static final double COOL_ERR_3REQ   = 10.0; // SAT > SP + 10
-private static final double COOL_ERR_2REQ   = 5.0;  // SAT > SP + 5
-private static final double HEAT_ERR_3REQ   = 30.0; // SAT < SP - 30 (Deep deviation)
-private static final double HEAT_ERR_2REQ   = 15.0; // SAT < SP - 15
-private static final double VALVE_ON_PCT    = 95.0;
-private static final double VALVE_OFF_PCT   = 85.0;
+// --- Adjusted Thresholds (Wider) ---
+private static final double COOL_ERR_CRITICAL = 10.0; // Level 3 Trigger
+private static final double COOL_ERR_FAILING  =  5.0; // Level 2 Trigger
+private static final double HEAT_ERR_CRITICAL = 10.0; // Level 3 Trigger
+private static final double HEAT_ERR_FAILING  =  5.0; // Level 2 Trigger
 
-// Sanity Limits (Data Quality Guardrails)
+// --- Adjusted Timers (Slower) ---
+private static final int TIME_LIMIT_CRITICAL = 600; // 10 Minutes
+private static final int TIME_LIMIT_FAILING  = 300; //  5 Minutes
+
+private static final double VALVE_ON_PCT     = 95.0;
+private static final double VALVE_OFF_PCT    = 85.0;
+
+// Sanity Limits
 private static final double SANITY_VALVE_MIN = -5.0;
 private static final double SANITY_VALVE_MAX = 105.0;
 private static final double SANITY_TEMP_MIN  = -50.0;
 private static final double SANITY_TEMP_MAX  = 250.0;
 
-// Internal State
-private int     coolHigh10Sec   = 0;
-private int     coolHigh5Sec    = 0;
-private boolean coolValveLatched = false;
+// Internal State (Renamed for clarity)
+private double  coolTimerCritical  = 0; 
+private double  coolTimerFailing   = 0;
+private boolean coolValveLatched   = false;
 
-private int     heatLow30Sec    = 0;
-private int     heatLow15Sec    = 0;
-private boolean heatValveLatched = false;
+private double  heatTimerCritical  = 0;
+private double  heatTimerFailing   = 0;
+private boolean heatValveLatched   = false;
 
+// ==========================================
+// 2. LIFECYCLE METHODS
+// ==========================================
 
-
-// ==============================================================================
-//  LIFECYCLE
-// ==============================================================================
 public void onStart() throws Exception {
-    updateTimer();
+    lastRunMillis = System.currentTimeMillis(); 
+    scheduleNextRun();
 }
 
 public void onExecute() throws Exception {
-    // 1) Master Gate: Fan Status
-    boolean fanIsRunning = boolOrDefault(getFanStatus(), true);
+    try {
+        long now = System.currentTimeMillis();
+        // Time step calculation with clamp
+        double stepSeconds = (now - lastRunMillis) / 1000.0;
+        if (stepSeconds < 0.0) stepSeconds = EXEC_PERIOD_SEC; 
+        if (stepSeconds > 60.0) stepSeconds = 60.0; 
+        
+        lastRunMillis = now;
 
-    if (!fanIsRunning) {
-        resetAllState();
-        zeroOutputs("Fan OFF.");
-        updateTimer();
-        return;
-    }
+        // 1) Master Gate: Fan Status
+        boolean fanIsRunning = boolOrDefault(getFanStatus(), true);
 
-    // 2) Fetch & Validate Inputs (Sanity Checks)
-    BStatusNumeric satSlot = getSupplyAirTemp();
-    BStatusNumeric spSlot  = getSupplyAirTempSetpoint();
-
-    boolean satValid = isDataValid(satSlot, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
-    boolean spValid  = isDataValid(spSlot,  SANITY_TEMP_MIN, SANITY_TEMP_MAX);
-
-    BStatusNumeric coolVlvSlot = getCoolValveCommand();
-    BStatusNumeric heatVlvSlot = getHeatValveCommand();
-
-    boolean coolVlvOk = isNumericUnwiredOrValid(coolVlvSlot, SANITY_VALVE_MIN, SANITY_VALVE_MAX);
-    boolean heatVlvOk = isNumericUnwiredOrValid(heatVlvSlot, SANITY_VALVE_MIN, SANITY_VALVE_MAX);
-
-    boolean fanAtMaxCool = checkFanGate(getFanAtMaxCool());
-    boolean fanAtMaxHeat = checkFanGate(getFanAtMaxHeat());
-
-    // 3) Persistence (seconds)
-    final int COOL_PERSIST_SEC = 120; // G36-style for cooling SAT error ladder
-    final int HEAT_PERSIST_SEC = 300; // keep your 5-min heating persistence (change if desired)
-
-    // ============================================================
-    // COOLING REQUESTS
-    // ============================================================
-    int coolReq = 0;
-    String coolTrace = "";
-
-    if (!satValid || !spValid || !coolVlvOk) {
-        coolReq = 0;
-        resetCoolTimers();
-        coolTrace = "Bad Sensor Data (SAT, SP, or Valve in Fault/Range error).";
-    }
-    else if (!isNumericWired(coolVlvSlot)) {
-        coolReq = 0;
-        resetCoolTimers();
-        coolTrace = "No Cooling Coil (Valve unwired).";
-    }
-    else if (!fanAtMaxCool) {
-        coolReq = 0;
-        resetCoolTimers();
-        coolTrace = "Fan not at max speed. Suppressed.";
-    }
-    else {
-        double sat = satSlot.getValue();
-        double sp  = spSlot.getValue();
-        double vlv = coolVlvSlot.getValue();
-        double err = sat - sp; // Positive = Too Hot
-
-        // Timers accumulate by EXEC_PERIOD_SEC
-        if (err >= COOL_ERR_3REQ) {
-            coolHigh10Sec += EXEC_PERIOD_SEC;
-            coolHigh5Sec  += EXEC_PERIOD_SEC;
-        }
-        else if (err >= COOL_ERR_2REQ) {
-            coolHigh10Sec = 0;
-            coolHigh5Sec  += EXEC_PERIOD_SEC;
-        }
-        else {
-            coolHigh10Sec = 0;
-            coolHigh5Sec  = 0;
+        if (!fanIsRunning) {
+            resetAllState();
+            zeroOutputs("System Status: Fan OFF - Monitoring Disabled");
+            return;
         }
 
-        // Valve latch (hysteresis)
-        if (vlv >= VALVE_ON_PCT)      coolValveLatched = true;
-        else if (vlv < VALVE_OFF_PCT) coolValveLatched = false;
+        // 2) Fetch & Validate Inputs
+        BStatusNumeric satSlot = getSupplyAirTemp();
+        BStatusNumeric spSlot  = getSupplyAirTempSetpoint();
 
-        // Ladder (COOL persistence = 120s)
-        if (coolHigh10Sec >= COOL_PERSIST_SEC) {
-            coolReq = 3;
-            coolTrace = "Req=3 (SAT > SP+10)";
-        }
-        else if (coolHigh5Sec >= COOL_PERSIST_SEC) {
-            coolReq = 2;
-            coolTrace = "Req=2 (SAT > SP+5)";
-        }
-        else if (coolValveLatched) {
-            coolReq = 1;
-            coolTrace = "Req=1 (Vlv > 95%)";
-        }
-        else {
+        boolean satValid = isDataValid(satSlot, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+        boolean spValid  = isDataValid(spSlot,  SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+
+        BStatusNumeric coolVlvSlot = getCoolValveCommand();
+        BStatusNumeric heatVlvSlot = getHeatValveCommand();
+
+        boolean coolVlvOk = isNumericUnwiredOrValid(coolVlvSlot, SANITY_VALVE_MIN, SANITY_VALVE_MAX);
+        boolean heatVlvOk = isNumericUnwiredOrValid(heatVlvSlot, SANITY_VALVE_MIN, SANITY_VALVE_MAX);
+
+        // --- COOLING LOGIC ---
+        int coolReq = 0;
+        String coolTrace = "";
+
+        if (!satValid || !spValid || !coolVlvOk) {
             coolReq = 0;
-            coolTrace = "Satisfied";
+            resetCoolTimers();
+            coolTrace = "Fault: Sensor or Valve Data Invalid";
         }
-
-        coolTrace += " [Err=" + round1(err) + ", Vlv=" + (int)vlv + "%, t10=" + coolHigh10Sec + "s, t5=" + coolHigh5Sec + "s]";
-    }
-
-    // ============================================================
-    // HEATING REQUESTS
-    // ============================================================
-    int heatReq = 0;
-    String heatTrace = "";
-
-    if (!satValid || !spValid || !heatVlvOk) {
-        heatReq = 0;
-        resetHeatTimers();
-        heatTrace = "Bad Sensor Data (SAT, SP, or Valve in Fault/Range error).";
-    }
-    else if (!isNumericWired(heatVlvSlot)) {
-        heatReq = 0;
-        resetHeatTimers();
-        heatTrace = "No Heating Coil (Valve unwired).";
-    }
-    else if (!fanAtMaxHeat) {
-        heatReq = 0;
-        resetHeatTimers();
-        heatTrace = "Fan not at max speed. Suppressed.";
-    }
-    else {
-        double sat = satSlot.getValue();
-        double sp  = spSlot.getValue();
-        double vlv = heatVlvSlot.getValue();
-        double err = sp - sat; // Positive = Too Cold
-
-        // Timers accumulate by EXEC_PERIOD_SEC
-        if (err >= HEAT_ERR_3REQ) {
-            heatLow30Sec += EXEC_PERIOD_SEC;
-            heatLow15Sec += EXEC_PERIOD_SEC;
-        }
-        else if (err >= HEAT_ERR_2REQ) {
-            heatLow30Sec = 0;
-            heatLow15Sec += EXEC_PERIOD_SEC;
+        else if (!isNumericWired(coolVlvSlot)) {
+            coolReq = 0;
+            resetCoolTimers();
+            coolTrace = "Config: No Cooling Coil Wired";
         }
         else {
-            heatLow30Sec = 0;
-            heatLow15Sec = 0;
+            double sat = satSlot.getValue();
+            double sp  = spSlot.getValue();
+            double vlv = coolVlvSlot.getValue();
+            double err = sat - sp; 
+
+            // Timer Logic
+            if (err >= COOL_ERR_CRITICAL) {
+                coolTimerCritical += stepSeconds;
+                coolTimerFailing  += stepSeconds;
+            }
+            else if (err >= COOL_ERR_FAILING) {
+                coolTimerCritical = 0;
+                coolTimerFailing  += stepSeconds;
+            }
+            else {
+                coolTimerCritical = 0;
+                coolTimerFailing  = 0;
+            }
+
+            // Valve Latch
+            if (vlv >= VALVE_ON_PCT)      coolValveLatched = true;
+            else if (vlv < VALVE_OFF_PCT) coolValveLatched = false;
+
+            // Decision Ladder
+            if (coolTimerCritical >= TIME_LIMIT_CRITICAL) {
+                coolReq = 3;
+                coolTrace = String.format("CRITICAL (3): Temp +%.1f°F for %ds", err, (int)coolTimerCritical);
+            }
+            else if (coolTimerFailing >= TIME_LIMIT_FAILING) {
+                coolReq = 2;
+                coolTrace = String.format("FAILING (2): Temp +%.1f°F for %ds", err, (int)coolTimerFailing);
+            }
+            else if (coolValveLatched) {
+                coolReq = 1;
+                coolTrace = String.format("SATURATED (1): Valve %.0f%% > 95%%", vlv);
+            }
+            else {
+                coolReq = 0;
+                coolTrace = String.format("Satisfied: Error +%.1f°F", err);
+            }
         }
 
-        // Valve latch (hysteresis)
-        if (vlv >= VALVE_ON_PCT)      heatValveLatched = true;
-        else if (vlv < VALVE_OFF_PCT) heatValveLatched = false;
+        // --- HEATING LOGIC ---
+        int heatReq = 0;
+        String heatTrace = "";
 
-        // Ladder (HEAT persistence = 300s)
-        if (heatLow30Sec >= HEAT_PERSIST_SEC) {
-            heatReq = 3;
-            heatTrace = "Req=3 (SAT < SP-30)";
-        }
-        else if (heatLow15Sec >= HEAT_PERSIST_SEC) {
-            heatReq = 2;
-            heatTrace = "Req=2 (SAT < SP-15)";
-        }
-        else if (heatValveLatched) {
-            heatReq = 1;
-            heatTrace = "Req=1 (Vlv > 95%)";
-        }
-        else {
+        if (!satValid || !spValid || !heatVlvOk) {
             heatReq = 0;
-            heatTrace = "Satisfied";
+            resetHeatTimers();
+            heatTrace = "Fault: Sensor or Valve Data Invalid";
+        }
+        else if (!isNumericWired(heatVlvSlot)) {
+            heatReq = 0;
+            resetHeatTimers();
+            heatTrace = "Config: No Heating Coil Wired";
+        }
+        else {
+            double sat = satSlot.getValue();
+            double sp  = spSlot.getValue();
+            double vlv = heatVlvSlot.getValue();
+            double err = sp - sat; 
+
+            // Timer Logic
+            if (err >= HEAT_ERR_CRITICAL) {
+                heatTimerCritical += stepSeconds;
+                heatTimerFailing  += stepSeconds;
+            }
+            else if (err >= HEAT_ERR_FAILING) {
+                heatTimerCritical = 0;
+                heatTimerFailing  += stepSeconds;
+            }
+            else {
+                heatTimerCritical = 0;
+                heatTimerFailing  = 0;
+            }
+
+            // Valve Latch
+            if (vlv >= VALVE_ON_PCT)      heatValveLatched = true;
+            else if (vlv < VALVE_OFF_PCT) heatValveLatched = false;
+
+            // Decision Ladder
+            if (heatTimerCritical >= TIME_LIMIT_CRITICAL) {
+                heatReq = 3;
+                heatTrace = String.format("CRITICAL (3): Temp -%.1f°F for %ds", err, (int)heatTimerCritical);
+            }
+            else if (heatTimerFailing >= TIME_LIMIT_FAILING) {
+                heatReq = 2;
+                heatTrace = String.format("FAILING (2): Temp -%.1f°F for %ds", err, (int)heatTimerFailing);
+            }
+            else if (heatValveLatched) {
+                heatReq = 1;
+                heatTrace = String.format("SATURATED (1): Valve %.0f%% > 95%%", vlv);
+            }
+            else {
+                heatReq = 0;
+                heatTrace = String.format("Satisfied: Error -%.1f°F", err);
+            }
         }
 
-        heatTrace += " [Err=" + round1(err) + ", Vlv=" + (int)vlv + "%, t30=" + heatLow30Sec + "s, t15=" + heatLow15Sec + "s]";
+        // Output
+        getCoolingRequests().setValue(coolReq);
+        getCoolingStatusTrace().setValue(coolTrace);
+
+        getHeatingRequests().setValue(heatReq);
+        getHeatingStatusTrace().setValue(heatTrace);
+
+    } catch (Exception e) {
+        String msg = "ERROR: " + e.toString();
+        try { getCoolingStatusTrace().setValue(msg); } catch(Exception ex) {}
+        try { getHeatingStatusTrace().setValue(msg); } catch(Exception ex) {}
+    } finally {
+        scheduleNextRun();
     }
-
-    // 4) Update Outputs
-    getCoolingRequests().setValue(coolReq);
-    getCoolingStatusTrace().setValue(coolTrace);
-
-    getHeatingRequests().setValue(heatReq);
-    getHeatingStatusTrace().setValue(heatTrace);
-
-    updateTimer();
 }
-
 
 public void onStop() throws Exception {
-    if (ticket != null) ticket.cancel();
+    if (ticket != null) {
+        ticket.cancel();
+        ticket = null;
+    }
 }
 
-// ==============================================================================
-//  HELPERS
-// ==============================================================================
-void updateTimer() {
+// ==========================================
+// 5. HELPERS
+// ==========================================
+private void scheduleNextRun() {
     if (ticket != null) ticket.cancel();
-    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(EXEC_PERIOD_SEC),
-                            BProgram.execute, null);
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(EXEC_PERIOD_SEC), BProgram.execute, null);
 }
 
-void zeroOutputs(String msg) {
+private void zeroOutputs(String msg) {
     getCoolingRequests().setValue(0);
     getCoolingStatusTrace().setValue(msg);
     getHeatingRequests().setValue(0);
     getHeatingStatusTrace().setValue(msg);
 }
 
-void resetAllState() {
-    resetCoolTimers();
-    resetHeatTimers();
-}
-
-void resetCoolTimers() { coolHigh10Sec = 0; coolHigh5Sec = 0; coolValveLatched = false; }
-void resetHeatTimers() { heatLow30Sec = 0; heatLow15Sec = 0; heatValveLatched = false; }
+private void resetAllState() { resetCoolTimers(); resetHeatTimers(); }
+private void resetCoolTimers() { coolTimerCritical = 0; coolTimerFailing = 0; coolValveLatched = false; }
+private void resetHeatTimers() { heatTimerCritical = 0; heatTimerFailing = 0; heatValveLatched = false; }
 
 // --- Sanity & Validation ---
-
-/** Returns TRUE if slot is wired, status is OK, and value is within [min, max] */
-boolean isDataValid(BStatusNumeric slot, double min, double max) {
+private boolean isDataValid(BStatusNumeric slot, double min, double max) {
     if (slot == null) return false;
-    // Allow Alarm, but block Fault/Down/Null/Disabled
     if (slot.getStatus().isFault() || slot.getStatus().isDown() || 
         slot.getStatus().isNull() || slot.getStatus().isDisabled()) return false;
-    
     double val = slot.getValue();
     return (val >= min && val <= max);
 }
 
-/** * Returns TRUE if:
- * 1. Slot is NULL/Unwired (Acceptable for optional coils)
- * 2. Slot is Wired, Status OK, and Value is in Range
- * Returns FALSE if:
- * 1. Slot is Wired but Fault/Down (Bad sensor)
- * 2. Slot is Wired but Value is Out of Range (Sanity fail)
- */
-boolean isNumericUnwiredOrValid(BStatusNumeric slot, double min, double max) {
-    if (slot == null || slot.getStatus().isNull()) return true; // Not present = Valid "Zero"
+private boolean isNumericUnwiredOrValid(BStatusNumeric slot, double min, double max) {
+    if (slot == null || slot.getStatus().isNull()) return true; 
     return isDataValid(slot, min, max);
 }
 
-boolean isNumericWired(BStatusNumeric slot) {
+private boolean isNumericWired(BStatusNumeric slot) {
     return slot != null && !slot.getStatus().isNull();
 }
 
-boolean boolOrDefault(BStatusBoolean slot, boolean defVal) {
+private boolean boolOrDefault(BStatusBoolean slot, boolean defVal) {
     if (slot != null && slot.getStatus().isOk()) return slot.getValue();
     return defVal;
 }
-
-// Smart Fan Gate: Accepts >90% Speed OR Boolean 1.0. Defaults True if unwired.
-boolean checkFanGate(BStatusNumeric slot) {
-    if (slot == null || slot.getStatus().isNull()) return true; // Default allow
-    if (!slot.getStatus().isOk()) return false; // Faulted input = Stop
-    
-    double v = slot.getValue();
-    return (v > 90.0) || (Math.abs(v - 1.0) < 0.1); 
-}
-
-private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
-
 ```
 
 </details>
