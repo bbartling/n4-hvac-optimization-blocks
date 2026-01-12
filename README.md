@@ -90,27 +90,6 @@ To avoid Niagara runtime issues, monitor JACE system health:
 
 </details>
 
-<details>
-<summary>🔜 Future Plans</summary> 
-
-The AI train 🚄 shows no signs of slowing down — it’s a constantly evolving adventure.  
-Recently, I hit an unexpected milestone (or limitation 😅): GitHub’s web renderer actually **truncates Markdown files over ~512 KB or 20,000 lines**. So, this project is officially “too big for one README” — which, honestly, feels like a badge of honor 😂.
-
-The next chapter is about refining **model context** workflows and exploring how these evolving best practices might someday form a **Model Context Protocol (MCP)** for Niagara 4 — enabling AI agents to interact with `ProgramObject`s, data models, and control logic natively.  
-For now, much of the process is still manual — a mix of copy-paste wizardry and Workbench perseverance — but the long game is a living, learning ecosystem of tools, agents, and context.
-
----
-
-### 🧭 Vision
-Someday, this project could evolve into a **full Niagara 4 module** implementing:
-- **ASHRAE Guideline 36 AHU Trim & Respond**
-- **GL36 AHU Fault Detection**
-- **Optimal Start / Stop Blocks**
-
-
-
-</details>
-
 
 <details>
 <summary>💛 Support This Work</summary>
@@ -139,7 +118,7 @@ Use it, remix it, or improve it — just share it forward so others can benefit 
 
 【MIT License】
 
-Copyright 2025 Ben Bartling
+Copyright 2026 Ben Bartling
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 
