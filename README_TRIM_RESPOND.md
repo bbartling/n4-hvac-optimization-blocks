@@ -1633,8 +1633,6 @@ This uses **parallel timers** so that a **critical** error also advances the **f
 | `coolingStatusTrace` | `BStatusString`  | Human-readable cooling ladder trace.   |
 | `heatingStatusTrace` | `BStatusString`  | Human-readable heating ladder trace.   |
 
-</details>
-
 
 ### 💻 Java Code
 
