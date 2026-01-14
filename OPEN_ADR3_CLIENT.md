@@ -2,8 +2,11 @@
 
 This sub‑guide gathers together early work on **Demand Response (DR)** and **demand‑side management** for Niagara 4 projects. The theme is simple:
 
-> **The BAS block should just be a clean “signal handoff” layer** (OpenADR → Niagara points).  
-> The HVAC controls technician can implement whatever internal optimization / load‑shed algorithm they want downstream.
+> NOT TESTED YET ONLY CONCEPT IDEA BELOW
+
+
+* ***The BAS block should just be a clean “signal handoff” layer** (OpenADR → Niagara points).  
+* The HVAC controls technician can implement whatever internal optimization / load‑shed algorithm they want downstream.
 
 ---
 
