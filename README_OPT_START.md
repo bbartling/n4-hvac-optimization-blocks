@@ -138,12 +138,13 @@ over recent runs.
 ## Updated Model Readiness Table (Min Samples)
 
 > Min Samples means number of completed runs (data points), which typically corresponds to days of data when optimal start runs once per day.
+> See slot for autoModeStartDays which is a setting that the block will start utilizing best performing model in starting HVAC.
 
-| Model   | Min Samples | Reasonable?                            |
-| ------- | ----------- | -------------------------------------- |
-| Model 0 | 1           | ✔ yes (EMA DPM learns immediately)     |
-| Model 1 | 2           | ✔ yes (quadratic refit needs 2 points) |
-| Model 2 | 1           | ✔ yes (baseline is “last good run”)    |
+| Model   | Min Samples | 
+| ------- | ----------- | 
+| Model 0 | 1           | 
+| Model 1 | 2           | (quadratic refit needs 2 points) |
+| Model 2 | 1           | 
 
 
 ---
