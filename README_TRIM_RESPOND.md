@@ -1641,20 +1641,29 @@ This uses **parallel timers** so that a **critical** error also advances the **f
 
 
 ```java
+
 // ==========================================
 // 1. STATEFUL FIELDS (Class Level)
 // ==========================================
 /* * DEVELOPER MODIFICATION NOTE:
  * Modified per site requirements & technician recommendation (10yrs exp).
- * * CHANGES:
+ * * --- TUNING CHANGES (Technician Request) ---
  * 1. Widened Error Thresholds: 
  * - Level 3 (Critical) now requires > 10.0 deg deviation (was 5.0)
  * - Level 2 (Failing)  now requires >  5.0 deg deviation (was 3.0)
- * * 2. Extended Timers (De-bouncing):
+ * 2. Extended Timers (De-bouncing):
  * - Level 3 (Critical) delay increased to 10 MINUTES (was 2m/5m)
  * - Level 2 (Failing)  delay increased to  5 MINUTES (was 2m/5m)
- * * 3. Status Trace:
- * - Reformatted for better readability on graphics.
+ * * --- SAFETY & LOGIC FIXES (Code Hardening) ---
+ * 3. Fan Status Logic:
+ * - Changed default from TRUE to FALSE. If sensor fails/unwires, logic 
+ * now defaults to "OFF" to prevent setpoint wind-up.
+ * 4. Override Support:
+ * - Removed strict "isOk()" checks on boolean inputs. Logic now accepts 
+ * "Overridden" values to allow for easier field commissioning.
+ * 5. Time-Step Clamping:
+ * - Added logic to clamp execution time-steps to 60s max. Prevents 
+ * timer jumps if the JACE thread freezes or clock jumps.
  */
 
 private Clock.Ticket ticket;
@@ -1709,7 +1718,7 @@ public void onExecute() throws Exception {
         lastRunMillis = now;
 
         // 1) Master Gate: Fan Status
-        boolean fanIsRunning = boolOrDefault(getFanStatus(), true);
+        boolean fanIsRunning = boolOrDefault(getFanStatus(), false);
 
         if (!fanIsRunning) {
             resetAllState();
@@ -1905,9 +1914,11 @@ private boolean isNumericWired(BStatusNumeric slot) {
 }
 
 private boolean boolOrDefault(BStatusBoolean slot, boolean defVal) {
-    if (slot != null && slot.getStatus().isOk()) return slot.getValue();
-    return defVal;
+    if (slot == null) return defVal;
+    if (slot.getStatus().isNull()) return defVal;
+    return slot.getValue();
 }
+
 ```
 
 </details>
@@ -2061,28 +2072,28 @@ This guarantees **maximum heating availability** during data loss.
 ## 💻 Java Code – Boiler HWST T&R (Plant Block)
 
 ```java
+
 // ==============================================================================
-//  GL36 BOILER HWST TRIM & RESPOND v3.4 (FINAL)
-//  - Logic: ASHRAE G36-2021 Section 5.21.4.1
-//  - Inputs: Total Heating Requests
-//  - Output: Effective Setpoint
-//  - Units: Agnostic (User sets defaults in Slots 5, 6, 7)
+//  GL36 BOILER HWST TRIM & RESPOND v3.1
+//  - Logic: Adjusts HWST Setpoint based on AHU heating requests.
+//  - Safety: Strict Sanity Checks (Range + Status) aligned with AHU block.
+//  - Fault-Aware: Resets to SP0 if critical request data is bad or unwired.
 // ==============================================================================
 
 // Class-level fields
 private Clock.Ticket ticket;
 private long lastStepMillis = 0L;
 private boolean wasEnabled = false;
+
+private static final int EXEC_PERIOD_SEC = 60; // Internal check frequency
+
+// Sanity Limits (Data Quality Guardrails)
+private static final double SANITY_TEMP_MIN = 60.0;
+private static final double SANITY_TEMP_MAX = 210.0;
+private static final double SANITY_REQ_MIN  = 0.0;
+private static final double SANITY_REQ_MAX  = 999.0;
 private boolean lastPlantOn = false;
 
-// Standard execution period (internal check frequency)
-private static final int EXEC_PERIOD_SEC = 60;
-
-// Sanity Limits (Wide enough for F or C)
-private static final double SANITY_VAL_MIN = -50.0;
-private static final double SANITY_VAL_MAX = 250.0;
-private static final double SANITY_REQ_MIN = 0.0;
-private static final double SANITY_REQ_MAX = 999.0;
 
 // ==============================================================================
 //  LIFECYCLE
@@ -2090,18 +2101,20 @@ private static final double SANITY_REQ_MAX = 999.0;
 
 public void onStart() throws Exception {
     lastStepMillis = System.currentTimeMillis();
-    scheduleNextRun();
+    updateTimer();
 }
 
 public void onExecute() throws Exception {
     try {
+        updateTimer();
+
         long now = System.currentTimeMillis();
 
         // 1) Master Gate: Enabled + Plant Proven ON
         boolean enabled = boolOrDefault(getEnable(), false);
-        boolean plantOn = boolOrDefault(getPlantProvenOn(), false);
+        boolean plantOn = boolOrDefault(getPlantProvenOn(), false); // NEW
 
-        // Detect Rising-Edge of Activation
+        // Rising-edge of "ACTIVE" (enabled AND plantOn)
         boolean wasActive = (wasEnabled && lastPlantOn);
         boolean isActive  = (enabled && plantOn);
         boolean becameActive = (isActive && !wasActive);
@@ -2109,95 +2122,85 @@ public void onExecute() throws Exception {
         wasEnabled = enabled;
         lastPlantOn = plantOn;
 
-        // G36: When device is OFF, setpoint shall be SP0
+        // G36 intent: if device/plant OFF -> command SP0
         if (!isActive) {
-            resetToSafeSetpoint(!enabled ? "Disabled." : "Plant OFF -> SP0.");
+            resetToSafeSetpoint(!enabled ? "T&R disabled." : "Plant OFF -> SP0.");
             return;
         }
 
-        // 2) Initialization on Rising Edge
+        // 2) Output initialization on becoming active
         if (becameActive) {
-            lastStepMillis = now; // Reset step timer
-            
-            // On start, revert to SP0 (Max/Design Temp)
-            double sp0 = valOrDefault(getSp0(), 180.0, SANITY_VAL_MIN, SANITY_VAL_MAX);
-            
+            lastStepMillis = now;
+
+            double sp0 = valOrDefault(getSp0(), 150.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
             getHwstSpOut().setValue(sp0);
             getHwstSpOut().setStatus(BStatus.ok);
             getEffectiveRequestCount().setValue(0.0);
-            getStatusTrace().setValue("Init: Plant Start -> Reset to SP0=" + round1(sp0));
-            return;
+            getStatusTrace().setValue("Init: Plant ON -> SP0=" + round1(sp0));
+            return; // skip adjusting on the same tick
         }
 
-        // 3) Validate Critical Input (Requests)
+        // 3) Validate critical request input
         BStatusNumeric reqSlot = getTotalHwResetReq();
         if (!isDataValid(reqSlot, SANITY_REQ_MIN, SANITY_REQ_MAX)) {
-            // FAILSAFE: If requests are unknown/bad, go to Max Heat (Safe)
-            resetToSafeSetpoint("FAULT: Request Input Bad -> Holding SP0.");
+            // Fail safe to SP0 if input is Fault/Down/Null/Disabled/out-of-range
+            resetToSafeSetpoint("FAULT: totalHwResetReq Bad/Unwired -> SP0.");
             getHwstSpOut().setStatus(BStatus.fault);
             return;
         }
 
-        // 4) Step Timing Guard
-        // Uses 'stepMinutes' for both Td (Start Delay) and T (Step Interval)
-        double stepMin = valOrDefault(getStepMinutes(), 5.0, 0.1, 120.0);
+        // 4) Step timing guard
+        double stepMin = valOrDefault(getStepMinutes(), 5.0, 1.0, 60.0);
         if ((now - lastStepMillis) < (stepMin * 60000L)) {
-            return; // Not time to step yet
+            return;
         }
         lastStepMillis = now;
 
-        // 5) Calculate Effective Requests
-        // Formula: Effective = Max(0, Requests - Ignored)
+        // 5) Compute effective request count
         double R = reqSlot.getValue();
         double I = valOrDefault(getIgnoredReq(), 2.0, 0.0, 50.0);
         double effR = Math.max(0.0, R - I);
-        
         getEffectiveRequestCount().setValue(effR);
 
-        // 6) Load Loop Parameters
-        // Defaults assume Fahrenheit. User must change slots if using Celsius.
-        double spMin = valOrDefault(getSpMin(), 140.0, SANITY_VAL_MIN, SANITY_VAL_MAX);
-        double spMax = valOrDefault(getSpMax(), 180.0, SANITY_VAL_MIN, SANITY_VAL_MAX);
+        // 6) Load loop parameters + current SP
+        double spMin = valOrDefault(getSpMin(), 90.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+        double spMax = valOrDefault(getSpMax(), 180.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
 
-        // Anti-Windup: Read off the actual output slot
+        // If output ever went weird/uninitialized, pull it back to SP0 before stepping
         double curSp = getHwstSpOut().getValue();
-        if (Double.isNaN(curSp) || curSp < SANITY_VAL_MIN || curSp > SANITY_VAL_MAX) {
-             curSp = valOrDefault(getSp0(), 180.0, SANITY_VAL_MIN, SANITY_VAL_MAX);
+        if (curSp < SANITY_TEMP_MIN || curSp > SANITY_TEMP_MAX) {
+            curSp = valOrDefault(getSp0(), 150.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
+            getHwstSpOut().setValue(curSp);
         }
 
         double newSp = curSp;
         String action = "Hold";
 
-        // 7) Trim & Respond Logic
+        // 7) Trim & Respond ladder
         if (effR > 0) {
-            // RESPOND (Increase Temp)
-            double res  = valOrDefault(getSpRespond(), 3.0, 0.0, 50.0);
-            double resM = valOrDefault(getSpRespondMax(), 7.0, 0.0, 100.0);
-            
+            double res  = valOrDefault(getSpRespond(), 3.0, 0.0, 20.0);
+            double resM = valOrDefault(getSpRespondMax(), 7.0, 0.0, 50.0);
             double amt = Math.min(effR * res, resM);
             newSp = curSp + amt;
             action = "Respond ↑ " + round1(amt);
         } else {
-            // TRIM (Decrease Temp)
-            // Note: spTrim should be negative (e.g. -2.0)
-            double trim = valOrDefault(getSpTrim(), -2.0, -50.0, 50.0);
+            // i.e. R <= I
+            double trim = valOrDefault(getSpTrim(), -2.0, -20.0, 0.0);
             newSp = curSp + trim;
             action = "Trim ↓ " + round1(trim);
         }
 
-        // 8) Clamp and Write Output
+        // 8) Clamp and write outputs
         newSp = Math.max(spMin, Math.min(spMax, newSp));
-        
         getHwstSpOut().setValue(newSp);
         getHwstSpOut().setStatus(BStatus.ok);
-        getStatusTrace().setValue(action + " | R=" + (int)R + ", I=" + (int)I + ", SP=" + round1(newSp));
+        getStatusTrace().setValue(action + " | R=" + (int)R + ", I=" + (int)I + ", effR=" + (int)effR + ", SP=" + round1(newSp));
 
     } catch (Exception e) {
-        getStatusTrace().setValue("Error: " + e.toString());
-    } finally {
-        scheduleNextRun();
+        getStatusTrace().setValue("Error: " + e.getMessage());
     }
 }
+
 
 public void onStop() throws Exception {
     if (ticket != null) {
@@ -2210,25 +2213,24 @@ public void onStop() throws Exception {
 //  HELPERS
 // ==============================================================================
 
-private void scheduleNextRun() {
+private void updateTimer() {
     if (ticket != null) ticket.cancel();
     ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(EXEC_PERIOD_SEC), BProgram.execute, null);
 }
 
 private void resetToSafeSetpoint(String msg) {
-    // Defaults to 180.0 (F) / User should change SP0 slot for (C)
-    double sp0 = valOrDefault(getSp0(), 180.0, SANITY_VAL_MIN, SANITY_VAL_MAX);
-    
+    double sp0 = valOrDefault(getSp0(), 150.0, SANITY_TEMP_MIN, SANITY_TEMP_MAX);
     getHwstSpOut().setValue(sp0);
-    getHwstSpOut().setStatus(BStatus.ok);
     getEffectiveRequestCount().setValue(0.0);
     getStatusTrace().setValue(msg + " Holding SP0=" + round1(sp0));
 }
 
+/** Returns TRUE if slot is wired, status is OK, and value is within [min, max] */
 private boolean isDataValid(BStatusNumeric slot, double min, double max) {
     if (slot == null) return false;
-    BStatus s = slot.getStatus();
-    if (s.isFault() || s.isDown() || s.isNull() || s.isDisabled()) return false;
+    // Standard Niagara check: Block Fault/Down/Null/Disabled
+    if (slot.getStatus().isFault() || slot.getStatus().isDown() || 
+        slot.getStatus().isNull() || slot.getStatus().isDisabled()) return false;
     
     double val = slot.getValue();
     return (val >= min && val <= max);
@@ -2239,11 +2241,17 @@ private double valOrDefault(BStatusNumeric slot, double def, double min, double 
 }
 
 private boolean boolOrDefault(BStatusBoolean slot, boolean defVal) {
-    if (slot != null && slot.getStatus().isOk()) return slot.getValue();
-    return defVal;
+    if (slot == null) return defVal;
+    if (slot.getStatus().isNull()) return defVal;
+    return slot.getValue();
+}
+
+private boolean safeBool(BStatusBoolean b) {
+    return (b != null && b.getStatus().isOk()) ? b.getValue() : false;
 }
 
 private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
+
 ```
 
 
