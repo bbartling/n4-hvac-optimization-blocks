@@ -94,17 +94,7 @@ To avoid Niagara runtime issues, monitor JACE system health:
 <details>
 <summary>💛 Support This Work</summary>
 
-If you make something cool or need help dont hesitate to reach out and I can add it as an example!
-
-Also if this project helped you build something neat or saved you at least 10× in labor-hours on your Niagara BAS project with the help of AI and model context like this, and AND you’re feeling generous today, your support directly fuels Ben’s bad habits at Starbucks — but there’s absolutely no pressure. I’ve personally never donated to open-source software before — but hey, what the heck! 
-
-| 💵 Option           | Link                                                                                                                                                                                                                                              |
-| :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| 💖 **$20 fixed**    | [Donate $20](https://www.paypal.com/donate/?business=VBRBPMBZ6ZKM8&amount=20&no_recurring=0&item_name=Thank+you+for+contributing+to+help+fund+open+source+building+automation+system+%28BAS%29+software+development+donation.+&currency_code=USD) |
-| ✨ **Custom amount** | [Choose any amount](https://www.paypal.com/donate/?business=VBRBPMBZ6ZKM8&no_recurring=0&item_name=Thank+you+for+contributing+to+help+fund+open+source+building+automation+system+%28BAS%29+software+development+donation.+&currency_code=USD)    |
-
-
-[![Donate](https://img.shields.io/badge/Donate-PayPal-blue.svg)](https://www.paypal.com/donate/?business=VBRBPMBZ6ZKM8&no_recurring=0&item_name=Thank+you+for+contributing+to+help+fund+open+source+building+automation+system+%28BAS%29+software+development+donation.+&currency_code=USD)
+If you make something cool or need help dont hesitate to reach out and I can add it as an example! Linkedin is best to reach out to me on a DM.
 
 </details>
 
