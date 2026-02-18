@@ -123,29 +123,38 @@ This is the recommended way to override a schedule.
 
 ---
 
-# 🕒 Monday–Friday 8-5 Occupancy ProgramObject
+# 🕒 Monday–Friday 8–5 Occupancy + Next Event (for Optimal Start)
 
 ### 🧩 Required Slots (create in Slot Sheet)
 
-| Slot Name     | Type             | Purpose                                |
-| ------------- | ---------------- | -------------------------------------- |
-| `enable`      | `BStatusBoolean` | Parent enable flag                     |
-| `occupiedOut` | `BStatusBoolean` | The value written to the schedule `In` |
-| `statusTrace` | `BStatusString`  | Debug output                           |
+| Slot Name               | Type             | Purpose                                                          |
+| ----------------------- | ---------------- | ---------------------------------------------------------------- |
+| `enable`                | `BStatusBoolean` | Parent enable flag                                               |
+| `occupiedOut`           | `BStatusBoolean` | Value written to the schedule `In`                               |
+| `scheduleNextValue`     | `BStatusBoolean` | Next scheduled value (true = occupied next) for Optimal Start    |
+| `scheduleNextEventTime` | `BStatusNumeric` | Epoch ms time of next change (station local calendar → epoch ms) |
+| `statusTrace`           | `BStatusString`  | Debug output                                                     |
 
-You wire it like this on the wiresheet:
+### 🧷 Wiring
+
+**To override a BooleanSchedule:**
 
 ```
 ProgramObject.occupiedOut  →  BooleanSchedule.in
 ```
 
-The schedule will show:
-➡️ **In: (linked)**
-➡️ **Out** = whatever your ProgramObject computes
+**To feed Optimal Start (start trigger math):**
+
+```
+ProgramObject.scheduleNextValue      →  OptimalStart.scheduleNextValue
+ProgramObject.scheduleNextEventTime  →  OptimalStart.scheduleNextEventTime
+```
+
+> You can still override the schedule **and** feed Optimal Start from the same block. `occupiedOut` drives the schedule; the “next event” slots are just metadata for prediction.
 
 ---
 
-# 💻 ProgramObject Code 
+# 💻 ProgramObject Code (AX-safe, tested pattern)
 
 ```java
 // ======================================
@@ -153,11 +162,10 @@ The schedule will show:
 // ======================================
 private Clock.Ticket ticket = null;
 
-// Run every 60 seconds
+// Run every N seconds
 private static final int EXEC_PERIOD_SEC = 10;
 
-// Office hours (local station time) 
-// 8:00 AM to 5:00 PM
+// Office hours (local station time)
 private static final int START_HOUR = 8;
 private static final int END_HOUR   = 17;
 
@@ -166,25 +174,25 @@ private static final int END_HOUR   = 17;
 // ======================================
 
 public void onStart() throws Exception {
-    // Optional: initialize outputs to NULL on startup
-    getOccupiedOut().setValue(false);
-    getOccupiedOut().setStatus(BStatus.nullStatus);
-    getStatusTrace().setValue("Office-hours block started (outputs NULL)");
+    // Initialize outputs to NULL on startup
+    setNull(getOccupiedOut());
+    setNull(getScheduleNextValue());
+    setNull(getScheduleNextEventTime());
 
-    // Start timer
+    getStatusTrace().setValue("Office-hours block started (outputs NULL)");
     updateTimer();
 }
 
 public void onStop() throws Exception {
-    // Kill timer
     if (ticket != null) {
         ticket.cancel();
         ticket = null;
     }
 
-    // Optional: mark outputs NULL on stop
-    getOccupiedOut().setValue(false);
-    getOccupiedOut().setStatus(BStatus.nullStatus);
+    setNull(getOccupiedOut());
+    setNull(getScheduleNextValue());
+    setNull(getScheduleNextEventTime());
+
     getStatusTrace().setValue("Office-hours block stopped (outputs NULL)");
 }
 
@@ -193,64 +201,66 @@ public void onStop() throws Exception {
 // ======================================
 
 public void onExecute() throws Exception {
-    // Always schedule the next run first
     updateTimer();
 
     try {
-        // Safety Check: If disabled, return NULL
+        // Safety: If disabled, force NULLs
         if (!safeBool(getEnable())) {
-            getOccupiedOut().setValue(false);
-            getOccupiedOut().setStatus(BStatus.nullStatus);
-            getStatusTrace().setValue("Disabled — output forced NULL");
+            setNull(getOccupiedOut());
+            setNull(getScheduleNextValue());
+            setNull(getScheduleNextEventTime());
+            getStatusTrace().setValue("Disabled — outputs forced NULL");
             return;
         }
 
-        // Get Current Time using Java Calendar (station local time)
-        java.util.Calendar cal = java.util.Calendar.getInstance();
+        // Station local time (Calendar uses local JVM/station timezone)
+        java.util.Calendar now = java.util.Calendar.getInstance();
 
-        // Java Calendar: Sunday=1, Monday=2, ... Saturday=7
-        int dow    = cal.get(java.util.Calendar.DAY_OF_WEEK);
-        int hour   = cal.get(java.util.Calendar.HOUR_OF_DAY); // 0-23
-        int minute = cal.get(java.util.Calendar.MINUTE);
+        boolean occNow = computeOccupied(now);
 
-        // Logic: Is it a Weekday? (Mon=2 through Fri=6)
-        boolean isWeekday = (dow >= java.util.Calendar.MONDAY &&
-                             dow <= java.util.Calendar.FRIDAY);
+        // Next transition moment in station local time
+        java.util.Calendar nextChange = computeNextChange(now);
 
-        // Logic: Is it within hours?
-        boolean inHourRange = (hour >= START_HOUR && hour < END_HOUR);
+        // Next value is the inverse of current in this simple schedule
+        boolean nextValue = !occNow;
 
-        // Combine logic
-        boolean occ = isWeekday && inHourRange;
+        // Convert nextChange to epoch ms for Optimal Start math
+        long nextEpochMs = nextChange.getTimeInMillis();
 
-        // Compute when the output will change next
-        java.util.Calendar nextChange = computeNextChange(cal);
-
-        // Format times as human-readable station time (YYYY-MM-DD HH:MM)
-        String nowStr  = String.format("%1$tY-%1$tm-%1$td %1$tH:%1$tM", cal);
-        String nextStr = String.format("%1$tY-%1$tm-%1$td %1$tH:%1$tM", nextChange);
-
-        // Set Outputs (normal OK path)
-        getOccupiedOut().setValue(occ);
+        // Set occupiedOut (used to override BooleanSchedule.in)
+        getOccupiedOut().setValue(occNow);
         getOccupiedOut().setStatus(BStatus.ok);
 
-        boolean nextValue = !occ;
-        
+        // Set Next Event slots (used by Optimal Start)
+        getScheduleNextValue().setValue(nextValue);
+        getScheduleNextValue().setStatus(BStatus.ok);
+
+        getScheduleNextEventTime().setValue((double) nextEpochMs);
+        getScheduleNextEventTime().setStatus(BStatus.ok);
+
+        // Debug trace
+        String nowStr  = fmt(now);
+        String nextStr = fmt(nextChange);
+
         getStatusTrace().setValue(
             "StationTime=" + nowStr +
+            " | OccNow=" + occNow +
             " | NextChange=" + nextStr +
-            " | NextValue=" + nextValue
+            " | NextValue=" + nextValue +
+            " | NextEpochMs=" + nextEpochMs
         );
 
-    }
-    catch (Exception e) {
-        // FAULT path: something went wrong in our logic
+    } catch (Exception e) {
+        // Fault path
         getOccupiedOut().setValue(false);
         getOccupiedOut().setStatus(BStatus.fault);
+
+        setNull(getScheduleNextValue());
+        setNull(getScheduleNextEventTime());
+
         getStatusTrace().setValue("FAULT in office-hours block: " + e.toString());
     }
 }
-
 
 // ======================================
 // 4. Helper Methods
@@ -272,6 +282,28 @@ private boolean safeBool(BStatusBoolean b) {
     return b.getValue();
 }
 
+private void setNull(BStatusBoolean b) {
+    b.setValue(false);
+    b.setStatus(BStatus.nullStatus); // if this fails in your build, swap to BStatus.NULL
+}
+
+private void setNull(BStatusNumeric n) {
+    n.setValue(0.0);
+    n.setStatus(BStatus.nullStatus); // if this fails in your build, swap to BStatus.NULL
+}
+
+private boolean computeOccupied(java.util.Calendar cal) {
+    int dow  = cal.get(java.util.Calendar.DAY_OF_WEEK);     // Sun=1 ... Sat=7
+    int hour = cal.get(java.util.Calendar.HOUR_OF_DAY);     // 0-23
+
+    boolean isWeekday = (dow >= java.util.Calendar.MONDAY &&
+                         dow <= java.util.Calendar.FRIDAY);
+
+    boolean inHourRange = (hour >= START_HOUR && hour < END_HOUR);
+
+    return isWeekday && inHourRange;
+}
+
 /**
  * Compute the next time (station local) when the occupied flag will change.
  * Occupied = true on weekdays between START_HOUR and END_HOUR.
@@ -281,33 +313,30 @@ private java.util.Calendar computeNextChange(java.util.Calendar cal) {
     next.set(java.util.Calendar.SECOND, 0);
     next.set(java.util.Calendar.MILLISECOND, 0);
 
-    int dow    = cal.get(java.util.Calendar.DAY_OF_WEEK);
-    int hour   = cal.get(java.util.Calendar.HOUR_OF_DAY);
-    int minute = cal.get(java.util.Calendar.MINUTE);
+    int dow  = cal.get(java.util.Calendar.DAY_OF_WEEK);
+    int hour = cal.get(java.util.Calendar.HOUR_OF_DAY);
 
     boolean isWeekday = (dow >= java.util.Calendar.MONDAY &&
                          dow <= java.util.Calendar.FRIDAY);
+
     boolean inHourRange = (hour >= START_HOUR && hour < END_HOUR);
-    boolean occNow = isWeekday && inHourRange;
 
     if (isWeekday && hour < START_HOUR) {
         // Before office hours on a weekday: next change is today at START_HOUR
         next.set(java.util.Calendar.HOUR_OF_DAY, START_HOUR);
         next.set(java.util.Calendar.MINUTE, 0);
-    }
-    else if (isWeekday && inHourRange) {
-        // During office hours on a weekday: next change is today at END_HOUR
+
+    } else if (isWeekday && inHourRange) {
+        // During office hours: next change is today at END_HOUR
         next.set(java.util.Calendar.HOUR_OF_DAY, END_HOUR);
         next.set(java.util.Calendar.MINUTE, 0);
-    }
-    else {
-        // After hours on a weekday OR weekend: next change is next weekday at START_HOUR
+
+    } else {
+        // After hours weekday OR weekend: next change is next weekday at START_HOUR
         do {
             next.add(java.util.Calendar.DAY_OF_MONTH, 1);
             int ndow = next.get(java.util.Calendar.DAY_OF_WEEK);
-            if (ndow >= java.util.Calendar.MONDAY && ndow <= java.util.Calendar.FRIDAY) {
-                break;
-            }
+            if (ndow >= java.util.Calendar.MONDAY && ndow <= java.util.Calendar.FRIDAY) break;
         } while (true);
 
         next.set(java.util.Calendar.HOUR_OF_DAY, START_HOUR);
@@ -317,8 +346,22 @@ private java.util.Calendar computeNextChange(java.util.Calendar cal) {
     return next;
 }
 
+private String fmt(java.util.Calendar cal) {
+    // Keep it AX-safe (avoid String.format if your station is picky)
+    int y = cal.get(java.util.Calendar.YEAR);
+    int m = cal.get(java.util.Calendar.MONTH) + 1;
+    int d = cal.get(java.util.Calendar.DAY_OF_MONTH);
+    int hh = cal.get(java.util.Calendar.HOUR_OF_DAY);
+    int mm = cal.get(java.util.Calendar.MINUTE);
 
+    return y + "-" + pad2(m) + "-" + pad2(d) + " " + pad2(hh) + ":" + pad2(mm);
+}
+
+private String pad2(int v) {
+    return (v < 10) ? ("0" + v) : ("" + v);
+}
 ```
+
 
 </details>
 
