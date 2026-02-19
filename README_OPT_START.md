@@ -146,209 +146,435 @@ It is critical to understand that **Predicting** and **Tuning** happen at differ
 
 ```java
 /*
- * OPTIMAL START ALGORITHM (EMA / BALLISTIC)
- * ---------------------------------------------------------
- * This block uses an Exponential Moving Average (EMA) to "learn" the
- * zone's recovery rate (deg/min) over time.
+ * OPTIMAL START ALGORITHM EMA — COMPLETED REWRITE
+ * ------------------------------------------------------------
+ * Goals (per your requirements):
+ * 1) Ballistic learning run:
+ *    - Latch ΔT at start (start temp vs target).
+ *    - Track elapsed time from runStartTimestamp.
+ *    - Stop ONLY when setpoint reached (within tolerance) OR maxMinutesAllowed timeout.
+ *    - Schedule changes must NOT change timing or ΔT calculations.
  *
- * KEY CONCEPTS:
- * 1. Ballistic Run: Once the start trigger fires, the run ignores schedule changes.
- * It stops ONLY when the setpoint is met or max time is exceeded.
+ * 2) Output handoff behavior (SUPER IMPORTANT):
+ *    - equipmentStartCommand is ONLY ever:
+ *        a) TRUE with OK status  (we are asserting start)
+ *        b) NULL status (released to BAS)
+ *    - NEVER publish FALSE with OK status.
  *
- * 2. Days of Memory: The "History Days to Retain" slot controls the learning speed.
- * - Formula: Alpha = 1.0 / Days
- * - Persistence: The "Memory" is stored in the 'DegreesPerMinute' slots.
+ * 3) Handoff to NULL after schedule flips back to FALSE (occupied begins and “next” becomes false)
+ *    - Use a delay (seconds) so BAS can take over cleanly at a higher priority.
+ *    - This handoff is independent of learning run completion (learning continues even if command is NULL).
+ *
+ * Notes:
+ *    - EMA Learning Guard: 
+ *    - Only update if the run lasted at least 5 minutes. 
+ *    - verified the Delta was greater than the Temp Tolerance.
+ *
+ * If you truly want to use "countdownToNullStatus" as a numeric seconds slot, swap the getter in
+ * getNullReleaseDelaySeconds() to read that slot instead.
  */
 
-// =================================================================
+// =============================================================
 // 1. STATEFUL FIELDS
-// =================================================================
-
+// =============================================================
 private Clock.Ticket ticket;
-private boolean isOptimalStartRunning = false;
 private long runStartTimestamp = 0L;
 
+private boolean isOptimalStartRunning = false;
+
+// Latched “learning” values — MUST NOT be affected by schedule flips
 private double latchedStartZoneTemp = 0.0;
 private double latchedStartTarget = 0.0;
 private double latchedDeltaT = 0.0;
 private double latchedPredictedMins = 0.0;
 private boolean lastRunWasHeat = true;
 
-private static final double DEFAULT_RATE = 0.1; 
+// Output handoff state — separate from learning/run state
+private boolean pendingNullRelease = false;
+private long nullReleaseAtMillis = 0L;
+private boolean hasReleasedToNullThisRun = false;
 
-// =================================================================
+private static final double DEFAULT_RATE = 0.10; // deg/min fallback
+
+// =============================================================
 // 2. onStart()
-// =================================================================
-public void onStart() throws Exception {
+// =============================================================
+public void onStart() throws Exception
+{
     isOptimalStartRunning = false;
     runStartTimestamp = 0L;
-    
+
+    // Reset output/handoff state
+    pendingNullRelease = false;
+    nullReleaseAtMillis = 0L;
+    hasReleasedToNullThisRun = false;
+
+    // Defaults
     if (getMaxMinutesAllowed().isNull()) setMaxMinutesAllowed(new BStatusNumeric(180.0));
     if (getTempTolerance().isNull()) setTempTolerance(new BStatusNumeric(0.5));
     if (getHistoryDaysToRetain().isNull()) setHistoryDaysToRetain(new BStatusNumeric(10.0));
+    if (getCommandOffDelaySeconds().isNull()) setCommandOffDelaySeconds(new BStatusNumeric(30.0));
 
-    forceCommandNull();
+    // Initialize learning rates if missing/invalid
+    if (getDegreesPerMinuteHeat().getStatus().isNull() || getDegreesPerMinuteHeat().getValue() <= 0.001)
+        setDegreesPerMinuteHeat(new BStatusNumeric(DEFAULT_RATE));
+
+    if (getDegreesPerMinuteCool().getStatus().isNull() || getDegreesPerMinuteCool().getValue() <= 0.001)
+        setDegreesPerMinuteCool(new BStatusNumeric(DEFAULT_RATE));
+
+    // Reset indicators
     setMinutesToSetpoint(new BStatusNumeric(0.0));
-    
-    if (getDegreesPerMinuteHeat().getValue() <= 0.001) setDegreesPerMinuteHeat(new BStatusNumeric(DEFAULT_RATE));
-    if (getDegreesPerMinuteCool().getValue() <= 0.001) setDegreesPerMinuteCool(new BStatusNumeric(DEFAULT_RATE));
+    setWarmupTimeMinutes(new BStatusNumeric(0.0));
+    setIsRunning(new BStatusBoolean(false));
+
+    // Release command to BAS (NULL) on startup
+    releaseEquipmentCommandToNull();
 
     log("Initialized. Waiting for schedule.");
     updateTimer();
 }
 
-// =================================================================
+// =============================================================
 // 3. onExecute()
-// =================================================================
-public void onExecute() throws Exception {
-    try {
+// =============================================================
+public void onExecute() throws Exception
+{
+    try
+    {
         updateTimer();
 
-        // --- Clear History Trigger ---
-        if (getClearHistoryNow().getValue()) {
+        // Manual trigger to force the timer now (optional convenience)
+        if (getStartTimerNow().getStatus().isOk() && getStartTimerNow().getValue())
+        {
+            setStartTimerNow(new BStatusBoolean(false));
+            log("StartTimerNow triggered.");
+        }
+
+        // Clear History Trigger
+        if (getClearHistoryNow().getStatus().isOk() && getClearHistoryNow().getValue())
+        {
             setDegreesPerMinuteHeat(new BStatusNumeric(DEFAULT_RATE));
             setDegreesPerMinuteCool(new BStatusNumeric(DEFAULT_RATE));
             setClearHistoryNow(new BStatusBoolean(false));
             log("History Reset. Rates set to " + DEFAULT_RATE);
         }
 
-        if (!validateSensors()) {
-            if (isOptimalStartRunning) abortRun("Sensor Failure.");
+        // Validate sensors
+        if (!validateSensors())
+        {
+            if (isOptimalStartRunning)
+                abortRun("Sensor Failure.");
+
             setMinutesToSetpoint(new BStatusNumeric(0.0));
+            // Even on sensor failure, do not command FALSE/ok — just release
+            releaseEquipmentCommandToNull();
             return;
         }
 
-        if (isOptimalStartRunning) {
-            monitorActiveRun();
-            getEquipmentStartCommand().setValue(true);
-            getEquipmentStartCommand().setStatus(BStatus.ok);
-        } else {
-            updateIdleEstimate();
-            checkForStartTrigger();
+        // Keep this updated always
+        updateZoneAtToleranceFlag();
+
+        // BALLISTIC RUN LOGIC (learning independent of output handoff)
+        if (isOptimalStartRunning)
+        {
+            monitorActiveRun();      // may end run via setpoint or timeout
+            // Output behavior handled below (centralized)
+        }
+        else
+        {
+            updateIdleEstimate();    // predicts minutesToSetpoint from learned rates
+            checkForStartTrigger();  // may start the ballistic run
         }
 
-    } catch (Exception e) {
+        // OUTPUT HANDOFF LOGIC (independent of learning)
+        handleEquipmentCommand();
+
+    }
+    catch (Exception e)
+    {
         log("Error: " + e.toString());
+        // Fail safe: stop learning run, release command
         isOptimalStartRunning = false;
-        forceCommandNull();
+        setIsRunning(new BStatusBoolean(false));
+        releaseEquipmentCommandToNull();
     }
 }
 
-// =================================================================
-// 4. CORE LOGIC
-// =================================================================
+// =============================================================
+// 4. START TRIGGER (based on next schedule event time/value)
+// =============================================================
+private void checkForStartTrigger()
+{
+    // Need next event time + next value
+    if (getScheduleNextEventTime().getStatus().isNull()) return;
+    if (getScheduleNextValue().getStatus().isNull()) return;
 
-private void checkForStartTrigger() {
-    if (getScheduleNextEventTime().getStatus().isNull() || getScheduleNextValue().getStatus().isNull()) return;
+    // Only consider if next value is TRUE (occupied upcoming)
     if (!getScheduleNextValue().getValue()) return;
 
     long nextTime = (long) getScheduleNextEventTime().getValue();
     double minsUntil = (nextTime - System.currentTimeMillis()) / 60000.0;
 
+    // sanity guard
     if (minsUntil < 0 || minsUntil > 1440) return;
 
-    double neededMins = Math.min(getMinutesToSetpoint().getValue(), getMaxMinutesAllowed().getValue());
+    double predicted = getMinutesToSetpoint().getValue();
+    double maxMins = getMaxMinutesAllowed().getValue();
+    double neededMins = Math.min(predicted, maxMins);
 
-    if (neededMins >= minsUntil) {
+    // Fire when predicted minutes >= minutes until occupancy
+    if (neededMins >= minsUntil)
         startOptimalStartSequence();
-    }
 }
 
-private void startOptimalStartSequence() {
+private void startOptimalStartSequence()
+{
     double z = getZoneTemp().getValue();
     double t = getTargetZoneTempSetpoint().getValue();
-    
+
+    // If already at target within tolerance, do nothing
     if (Math.abs(z - t) <= getTempTolerance().getValue()) return;
 
+    // Latch “learning” values — schedule must not change these
     runStartTimestamp = System.currentTimeMillis();
     latchedStartZoneTemp = z;
     latchedStartTarget = t;
     latchedDeltaT = Math.abs(z - t);
     latchedPredictedMins = getMinutesToSetpoint().getValue();
     lastRunWasHeat = (z < t);
-    
+
+    // Reset output/handoff state for this new run
+    pendingNullRelease = false;
+    nullReleaseAtMillis = 0L;
+    hasReleasedToNullThisRun = false;
+
     isOptimalStartRunning = true;
     setIsRunning(new BStatusBoolean(true));
-    
-    log(String.format("STARTED [%s]: StartT=%.1f | Pred=%.1fm | DeltaT=%.1f", 
-        (lastRunWasHeat ? "HEAT" : "COOL"), latchedStartZoneTemp, latchedPredictedMins, latchedDeltaT));
+
+    log(String.format("STARTED [%s]: StartT=%.1f | Target=%.1f | Pred=%.1fm | DeltaT=%.1f",
+        (lastRunWasHeat ? "HEAT" : "COOL"),
+        latchedStartZoneTemp,
+        latchedStartTarget,
+        latchedPredictedMins,
+        latchedDeltaT));
 }
 
-private void monitorActiveRun() {
-    double elapsed = (System.currentTimeMillis() - runStartTimestamp) / 60000.0;
-    setWarmupTimeMinutes(new BStatusNumeric(elapsed));
+// =============================================================
+// 5. ACTIVE RUN MONITORING (BALLISTIC)
+// =============================================================
+private void monitorActiveRun()
+{
+    double elapsedMins = (System.currentTimeMillis() - runStartTimestamp) / 60000.0;
+    setWarmupTimeMinutes(new BStatusNumeric(elapsedMins));
 
-    if (Math.abs(getZoneTemp().getValue() - latchedStartTarget) <= getTempTolerance().getValue()) {
-        completeRun(elapsed, true);
-    } else if (elapsed >= getMaxMinutesAllowed().getValue()) {
-        completeRun(elapsed, false);
+    // Success condition: zone reached setpoint (latched target) within tolerance
+    if (Math.abs(getZoneTemp().getValue() - latchedStartTarget) <= getTempTolerance().getValue())
+    {
+        completeRun(elapsedMins, true);
+        return;
+    }
+
+    // Timeout condition
+    if (elapsedMins >= getMaxMinutesAllowed().getValue())
+    {
+        completeRun(elapsedMins, false);
+        return;
     }
 }
 
-private void completeRun(double actualMins, boolean success) {
+private void completeRun(double actualMins, boolean success)
+{
     isOptimalStartRunning = false;
-    forceCommandNull();
     setIsRunning(new BStatusBoolean(false));
 
-    log(String.format("ENDED [%s]: %s | Act=%.1fm | Pred=%.1fm | StartT=%.1f", 
-        (lastRunWasHeat ? "HEAT" : "COOL"), (success ? "Success" : "Timeout"), 
-        actualMins, latchedPredictedMins, latchedStartZoneTemp));
+    log(String.format("ENDED [%s]: %s | Act=%.1fm | Pred=%.1fm | StartT=%.1f | Target=%.1f",
+        (lastRunWasHeat ? "HEAT" : "COOL"),
+        (success ? "Success" : "Timeout"),
+        actualMins, latchedPredictedMins, latchedStartZoneTemp, latchedStartTarget));
 
-    if (actualMins > 10.0 && latchedDeltaT > 1.0) {
+    if (getActualMinutesToSetpoint() != null)
+        setActualMinutesToSetpoint(new BStatusNumeric(actualMins));
+
+
+    if (actualMins >= 5.0)
+    {
         double currentRunRate = latchedDeltaT / actualMins;
+
         BStatusNumeric rateSlot = lastRunWasHeat ? getDegreesPerMinuteHeat() : getDegreesPerMinuteCool();
-        double oldRate = (rateSlot.getValue() <= 0.001) ? currentRunRate : rateSlot.getValue();
+        double oldRate = (rateSlot.getStatus().isNull() || rateSlot.getValue() <= 0.001)
+            ? currentRunRate : rateSlot.getValue();
 
         double days = Math.max(1.0, Math.min(100.0, getHistoryDaysToRetain().getValue()));
         double alpha = 1.0 / days;
 
-        rateSlot.setValue(oldRate + alpha * (currentRunRate - oldRate));
+        double newRate = oldRate + alpha * (currentRunRate - oldRate);
+        rateSlot.setValue(newRate);
+
+        log(String.format("LEARN [%s]: old=%.3f | run=%.3f | new=%.3f",
+            (lastRunWasHeat ? "HEAT" : "COOL"), oldRate, currentRunRate, newRate));
     }
+
+    pendingNullRelease = false;
+    hasReleasedToNullThisRun = true;
+    releaseEquipmentCommandToNull();
 }
 
-private void updateIdleEstimate() {
-    double delta = Math.abs(getZoneTemp().getValue() - getTargetZoneTempSetpoint().getValue());
-    if (delta <= getTempTolerance().getValue()) {
+// =============================================================
+// 6. IDLE ESTIMATE (uses learned rates)
+// =============================================================
+private void updateIdleEstimate()
+{
+    double z = getZoneTemp().getValue();
+    double t = getTargetZoneTempSetpoint().getValue();
+    double delta = Math.abs(z - t);
+
+    if (delta <= getTempTolerance().getValue())
+    {
         setMinutesToSetpoint(new BStatusNumeric(0.0));
         return;
     }
-    double rate = (getZoneTemp().getValue() < getTargetZoneTempSetpoint().getValue()) 
-        ? getDegreesPerMinuteHeat().getValue() : getDegreesPerMinuteCool().getValue();
-    
-    setMinutesToSetpoint(new BStatusNumeric(Math.min(delta / Math.max(0.01, rate), getMaxMinutesAllowed().getValue())));
+
+    double rate = (z < t) ? getDegreesPerMinuteHeat().getValue() : getDegreesPerMinuteCool().getValue();
+    rate = Math.max(0.01, rate);
+
+    double predictedMins = delta / rate;
+    predictedMins = Math.min(predictedMins, getMaxMinutesAllowed().getValue());
+
+    setMinutesToSetpoint(new BStatusNumeric(predictedMins));
 }
 
-// =================================================================
-// 5. HELPERS
-// =================================================================
+// =============================================================
+// 7. OUTPUT HANDOFF LOGIC (TRUE/OK or NULL only)
+// =============================================================
+private void handleEquipmentCommand()
+{
+    long now = System.currentTimeMillis();
 
-public void onStop() throws Exception {
-    if (ticket != null) ticket.cancel();
-    isOptimalStartRunning = false;
-    forceCommandNull();
+    // If we already released to NULL for this run, keep it released (do not re-assert TRUE)
+    if (hasReleasedToNullThisRun)
+    {
+        releaseEquipmentCommandToNull();
+        return;
+    }
+
+    // If not in a run, always release to NULL
+    if (!isOptimalStartRunning)
+    {
+        releaseEquipmentCommandToNull();
+        return;
+    }
+
+    // We ARE in a run, default is to assert TRUE until we decide to hand off.
+    // Arm the delayed NULL release when scheduleNextValue flips to FALSE.
+    // This usually occurs right after the occupied event begins.
+    if (!pendingNullRelease)
+    {
+        if (getScheduleNextValue().getStatus().isOk() && !getScheduleNextValue().getValue())
+        {
+            double secs = getNullReleaseDelaySeconds();
+            pendingNullRelease = true;
+            nullReleaseAtMillis = now + (long)(secs * 1000.0);
+
+            log("Schedule flipped to FALSE (occupied began). Handoff to NULL in " + (int)secs + "s.");
+        }
+    }
+
+    // If pending release and delay expired, release to NULL but keep learning run alive
+    if (pendingNullRelease && now >= nullReleaseAtMillis)
+    {
+        hasReleasedToNullThisRun = true;
+        pendingNullRelease = false;
+
+        log("EquipmentStartCommand handed off (NULL). Learning continues (ballistic).");
+        releaseEquipmentCommandToNull();
+        return;
+    }
+
+    // Otherwise: assert TRUE/OK
+    assertEquipmentCommandTrue();
 }
 
-private void updateTimer() {
-    if (ticket != null) ticket.cancel();
-    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(15), BProgram.execute, null);
+// Delay seconds getter
+// If you want to use a different slot, change it here.
+private double getNullReleaseDelaySeconds()
+{
+    double secs = 0.0;
+
+    if (getCommandOffDelaySeconds().getStatus().isOk())
+        secs = getCommandOffDelaySeconds().getValue();
+
+    // Clamp to safe range
+    secs = Math.max(0.0, Math.min(3600.0, secs));
+    return secs;
 }
 
-private void forceCommandNull() {
+// MUST ONLY EVER OUTPUT TRUE/OK OR NULL
+private void assertEquipmentCommandTrue()
+{
+    getEquipmentStartCommand().setValue(true);
+    getEquipmentStartCommand().setStatus(BStatus.ok);
+}
+
+// Release: NULL status (value can be false, but status NULL = released)
+private void releaseEquipmentCommandToNull()
+{
     getEquipmentStartCommand().setValue(false);
     getEquipmentStartCommand().setStatus(BStatus.nullStatus);
 }
 
-private boolean validateSensors() {
+// =============================================================
+// 8. HELPERS / UTIL
+// =============================================================
+public void onStop() throws Exception
+{
+    if (ticket != null) ticket.cancel();
+
+    isOptimalStartRunning = false;
+    setIsRunning(new BStatusBoolean(false));
+
+    pendingNullRelease = false;
+    hasReleasedToNullThisRun = false;
+
+    releaseEquipmentCommandToNull();
+}
+
+private void updateTimer()
+{
+    if (ticket != null) ticket.cancel();
+    // Run every 15 seconds
+    ticket = Clock.schedule(getComponent(), BRelTime.makeSeconds(15), BProgram.execute, null);
+}
+
+private boolean validateSensors()
+{
     return getZoneTemp().getStatus().isOk() && getTargetZoneTempSetpoint().getStatus().isOk();
 }
 
-private void abortRun(String reason) {
+private void abortRun(String reason)
+{
     isOptimalStartRunning = false;
-    forceCommandNull();
+    setIsRunning(new BStatusBoolean(false));
+
+    // End run: release output, but keep logging consistent
+    pendingNullRelease = false;
+    hasReleasedToNullThisRun = true;
+
+    releaseEquipmentCommandToNull();
     log("ABORTED: " + reason);
 }
 
-private void log(String msg) {
+private void updateZoneAtToleranceFlag()
+{
+    double z = getZoneTemp().getValue();
+    double t = getTargetZoneTempSetpoint().getValue();
+    boolean atTol = (Math.abs(z - t) <= getTempTolerance().getValue());
+
+    setZoneAtTempTolerance(new BStatusBoolean(atTol));
+}
+
+private void log(String msg)
+{
     getStatusLog().setValue(msg);
 }
+
 ```
