@@ -7,17 +7,6 @@
 
 This repository provides ready-to-use **Java algorithm blocks for Niagara 4 `ProgramObjects`** (as `.bog` files) and this **README** itself, which serves as a *model context file* for Large Language Models (LLMs) such as ChatGPT or Gemini. Think of it as *the instruction manual the LLM reads before it writes code for you.*
 
-> Ben is actively deploying and testing these `ProgramObjects` in the field, most notably the Guideline 36 algorithms, chiller demand-based start, and Optimal Start blocks built on PNNL’s latest research for energy-efficiency projects.
-
-
-Also, feel free to skip the tutorials entirely and jump right into the [**Prebuilt Wiresheet Examples (.bog file format)**](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/bog_files) for everything shown below.
-
-Check for demonstrations on Vibe Coding on 📺
-🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
-
-
-Check out the **new December 2025** [YouTube playlist](https://www.youtube.com/playlist?list=PLlNmfKmNxm1tOa8P7aBhj0zf34AIlS4CQ) on optimal start/stop math and algorithms, built from short daily AI-generated lessons, plus the complete [open-source GitHub repository](https://github.com/bbartling/hvac-optimal-start-math-playground) featuring Python examples and in-depth explorations of PNNL optimal start research.
-
 
 ---
 

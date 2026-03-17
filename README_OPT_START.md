@@ -1,18 +1,8 @@
 # The Ultimate HVAC Optimal Start Control
 
 
-Inspired by the familiar `kitControl` Optimal Start block design, these Program Objects extend capability with self-tuning algorithms informed by recent PNNL HVAC research. The Quadratic Model (Model 1) is ideal for interior or thermally stable zones whose recovery time is largely independent of outdoor conditions, while the Linear Degree-Per-Minute Model (Model 2) is recommended for weather-sensitive zones, as it explicitly incorporates outdoor air temperature into its prediction logic.
+Inspired by the familiar `kitControl` Optimal Start block design, this Program Objects extend capability with self-tuning algorithms informed by recent PNNL HVAC research.
 
-
-* **Optimal Start Control for ACs and HPs (PNNL)** — `pdf/Optimal Start Control for ACs and HPs.pdf`
-    👉 [https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf](https://github.com/bbartling/niagara4-vibe-code-addict/tree/develop/pdf)
-
-
-Check for demonstrations on Vibe Coding on 📺
-🎥 [**Talk Shop With Ben on YouTube**](https://www.youtube.com/@TalkShopWithBen)
-
-
-Check out the **new December 2025** [YouTube playlist](https://www.youtube.com/playlist?list=PLlNmfKmNxm1tOa8P7aBhj0zf34AIlS4CQ) on optimal start/stop math and algorithms, built from short daily AI-generated lessons, plus the complete [open-source GitHub repository](https://github.com/bbartling/hvac-optimal-start-math-playground) featuring Python examples and in-depth explorations of PNNL optimal start research.
 
 <p align="center">
   <img src="https://github.com/bbartling/niagara4-vibe-code-addict/blob/develop/snips/optimalStartSnip.png"  alt="Optimal Start Program Object" width="550">
@@ -27,117 +17,240 @@ Check out the **new December 2025** [YouTube playlist](https://www.youtube.com/p
 ---
 
 
-## 🆚 Comparison: Why is this better than `kitControl`?
+## 🆚 Comparison: Why This Block Improves on Tridium `kitControl`
 
-Niagara's standard `kitControl` Optimized Start/Stop block has been the industry workhorse for years probably dating back the AX days around the 2005 era. However, it was designed in an era of simpler, static schedules. Here is the mathematical breakdown of why this **EMA** block provides a slightly better performance.
+Niagara’s standard `kitControl` Optimized Start/Stop block has been a dependable industry workhorse for many years probably dating back to 2005 era of the advent of Niagara AX. It is proven and widely used, but it was built around an older style of schedule-centric control logic and a less intuitive learning model.
 
+This custom block keeps the strengths of optimized start while making the math, tuning, and command handoff behavior easier to understand in the field.
 
-### The Math: Arbitrary Multiplier vs. Tunable Memory
+Rather than claiming the standard block is “wrong,” a better way to say it is this:
 
-Both blocks use linear models to calculate recovery rates, but their method of "learning" from the past differs significantly. The new EMA block always weights the most recent data heaviest compared to any single past data point. The "Days" setting just controls how fast the influence of old data fades away. **EMA** stands for **Exponential Moving Average**.
+**This custom block is more transparent, easier to tune, and better aligned with actual setpoint recovery behavior for modern HVAC control workflows.**
 
-* **"Moving"**: The calculation continuously moves forward in time. As new run data comes in, it is added to the calculation, and old data influence fades away.
-* **"Average"**: It is fundamentally smoothing out noise. If one day the recovery takes 45 minutes and the next day it takes 47 minutes, the EMA finds the trend line between them rather than jumping erratically.
-* **"Exponential"**: This refers to the weighting. The most recent run has the highest weight, the run before that has less, and the run 10 days ago has very little. The influence of past data decays *exponentially* over time.
+---
 
-**Standard `kitControl` Block (Weighted Average)**
-The standard block uses a rigid "Old Parameter Multiplier" (default 2) to weight historical data against the new run.
+## The Math: Fixed Weighted Blend vs. Tunable Memory
 
-* **The Problem:** A multiplier of "2" is arbitrary. It hard-codes the math to always value history at ~66% and the new day at ~33%. You cannot intuitively tune this to "remember the last 2 weeks" without doing complex reverse arithmetic.
+Both approaches use a linear recovery concept, but they do not learn from history the same way.
 
-**New EMA Block (Exponential Moving Average)**
-This block uses a **tunable EMA** based on a user-friendly "Days of Memory" setting.
+### Standard Tridium `kitControl` Block
 
-* **The Advantage:** The  (weighting factor) is automatically calculated as .
-* Set **10 Days**  System learns slowly and ignores outliers.
-* Set **3 Days**  System adapts quickly to changing seasons.
+The standard block stores learned parameters such as runtime-per-degree and drift-time-per-degree, then updates them using a fixed weighted blend controlled by an **old parameter multiplier**.
 
+That means the update behaves like:
 
-### Summary Comparison
+```text
+new = (old * multiplier + observed) / (multiplier + 1)
+```
 
-| Feature | Standard `kitControl` Block | New EMA Block |
+### Why that can be hard to tune
+
+A multiplier like `2` or `3` works, but it is not very intuitive for a field technician.
+
+- It does not naturally answer questions like:
+  - “How many days of behavior am I really remembering?”
+  - “How quickly will this adapt to a weather change?”
+- It tends to feel abstract because the tuning knob is a math weight, not an operational concept.
+
+---
+
+## New Block: EMA-Style Learning with Tunable Memory
+
+This custom block uses a **tunable memory** approach based on a user-friendly number of days.
+
+EMA stands for **Exponential Moving Average**.
+
+- **Moving** means the learning updates as new runs occur.
+- **Average** means it smooths noisy day-to-day variation.
+- **Exponential** means the most recent runs carry the most weight, and older runs fade out over time.
+
+Instead of asking the user to tune an arbitrary multiplier, this block lets the user think in terms of **memory duration**.
+
+### Practical meaning
+
+- **10 Days** → slower, smoother adaptation
+- **5 Days** → balanced adaptation
+- **3 Days** → faster seasonal response
+- **1 Day** → highly reactive
+
+This makes the block easier to tune because the setting matches how technicians naturally think about building behavior.
+
+---
+
+## A More Useful Recovery Target
+
+Another important difference is the target itself.
+
+### Standard `kitControl`
+The standard block is built around fixed comfort boundaries such as:
+
+- `upperComfortLimit`
+- `lowerComfortLimit`
+
+### New Block
+This custom block targets the **actual occupied setpoint** and latches that target at the beginning of the run.
+
+That matters because:
+
+- the recovery goal matches the real control target,
+- mid-run schedule chatter does not distort the learning calculation,
+- the run is evaluated against the same target it started with.
+
+This makes the learning logic easier to explain and trend.
+
+---
+
+## Schedule Behavior and Command Handoff
+
+This is one of the biggest operational improvements.
+
+### Standard `kitControl`
+The Tridium block is highly **schedule/event-driven**. Its output behavior is tightly tied to internal modes and schedule transitions.
+
+### New Block
+This custom block behaves more like a **latched ballistic run**:
+
+1. It predicts required recovery time.
+2. It starts when needed.
+3. It latches the start temperature, target, and delta-T.
+4. It continues learning until success or timeout.
+5. It holds the start command `TRUE/OK` after learning is complete.
+6. When occupancy begins, it waits for the configured off-delay.
+7. It then releases command authority by handing off to `NULL`.
+
+### Why this is useful
+
+This handoff sequence is often easier to manage in real projects because:
+
+- it is more explicit,
+- it avoids command chatter,
+- it cleanly returns control authority to downstream BAS logic,
+- and it is easier to explain during commissioning.
+
+---
+
+## Predicting vs. Tuning
+
+It is important to separate these two ideas.
+
+### 1. Predicting
+**Frequency:** every execution cycle
+
+The block continuously predicts how long recovery should take based on:
+
+- current zone temperature,
+- current occupied setpoint,
+- learned heating or cooling recovery rate.
+
+Conceptually:
+
+```text
+predicted minutes = temperature difference / learned rate
+```
+
+This drives the live `minutesToSetpoint` output.
+
+### 2. Tuning
+**Frequency:** once per completed run
+
+At the end of a successful recovery, the block calculates how fast the zone actually recovered and updates the learned rate.
+
+Conceptually:
+
+```text
+newRate = oldRate + alpha * (currentRunRate - oldRate)
+```
+
+This is the only moment when the learned memory changes.
+
+That separation makes the block easier to reason about:
+- prediction happens continuously,
+- learning happens once per run.
+
+---
+
+## Summary Comparison
+
+| Feature | Standard `kitControl` Block | New EMA / Latched Block |
 | --- | --- | --- |
-| **Math Model** | Linear (Minutes per Degree) | Linear (Degrees per Minute) |
-| **Learning Algorithm** | Fixed Weighted Average (Multiplier) | **Tunable EMA (Days of Memory)** |
-| **Target Goal** | Static "Comfort Limits" (e.g., 68°F) | **Actual Setpoint** (Snapshot at start) |
-| **Schedule Logic** | Continuous (Stops if schedule toggles) | **EMA** (Ignores schedule once fired) |
-| **Tuning Capability** | Separate Heat/Cool (Hard to tune) | **Separate Heat/Cool (Intuitive Days)** |
+| **Stored Learning Variable** | Runtime/drift time per degree | Degrees per minute |
+| **Learning Method** | Fixed weighted average via multiplier | Tunable EMA-style memory |
+| **Target Goal** | Fixed comfort limits | Actual occupied setpoint latched at run start |
+| **Schedule Behavior** | Event/program-mode driven | Latched run with delayed handoff to `NULL` |
+| **Command Output** | Tied to internal control mode | Explicit `TRUE/OK` then `NULL` handoff |
+| **Tuning Feel** | Functional but less intuitive | More intuitive for field tuning |
+| **Commissioning Clarity** | More internal/implicit | More transparent and easier to explain |
 
 ---
 
-## The "Days of Memory" Feature
+## The “Days of Memory” Feature
 
-The most unique feature of this block is how it handles history. You don't need to configure complex databases. You simply tell the block **how many days of history** you want it to consider.
+The most unique tuning feature of this block is that the user thinks in terms of **days of history**, not abstract weighting multipliers.
 
-### The User Setting
+### User Setting
 
-* **Slot:** `historyDaysToRetain`
-* **Input:** Integer (e.g., `10`)
+- **Slot:** `historyDaysToRetain`
+- **Example values:** `10`, `5`, `3`, `1`
 
-### The Under-the-Hood Math
+### Under the Hood
 
-The block automatically converts your "Days" setting into a mathematical weighting factor () using this formula:
+The block converts this memory setting into a weighting factor for the learning update.
 
-* **10 Days**   (Stable, slow learning)
-* **5 Days**   (Balanced)
-* **1 Day**   (Reactive, learns instantly from yesterday)
+In practical terms:
 
+- higher days = slower, smoother learning
+- lower days = faster adaptation to changing conditions
 
----
-
-## The Workflow: Predict vs. Tune
-
-It is critical to understand that **Predicting** and **Tuning** happen at different times.
-
-### 1. Predicting (Always Running)
-
-* **Frequency:** Every 15 seconds.
-* **Action:** The block looks at the *current* Zone Temp, the *current* Setpoint, and the *stored* Learned Rate.
-* **Math:** $\text{Minutes} = (\text{Target} - \text{Current}) / \text{LearnedRate}$
-* **Result:** This updates the `minutesToSetpoint` slot live on the wiresheet.
-
-### 2. Tuning (Once per Run)
-
-* **Frequency:** Once, strictly at the end of a successful warm-up.
-* **Action:** It calculates how fast the zone *actually* recovered.
-* **Math:** $\text{NewRate} = \text{OldRate} + \alpha \times (\text{CurrentRunRate} - \text{OldRate})$
-* **Result:** It updates the `degreesPerMinute` slot. This is the only time the "Memory" changes.
+That gives the controls technician a tuning knob that maps directly to real-world expectations.
 
 ---
 
-## ⚡ Slot Definitions
+## Slot Definitions
 
 ### Configuration
 
 | Slot Name | Description |
 | --- | --- |
-| `maxMinutesAllowed` | **Safety Cap.** The unit will never start earlier than this (e.g., 180 min), even if the math says it needs 5 hours. |
-| `tempTolerance` | **Success Target.** How close to setpoint is "Close Enough"? (e.g., 0.5°). |
-| `historyDaysToRetain` | **The Tuning Knob.** How many past runs affect the current prediction. Higher = Smoother; Lower = Faster. **Note:** This value is used to automatically calculate the EMA weighting factor () under the hood. |
+| `maxMinutesAllowed` | Safety cap. The unit will never start earlier than this limit. |
+| `tempTolerance` | Defines how close to setpoint counts as success. |
+| `historyDaysToRetain` | Main tuning knob for how much past behavior influences the learned rate. |
+| `commandOffDelaySeconds` | Delay before handing off the command to `NULL` after occupancy begins. |
 
 ### Live Inputs
 
 | Slot Name | Description |
 | --- | --- |
-| `zoneTemp` | Current Zone Temperature. |
-| `targetZoneTempSetpoint` | The Occupied Heating/Cooling Setpoint. |
-| `scheduleNextEventTime` | The timestamp of when the building *will* be occupied. |
-| `scheduleNextValue` | Must be `true` (Occupied) for the start logic to engage. |
+| `zoneTemp` | Current zone temperature. |
+| `targetZoneTempSetpoint` | Occupied target setpoint. |
+| `scheduleNextEventTime` | Timestamp for the upcoming schedule transition. |
+| `scheduleNextValue` | Must indicate the next occupied state for optimal start to trigger. |
 
-### Learned Memory (Do Not Touch)
+### Learned Memory
 
 | Slot Name | Description |
 | --- | --- |
-| `degreesPerMinuteHeat` | The persistent "Brain" for heating mode. |
-| `degreesPerMinuteCool` | The persistent "Brain" for cooling mode. |
+| `degreesPerMinuteHeat` | Learned heating recovery rate. |
+| `degreesPerMinuteCool` | Learned cooling recovery rate. |
 
 ### Outputs
 
 | Slot Name | Description |
 | --- | --- |
-| `equipmentStartCommand` | **The Trigger.** Boolean `true` to start the unit. |
-| `minutesToSetpoint` | The live prediction of how long recovery will take. |
-| `statusLog` | Human-readable log of the last run's performance (Start Temp, Actual Time, Predicted Time). |
+| `equipmentStartCommand` | Start command output: asserted `TRUE/OK`, then released to `NULL`. |
+| `minutesToSetpoint` | Live estimate of recovery time. |
+| `statusLog` | Human-readable status of the latest run and learning result. |
+| `isRunning` | Indicates whether the optimal start sequence is active. |
+| `zoneAtTempTolerance` | Indicates whether the zone is within tolerance of the target. |
+| `warmupTimeMinutes` | Elapsed learning time for the active run. |
+
+---
+
+## Bottom Line
+
+Compared to Tridium’s standard `kitControl` optimized start/stop block, this custom block is not just different mathematically — it is easier to tune, easier to explain, and more explicit in how it starts, learns, holds command authority, and hands control back to the BAS.
+
+That makes it especially useful for projects where commissioning clarity, modern setpoint-based recovery, and predictable command handoff matter as much as the learning math itself.
+
 
 ---
 
