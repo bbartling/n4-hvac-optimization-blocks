@@ -1931,6 +1931,9 @@ This block runs at the **central plant** and resets the **Hot Water Supply Tempe
 
 It implements a classic **Trim & Respond** loop per **ASHRAE Guideline 36 (Section 5.21.4.1)**.
 
+
+> NOTE: For Central Plant it is recommended setting ignore requests to zero.
+
 ---
 
 ## What this reset controls
@@ -1983,7 +1986,7 @@ Effective Requests = max(0, Total Requests − Ignored Requests)
 | Term               | Meaning                               |
 | ------------------ | ------------------------------------- |
 | Total Requests     | Sum of AHU/FCU heating request levels |
-| Ignored Requests   | Noise filter (typically 2)            |
+| Ignored Requests   | Recommeded for Central plant set at 0 |
 | Effective Requests | What actually drives the reset        |
 
 ---
@@ -2260,7 +2263,7 @@ private double round1(double v) { return Math.round(v * 10.0) / 10.0; }
 
 
 <details>
-<summary>🥶 Central Plant Chilled Water Temperature Setpoint Trim & Respond</summary>
+<summary>🥶 Central Plant Chilled Water Temperature Setpoint Trim & Respond (NOT TESTED YET)</summary>
 
 This block runs at the **central plant** and resets **chilled water plant capacity** using a **single 0–100% Trim & Respond loop**.
 That loop output is then mapped into **two physical resets**:
@@ -2269,6 +2272,9 @@ That loop output is then mapped into **two physical resets**:
 2. **Chilled Water Supply Temperature (CHWST)**
 
 The logic follows **ASHRAE Guideline 36 (Section 5.20.5.2)**. (Page 199 in 2021 GL36 edition)
+
+
+> NOTE: For Central Plant it is recommended setting ignore requests to zero.
 
 ---
 
@@ -2360,7 +2366,7 @@ Effective Requests = max(0, Total Requests − Ignored Requests)
 | Term               | Meaning                           |
 | ------------------ | --------------------------------- |
 | Total Requests     | Sum of AHU cooling request levels |
-| Ignored Requests   | Noise filter (typically 2)        |
+| Ignored Requests   | Recommnended set at 0             |
 | Effective Requests | What actually drives the loop     |
 
 ---
